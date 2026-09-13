@@ -6,6 +6,10 @@ import { roomStore } from './roomStore';
 
 const MAX_CREATE_ATTEMPTS = 5;
 const CURRENT_ROOM_KEY = 'tcg-current-room';
+// Code d'une partie quittée volontairement (bouton « Quitter »), pour proposer un lien
+// « Reprendre la partie » dans le menu (§ abandon). Distinct de CURRENT_ROOM_KEY, qui ne
+// sert qu'à la reconnexion automatique au chargement de la page.
+const LEFT_ROOM_KEY = 'tcg-left-room';
 // Délai avant d'expulser le joueur restant si l'adversaire ne revient pas (§ abandon).
 export const ABANDON_TIMEOUT_MS = 60_000;
 
@@ -26,6 +30,18 @@ export function setCurrentRoomCode(code: string): void {
 
 export function clearCurrentRoomCode(): void {
   sessionStorage.removeItem(CURRENT_ROOM_KEY);
+}
+
+export function getLeftRoomCode(): string | null {
+  return sessionStorage.getItem(LEFT_ROOM_KEY);
+}
+
+export function rememberLeftRoom(code: string): void {
+  sessionStorage.setItem(LEFT_ROOM_KEY, code);
+}
+
+export function clearLeftRoomCode(): void {
+  sessionStorage.removeItem(LEFT_ROOM_KEY);
 }
 
 export async function createRoom(): Promise<string> {

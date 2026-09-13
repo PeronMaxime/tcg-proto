@@ -1,7 +1,7 @@
 import { Canvas } from '@react-three/fiber';
 import { useEffect, useRef, useState } from 'react';
 import type { Room, Seat, Target } from '../game/types';
-import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rematch, sendAction } from '../net/rooms';
+import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, rematch, sendAction } from '../net/rooms';
 import Board from '../scene/Board';
 import CameraRig from '../scene/CameraRig';
 import { CAMERA } from '../scene/layout';
@@ -170,6 +170,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     } catch {
       // Le retour au menu doit fonctionner même si l'écriture échoue (hors-ligne, etc.).
     }
+    rememberLeftRoom(room.code);
     onLeaveToMenu();
   }
 
