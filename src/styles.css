@@ -382,6 +382,55 @@ button {
   color: var(--color-success);
 }
 
+/* -- Bouton de sortie de partie -- */
+
+.leave-button {
+  position: absolute;
+  top: calc(clamp(0.6rem, 2vw, 1.4rem) + 2.9rem);
+  right: clamp(0.6rem, 2vw, 1.4rem);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  border-radius: 4px;
+  color: var(--hud-ink-dim);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.leave-button svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.leave-button:hover {
+  color: var(--hud-hp);
+  border-color: rgba(209, 72, 63, 0.5);
+}
+
+.abandon-notice {
+  position: absolute;
+  top: clamp(0.6rem, 2vw, 1.4rem);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(70vw, 420px);
+  padding: 0.5rem 1.2rem;
+  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
+  border: 1px solid var(--hud-hp);
+  border-radius: 4px;
+  color: var(--hud-ink);
+  font-size: 0.85rem;
+  text-align: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
 /* -- Bannière de tour (ruban) -- */
 
 .turn-banner {
@@ -496,6 +545,16 @@ button {
     min-width: 96px;
     min-height: 44px;
     font-size: 0.7rem;
+  }
+
+  .abandon-notice {
+    max-width: 80vw;
+    font-size: 0.72rem;
+    padding: 0.4rem 0.8rem;
+  }
+
+  .leave-button span {
+    display: none;
   }
 }
 

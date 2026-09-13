@@ -9,6 +9,8 @@ export interface RoomStore {
   transact(code: string, fn: (room: Room | null) => Room | null): Promise<Room | null>;
   // Écriture directe, sans transaction (utilisée pour les actions de jeu, voir §5).
   set(code: string, room: Room): Promise<void>;
+  // Supprime définitivement la room (partie abandonnée, voir `rooms.ts`).
+  remove(code: string): Promise<void>;
   subscribe(code: string, cb: (room: Room | null) => void): () => void;
   readonly isLocal: boolean;
 }

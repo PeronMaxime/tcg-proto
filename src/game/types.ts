@@ -66,4 +66,7 @@ export interface Room {
   players: { p1: PlayerInfo; p2: PlayerInfo | null };
   state: GameState | null; // null tant que p2 n'a pas rejoint
   createdAt: number; // Date.now()
+  // Horodatage du dernier abandon de partie par siège, ou null si présent/jamais parti.
+  // Absent sur les rooms créées avant cette fonctionnalité (accès toujours via `?.`).
+  leftAt: Record<Seat, number | null>;
 }

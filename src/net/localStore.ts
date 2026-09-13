@@ -38,6 +38,10 @@ export const localStore: RoomStore = {
     writeRoom(code, room);
   },
 
+  async remove(code) {
+    writeRoom(code, null);
+  },
+
   subscribe(code, cb) {
     let listeners = localListeners.get(code);
     if (!listeners) {

@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import {
+  deleteDoc,
   doc,
   initializeFirestore,
   onSnapshot,
@@ -54,6 +55,10 @@ export const firebaseStore: RoomStore = {
 
   async set(code, room) {
     await setDoc(roomRef(code), room);
+  },
+
+  async remove(code) {
+    await deleteDoc(roomRef(code));
   },
 
   subscribe(code, cb) {

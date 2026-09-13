@@ -1,7 +1,7 @@
 import { Canvas } from '@react-three/fiber';
 import { useEffect, useRef, useState } from 'react';
 import type { Room, Seat, Target } from '../game/types';
-import { rematch, sendAction } from '../net/rooms';
+import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rematch, sendAction } from '../net/rooms';
 import Board from '../scene/Board';
 import CameraRig from '../scene/CameraRig';
 import { CAMERA } from '../scene/layout';
@@ -13,6 +13,8 @@ interface GameScreenProps {
   seat: Seat;
   onLeaveToMenu: () => void;
 }
+
+const LEAVE_ICON_PATH = 'M9 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h5M15 8l4 4-4 4M19 12H8';
 
 function ManaCrystals({ mana, maxMana }: { mana: number; maxMana: number }) {
   return (
@@ -78,6 +80,34 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const opponentName =
     room.players[opponentSeat]?.name || (opponentSeat === 'p1' ? 'Joueur 1' : 'Joueur 2');
 
+  const opponentLeftAt = room.leftAt?.[opponentSeat] ?? null;
+  const [abandonCountdown, setAbandonCountdown] = useState<number | null>(null);
+
+  // L'adversaire a quitté la partie : on l'attend un peu, puis on rentre au menu et on
+  // supprime la room si personne n'est revenu (voir `leaveMatch`/`deleteRoom`).
+  useEffect(() => {
+    if (state.winner || !opponentLeftAt) {
+      setAbandonCountdown(null);
+      return;
+    }
+
+    const deadline = opponentLeftAt + ABANDON_TIMEOUT_MS;
+    let expired = false;
+
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setAbandonCountdown(remaining);
+      if (remaining <= 0 && !expired) {
+        expired = true;
+        deleteRoom(room.code).catch(() => {});
+        onLeaveToMenu();
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [opponentLeftAt, state.winner, room.code, onLeaveToMenu]);
+
   // Bannière de tour, déclenchée par un évènement `turn` de nouvel id (§7, §12).
   useEffect(() => {
     const event = state.lastEvent;
@@ -132,6 +162,15 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
 
   async function handleRematch() {
     await rematch(room);
+  }
+
+  async function leaveGame() {
+    try {
+      await leaveMatch(room, seat);
+    } catch {
+      // Le retour au menu doit fonctionner même si l'écriture échoue (hors-ligne, etc.).
+    }
+    onLeaveToMenu();
   }
 
   function copyRoomCode() {
@@ -214,6 +253,19 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           <span className="room-badge-code">{room.code}</span>
           <span className="room-badge-hint">{codeCopied ? 'Copié !' : 'Copier'}</span>
         </button>
+
+        <button className="leave-button" onClick={leaveGame} title="Quitter la partie et revenir au menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d={LEAVE_ICON_PATH} />
+          </svg>
+          <span>Quitter</span>
+        </button>
+
+        {abandonCountdown !== null && (
+          <div className="abandon-notice">
+            {opponentName} a quitté la partie — retour au menu dans {abandonCountdown}s
+          </div>
+        )}
 
         {turnBanner && (
           <div className={`turn-banner ${turnBanner.seat === seat ? 'mine' : 'theirs'}`}>

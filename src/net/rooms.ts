@@ -6,6 +6,12 @@ import { roomStore } from './roomStore';
 
 const MAX_CREATE_ATTEMPTS = 5;
 const CURRENT_ROOM_KEY = 'tcg-current-room';
+// Délai avant d'expulser le joueur restant si l'adversaire ne revient pas (§ abandon).
+export const ABANDON_TIMEOUT_MS = 60_000;
+
+function freshLeftAt(): Record<Seat, number | null> {
+  return { p1: null, p2: null };
+}
 
 export class RoomError extends Error {}
 
@@ -35,6 +41,7 @@ export async function createRoom(): Promise<string> {
         players: { p1: player, p2: null },
         state: null,
         createdAt: Date.now(),
+        leftAt: freshLeftAt(),
       };
       return fresh;
     });
@@ -50,8 +57,13 @@ export async function joinRoom(rawCode: string): Promise<Room> {
 
   const room = await roomStore.transact(code, (existing) => {
     if (!existing) throw new RoomError('Room introuvable.');
-    if (existing.players.p1.id === player.id || existing.players.p2?.id === player.id) {
-      return existing; // reconnexion : la room ne change pas
+    const existingSeat: Seat | null =
+      existing.players.p1.id === player.id ? 'p1' : existing.players.p2?.id === player.id ? 'p2' : null;
+    if (existingSeat) {
+      // Reconnexion : on efface juste la marque d'abandon éventuelle de ce siège.
+      const leftAt = existing.leftAt ?? freshLeftAt();
+      if (!leftAt[existingSeat]) return existing;
+      return { ...existing, leftAt: { ...leftAt, [existingSeat]: null } };
     }
     if (existing.players.p2) throw new RoomError('Room pleine.');
     const joined: Room = {
@@ -59,6 +71,7 @@ export async function joinRoom(rawCode: string): Promise<Room> {
       players: { ...existing.players, p2: player },
       state: createInitialState(),
       status: 'playing',
+      leftAt: freshLeftAt(),
     };
     return joined;
   });
@@ -94,9 +107,25 @@ export async function rematch(room: Room): Promise<void> {
       ...existing,
       state: createInitialState(),
       status: 'playing',
+      leftAt: freshLeftAt(),
     };
     return restarted;
   });
+}
+
+// Marque le siège `seat` comme parti (bouton « Quitter » en cours de partie). Le client
+// adverse expulse alors son joueur et supprime la room si personne ne revient à temps
+// (voir `ABANDON_TIMEOUT_MS` et `deleteRoom`, utilisés dans GameScreen).
+export async function leaveMatch(room: Room, seat: Seat): Promise<void> {
+  await roomStore.transact(room.code, (existing) => {
+    if (!existing) return null;
+    const leftAt = existing.leftAt ?? freshLeftAt();
+    return { ...existing, leftAt: { ...leftAt, [seat]: Date.now() } };
+  });
+}
+
+export async function deleteRoom(code: string): Promise<void> {
+  await roomStore.remove(code);
 }
 
 export function subscribeToRoom(code: string, cb: (room: Room | null) => void): () => void {
