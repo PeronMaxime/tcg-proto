@@ -137,10 +137,20 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const [abandonCountdown, setAbandonCountdown] = useState<number | null>(null);
 
   // L'adversaire a quitté la partie : on l'attend un peu, puis on rentre au menu et on
-  // supprime la room si personne n'est revenu (voir `leaveMatch`/`deleteRoom`).
+  // supprime la room si personne n'est revenu (voir `leaveMatch`/`deleteRoom`). Si la partie
+  // est déjà terminée, il n'y a rien à attendre : l'adversaire a quitté au lieu de demander
+  // la revanche, donc on part immédiatement et on supprime la room (pas de délai de grâce,
+  // il n'y a plus de match en cours à laisser une chance de reconnexion).
   useEffect(() => {
-    if (state.winner || !opponentLeftAt) {
+    if (!opponentLeftAt) {
       setAbandonCountdown(null);
+      return;
+    }
+
+    if (state.winner) {
+      setAbandonCountdown(null);
+      deleteRoom(room.code).catch(() => {});
+      onLeaveToMenu();
       return;
     }
 
@@ -407,7 +417,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             <button className="hud-button hud-button--gold" onClick={handleRematch}>
               Revanche
             </button>
-            <button className="hud-button" onClick={onLeaveToMenu}>
+            <button className="hud-button" onClick={leaveGame}>
               Retour au menu
             </button>
           </div>

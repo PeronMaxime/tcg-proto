@@ -129,10 +129,12 @@ export async function rematch(room: Room): Promise<void> {
   });
 }
 
-// Marque le siège `seat` comme parti (bouton « Quitter » en cours de partie). Le client
-// adverse expulse alors son joueur et supprime la room si personne ne revient à temps
-// (voir `ABANDON_TIMEOUT_MS` et `deleteRoom`, utilisés dans GameScreen). Si l'autre siège
-// était déjà marqué parti, plus personne n'attend : la room est supprimée immédiatement.
+// Marque le siège `seat` comme parti (bouton « Quitter » en cours de partie, ou « Retour au
+// menu » sur l'écran de victoire au lieu de demander la revanche). Le client adverse expulse
+// alors son joueur et supprime la room — immédiatement si la partie est déjà terminée, sinon
+// après `ABANDON_TIMEOUT_MS` pour laisser une chance de reconnexion (voir `deleteRoom`,
+// utilisés dans GameScreen). Si l'autre siège était déjà marqué parti, plus personne n'attend :
+// la room est supprimée immédiatement, terminée ou non.
 export async function leaveMatch(room: Room, seat: Seat): Promise<void> {
   const opponentSeat: Seat = seat === 'p1' ? 'p2' : 'p1';
 
