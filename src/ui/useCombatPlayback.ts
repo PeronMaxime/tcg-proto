@@ -29,60 +29,64 @@ export interface CombatPlaybackResult {
 
 export function useCombatPlayback(state: GameState): CombatPlaybackResult {
   const lastHandledIdRef = useRef<number | undefined>(undefined);
-  const startedAtRef = useRef(0);
+  const startedAtRef = useRef<number | null>(null);
   const stepsRef = useRef<CombatStep[]>([]);
   const attackerSeatRef = useRef<Seat>('p1');
   const eventIdRef = useRef(0);
-  const [playing, setPlaying] = useState(false);
   const [, forceRender] = useState(0);
 
-  // Détecte un NOUVEL évènement `combat` (id différent du dernier traité). Au premier
-  // rendu, mémorise l'id sans animer : un rafraîchissement ne rejoue pas le combat (§12).
-  useEffect(() => {
-    const event = state.lastEvent;
-    const currentId = event?.id ?? 0;
+  const event = state.lastEvent;
+  const currentId = event?.id ?? 0;
 
-    if (lastHandledIdRef.current === undefined) {
-      lastHandledIdRef.current = currentId;
-      return;
-    }
-    if (currentId === lastHandledIdRef.current) return;
+  // Détection d'un NOUVEL évènement `combat`, faite PENDANT le rendu (pas dans un effet) :
+  // sur le rendu où l'évènement apparaît, `playing` doit déjà valoir `true` pour CE rendu.
+  // Sinon, un autre effet du composant appelant lu juste après dans le même flush (le
+  // déclenchement automatique de `beginTurn`, §7.4) lirait encore l'ancienne valeur de
+  // `playing` (fausse) et enverrait `beginTurn` avant que la lecture ait eu la moindre
+  // chance de démarrer. C'était le bug observé : seul le combat qui met fin à la partie (qui
+  // ne change ni le tour ni la phase, donc ne déclenche pas `beginTurn`) avait le temps de
+  // s'animer en entier ; tous les autres étaient interrompus dès la frame suivante. Muter des
+  // refs pendant le rendu pour comparer avec le rendu précédent est un pattern reconnu par
+  // React (cf. « storing information from previous renders ») tant que c'est idempotent —
+  // c'est le cas ici : un même `currentId` ne redéclenche jamais la détection.
+  if (lastHandledIdRef.current === undefined) {
+    // Premier rendu : mémorise sans animer, sinon un rafraîchissement rejoue le combat (§12).
     lastHandledIdRef.current = currentId;
-
+  } else if (currentId !== lastHandledIdRef.current) {
+    lastHandledIdRef.current = currentId;
     if (event?.type === 'combat' && event.steps.length > 0) {
       stepsRef.current = event.steps;
       attackerSeatRef.current = event.seat;
       eventIdRef.current = event.id;
       startedAtRef.current = performance.now();
-      setPlaying(true);
     } else {
-      // Un évènement d'un autre type pendant la lecture l'interrompt (léger décalage
-      // réseau entre les deux clients, cas rare).
-      setPlaying(false);
+      // Un évènement d'un autre type pendant la lecture l'interrompt (léger décalage réseau
+      // entre les deux clients, cas rare).
+      startedAtRef.current = null;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.lastEvent]);
+  }
 
+  // Fait avancer la lecture : force un nouveau rendu à chaque frame tant qu'elle est en
+  // cours, jusqu'à ce que `playbackCursor` indique qu'elle est terminée.
   useEffect(() => {
-    if (!playing) return;
+    if (startedAtRef.current === null) return;
     let raf: number;
     const tick = () => {
-      const elapsed = performance.now() - startedAtRef.current;
+      const elapsed = performance.now() - (startedAtRef.current ?? 0);
       const cursor = playbackCursor(elapsed, stepsRef.current.length);
       if (cursor.done) {
-        setPlaying(false);
-        return;
+        startedAtRef.current = null;
       }
       forceRender((n) => n + 1);
-      raf = requestAnimationFrame(tick);
+      if (!cursor.done) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing]);
+  }, [currentId]);
 
   const baseHp: Record<Seat, number> = { p1: state.players.p1.hp, p2: state.players.p2.hp };
 
-  if (!playing) {
+  if (startedAtRef.current === null) {
     return { playing: false, combatView: null, activeStep: null, displayedHp: baseHp };
   }
 

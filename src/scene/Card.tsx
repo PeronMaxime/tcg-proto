@@ -134,9 +134,12 @@ function Card({
       group.position.z = THREE.MathUtils.damp(group.position.z, effectivePose.position[2], DAMP_LAMBDA, delta);
       group.rotation.x = THREE.MathUtils.damp(group.rotation.x, effectivePose.rotation[0], DAMP_LAMBDA, delta);
       group.rotation.y = THREE.MathUtils.damp(group.rotation.y, effectivePose.rotation[1], DAMP_LAMBDA, delta);
+      // KO : la carte pivote d'un quart de tour à plat sur la table (portrait → paysage,
+      // donc « à l'horizontale ») ; elle revient d'elle-même à la verticale quand `ko`
+      // repasse à `false` en fin de combat, via l'amortissement de `koAmount` (H1).
       group.rotation.z = THREE.MathUtils.damp(
         group.rotation.z,
-        effectivePose.rotation[2] + koAmount.current * 0.15,
+        effectivePose.rotation[2] + koAmount.current * (Math.PI / 2),
         DAMP_LAMBDA,
         delta,
       );
