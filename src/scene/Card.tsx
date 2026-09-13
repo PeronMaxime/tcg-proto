@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { getCardDef } from '../game/cards';
 import { handHoverPose, type Pose } from './layout';
 import { theme } from './theme';
-import { getCardBackTexture, getCardFaceTexture } from './textures';
+import { getCardBackTexture, getCardFaceTexture, type MonsterFaceStats } from './textures';
 
 export type HaloKind = 'none' | 'playable' | 'selected' | 'target';
 
@@ -15,12 +15,11 @@ export interface AttackTrigger {
 
 interface CardProps {
   cardId: string;
-  attack: number;
-  health: number;
+  stats: MonsterFaceStats | null; // null pour un enchantement (§6.4)
+  ko: boolean;
   pose: Pose;
   spawnPose?: Pose; // pose de départ si la carte apparaît pour la première fois (D6)
   hidden: boolean;
-  dying: boolean;
   halo: HaloKind;
   hoverable: boolean;
   clickable: boolean;
@@ -29,7 +28,6 @@ interface CardProps {
 }
 
 const DAMP_LAMBDA = 10;
-const DEATH_DURATION = 0.45; // s — le temps de la fente et du flash (§7, §12)
 const LUNGE_DURATION = 0.45; // s
 
 function haloColor(kind: HaloKind): string {
@@ -47,12 +45,11 @@ function haloColor(kind: HaloKind): string {
 
 function Card({
   cardId,
-  attack,
-  health,
+  stats,
+  ko,
   pose,
   spawnPose,
   hidden,
-  dying,
   halo,
   hoverable,
   clickable,
@@ -60,7 +57,7 @@ function Card({
   onSelect,
 }: CardProps) {
   const def = getCardDef(cardId);
-  const faceTexture = useMemo(() => getCardFaceTexture(def, attack, health), [def, attack, health]);
+  const faceTexture = useMemo(() => getCardFaceTexture(def, stats), [def, stats]);
   const backTexture = useMemo(() => getCardBackTexture(), []);
   const { width, height } = theme.card;
 
@@ -69,16 +66,16 @@ function Card({
   const haloMaterialRef = useRef<THREE.MeshBasicMaterial>(null!);
   const faceMaterialRef = useRef<THREE.MeshStandardMaterial>(null!);
   const initialized = useRef(false);
-  const deathElapsed = useRef(0);
-  const prevHealth = useRef(health);
+  const prevDefense = useRef(stats?.defense ?? null);
   const flashIntensity = useRef(0);
   const lunge = useRef<{ start: number; base: THREE.Vector3; target: THREE.Vector3 } | null>(null);
   const lastAttackId = useRef<number | null>(null);
+  const koAmount = useRef(0); // 0 = debout, 1 = KO complet (amorti)
 
   const [hovered, setHovered] = useState(false);
 
   // Pose de départ : sur mount, `spawnPose` (deck du propriétaire) si la carte est neuve,
-  // sinon directement la pose cible — pas d'animation surprise au premier rendu (§12).
+  // sinon directement la pose cible — pas d'animation surprise au premier rendu (§7.2).
   useEffect(() => {
     if (initialized.current || !groupRef.current) return;
     const start = spawnPose ?? pose;
@@ -89,9 +86,12 @@ function Card({
   }, []);
 
   useEffect(() => {
-    if (health < prevHealth.current) flashIntensity.current = 1;
-    prevHealth.current = health;
-  }, [health]);
+    const defense = stats?.defense ?? null;
+    if (defense !== null && prevDefense.current !== null && defense < prevDefense.current) {
+      flashIntensity.current = 1;
+    }
+    prevDefense.current = defense;
+  }, [stats?.defense]);
 
   useEffect(() => {
     if (attackTrigger && attackTrigger.id !== lastAttackId.current && groupRef.current) {
@@ -108,14 +108,7 @@ function Card({
     const group = groupRef.current;
     if (!group) return;
 
-    if (dying) {
-      deathElapsed.current += delta;
-      if (deathElapsed.current > DEATH_DURATION) {
-        const shrink = Math.max(0, 1 - (deathElapsed.current - DEATH_DURATION) / 0.35);
-        group.scale.setScalar(pose.scale * shrink);
-        group.position.y = pose.position[1] - (1 - shrink) * 0.6;
-      }
-    } else if (lunge.current) {
+    if (lunge.current) {
       const t = (performance.now() - lunge.current.start) / 1000 / LUNGE_DURATION;
       if (t >= 1) {
         lunge.current = null;
@@ -127,14 +120,26 @@ function Card({
       }
     }
 
-    if (!dying && !lunge.current) {
+    koAmount.current = THREE.MathUtils.damp(koAmount.current, ko ? 1 : 0, DAMP_LAMBDA, delta);
+
+    if (!lunge.current) {
       const effectivePose = hovered && hoverable ? handHoverPose(pose) : pose;
       group.position.x = THREE.MathUtils.damp(group.position.x, effectivePose.position[0], DAMP_LAMBDA, delta);
-      group.position.y = THREE.MathUtils.damp(group.position.y, effectivePose.position[1], DAMP_LAMBDA, delta);
+      group.position.y = THREE.MathUtils.damp(
+        group.position.y,
+        effectivePose.position[1] - koAmount.current * 0.02,
+        DAMP_LAMBDA,
+        delta,
+      );
       group.position.z = THREE.MathUtils.damp(group.position.z, effectivePose.position[2], DAMP_LAMBDA, delta);
       group.rotation.x = THREE.MathUtils.damp(group.rotation.x, effectivePose.rotation[0], DAMP_LAMBDA, delta);
       group.rotation.y = THREE.MathUtils.damp(group.rotation.y, effectivePose.rotation[1], DAMP_LAMBDA, delta);
-      group.rotation.z = THREE.MathUtils.damp(group.rotation.z, effectivePose.rotation[2], DAMP_LAMBDA, delta);
+      group.rotation.z = THREE.MathUtils.damp(
+        group.rotation.z,
+        effectivePose.rotation[2] + koAmount.current * 0.15,
+        DAMP_LAMBDA,
+        delta,
+      );
       const scale = THREE.MathUtils.damp(group.scale.x, effectivePose.scale, DAMP_LAMBDA, delta);
       group.scale.setScalar(scale);
     }
@@ -159,6 +164,9 @@ function Card({
     if (faceMaterialRef.current) {
       flashIntensity.current = THREE.MathUtils.damp(flashIntensity.current, 0, 6, delta);
       faceMaterialRef.current.emissive.setRGB(flashIntensity.current, 0, 0);
+      // Face assombrie pendant le KO (§6.4).
+      const darken = 1 - koAmount.current * 0.65;
+      faceMaterialRef.current.color.setRGB(darken, darken, darken);
       // Léger tremblement pendant le flash de dégâts.
       if (flashIntensity.current > 0.05) {
         group.position.x += (Math.random() - 0.5) * 0.02 * flashIntensity.current;

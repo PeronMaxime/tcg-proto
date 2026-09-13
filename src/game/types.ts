@@ -1,58 +1,82 @@
 export type Seat = 'p1' | 'p2';
+export type MonsterZone = 'attack' | 'defense';
+export type Zone = MonsterZone | 'enchant';
+export type Phase = 'start' | 'market' | 'main';
 
-export interface CardDef {
+export type EnchantmentEffect =
+  | { type: 'monsterBuff'; zone: MonsterZone | 'all'; attack: number; defense: number }
+  | { type: 'coinsPerTurn'; amount: number };
+
+interface CardDefBase {
   id: string;
   name: string;
   cost: number;
-  attack: number;
-  health: number;
-  color: string; // couleur de fond de la face, pour distinguer les cartes sans illustration
+  color: string; // couleur de fond de la face
 }
+
+export interface MonsterDef extends CardDefBase {
+  kind: 'monster';
+  attack: number;
+  defense: number;
+}
+
+export interface EnchantmentDef extends CardDefBase {
+  kind: 'enchantment';
+  effect: EnchantmentEffect;
+}
+
+export type CardDef = MonsterDef | EnchantmentDef;
 
 export interface CardInstance {
   uid: string; // unique dans la partie, stable : c'est la key React de la carte
   cardId: string;
-  attack: number;
-  health: number; // PV actuels
-  maxHealth: number;
-  canAttack: boolean; // false le tour où la carte est posée
 }
+
+export type Slot = CardInstance | null;
 
 export interface PlayerState {
   hp: number;
-  mana: number;
-  maxMana: number;
-  deck: CardInstance[]; // le haut du deck est la fin du tableau
+  coins: number;
+  turnsPlayed: number; // tours commencés par CE joueur : base du gain de pièces (R1)
+  deck: CardInstance[]; // le haut du deck est la fin du tableau, le fond est le début
+  market: CardInstance[]; // marché du tour en cours ; vide hors phase 'market'
   hand: CardInstance[];
-  board: CardInstance[];
+  zones: Record<Zone, Slot[]>; // longueurs fixes 5 / 5 / 3 ; index 0 = emplacement de gauche
 }
 
-export type Target = { kind: 'hero' } | { kind: 'minion'; uid: string };
-
 export type Action =
-  | { type: 'play'; uid: string }
-  | { type: 'attack'; attackerUid: string; target: Target }
+  | { type: 'beginTurn' }
+  | { type: 'buy'; uid: string }
+  | { type: 'endMarket' }
+  | { type: 'place'; uid: string; zone: Zone; slot: number }
   | { type: 'endTurn' };
+
+export type CombatTarget = { kind: 'monster'; uid: string } | { kind: 'player' };
+
+export interface CombatStep {
+  attackerUid: string;
+  target: CombatTarget;
+  damage: number; // attaque effective de l'attaquant
+  remaining: number; // défense restante du monstre (0 = KO) ou PV restants du joueur
+}
 
 // Dernier événement joué, pour que LES DEUX clients rejouent la même animation.
 export type GameEvent =
-  | { id: number; type: 'play'; seat: Seat; uid: string }
-  | { id: number; type: 'attack'; seat: Seat; attackerUid: string; target: Target }
-  | { id: number; type: 'turn'; seat: Seat };
-
-export interface DeadCard {
-  owner: Seat;
-  card: CardInstance;
-}
+  | { id: number; type: 'turnStart'; seat: Seat; coinsGained: number }
+  | { id: number; type: 'buy'; seat: Seat; uid: string }
+  | { id: number; type: 'marketEnd'; seat: Seat; returnedUids: string[] }
+  | { id: number; type: 'place'; seat: Seat; uid: string; zone: Zone; slot: number }
+  | { id: number; type: 'combat'; seat: Seat; steps: CombatStep[] };
 
 export interface GameState {
+  rulesVersion: number; // T7
   turn: Seat;
-  turnNumber: number;
+  phase: Phase;
+  turnNumber: number; // compteur GLOBAL, pour l'affichage uniquement — pas pour les pièces (R1)
   players: Record<Seat, PlayerState>;
   winner: Seat | null;
-  eventSeq: number; // incrémenté à chaque action, sert d'id aux événements
+  eventSeq: number;
   lastEvent: GameEvent | null;
-  lastDeaths: DeadCard[]; // cartes mortes lors de la DERNIÈRE action (animation de mort)
 }
 
 export interface PlayerInfo {

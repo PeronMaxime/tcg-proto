@@ -1,8 +1,8 @@
 # TCG Proto
 
-Prototype jouable dans le navigateur d'un jeu de cartes 1 contre 1 façon Hearthstone. Les
-règles ne sont pas définitives : le but est de tester rapidement des idées de gameplay avant
-une éventuelle version physique.
+Prototype jouable dans le navigateur d'un jeu de cartes 1 contre 1. Les règles ne sont pas
+définitives : le but est de tester rapidement des idées de gameplay avant une éventuelle
+version physique.
 
 ## 1. Lancer en local
 
@@ -51,19 +51,45 @@ room vit en `sessionStorage`).
 
 ## 4. Modifier les règles et les cartes
 
-- `src/game/rules.ts` : logique de jeu (`createInitialState`, `applyAction`). Module pur, sans
-  dépendance réseau ni React — modifiable et testable indépendamment du reste.
-- `src/game/cards.ts` : catalogue des cartes et composition du deck de départ.
+Règles v1 (marché, zones fixes, combat automatique) — voir `PLAN-tcg-proto-regles-v1.md` pour
+le détail des décisions. Résumé :
 
-Les tests correspondants sont dans `src/game/rules.test.ts` (`npm run test`).
+- Chaque joueur a un deck de 50 cartes (monstres + enchantements). Le plateau a 3 zones par
+  joueur : **attaque** (5 emplacements), **défense** (5), **enchantements** (3). Une carte
+  posée ne bouge plus.
+- **Tour** : le joueur gagne `N` pièces (`N` = le n-ième tour **de ce joueur**, les pièces se
+  cumulent) → **marché** : 3 cartes du dessus du deck, achetables, à la main ; les invendus
+  retournent au fond du deck → **phase principale** : poser gratuitement autant de cartes que
+  voulu → **combat automatique**.
+- **Combat** : les monstres de la zone d'attaque du joueur actif frappent, de gauche à droite,
+  le monstre de la zone de défense adverse le plus à gauche encore debout (même « gauche »
+  des deux côtés de l'écran, pas de miroir) ; sans défenseur, l'attaque touche directement les
+  PV (20 PV de départ, 0 PV = défaite).
+- Les enchantements posés appliquent un effet permanent à **tout le board de leur
+  propriétaire** (`getMonsterStats` dans `rules.ts`) tant qu'ils restent en jeu.
+
+Plusieurs points sont des **hypothèses par défaut**, marquées `// Hn` dans le code (H1 à H10 —
+voir le plan) : entre autres, aucun dégât ne persiste sur un monstre d'un combat à l'autre
+(défense pleinement régénérée), les dégâts excédentaires sont perdus, le défenseur ne riposte
+jamais. Un risque connu : deux défenses assez solides peuvent bloquer la partie indéfiniment
+(backlog, non traité).
+
+- `src/game/rules.ts` : logique de jeu (`createInitialState`, `applyAction`, `resolveCombat`).
+  Module pur, sans dépendance réseau ni React — modifiable et testable indépendamment du reste.
+- `src/game/cards.ts` : catalogue des cartes (`CARD_CATALOG`) et composition du deck de départ
+  (`STARTER_COUNTS`) — c'est le seul endroit à modifier pour changer une carte ou un deck.
+
+Les tests correspondants sont dans `src/game/rules.test.ts` et
+`src/scene/combatPlayback.test.ts` (`npm run test`).
 
 ## 5. Limites assumées
 
 Ce prototype privilégie la vitesse de développement, pas la robustesse :
 - les règles Firestore sont **ouvertes** (`allow read, write: if true`) : n'importe qui
   connaissant un code de room peut lire ou écrire son document ;
-- la main de l'adversaire est **techniquement lisible** par quiconque inspecte le trafic
-  réseau ou le `localStorage` (pas de dissimulation côté serveur) ;
+- le marché est volontairement visible des deux joueurs (H4) ; la main adverse et le marché
+  restent de toute façon **techniquement lisibles** par quiconque inspecte le trafic réseau ou
+  le `localStorage` (pas de dissimulation côté serveur) ;
 - il n'y a **pas d'autorité serveur** : le client dont c'est le tour calcule et écrit l'état,
   donc pas de protection anti-triche ;
 - les rooms créées **ne sont jamais supprimées** (ni sur Firestore, ni en local).

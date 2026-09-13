@@ -1,5 +1,5 @@
 import { useFrame } from '@react-three/fiber';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { Pose } from './layout';
 import { theme } from './theme';
@@ -12,6 +12,30 @@ interface HeroProps {
   onSelect?: () => void;
 }
 
+const valueTextureCache = new Map<string, THREE.CanvasTexture>();
+
+// Petite texture Canvas peinte sur le dessus du disque, affichant les PV (§6.5).
+function getValueTexture(value: number): THREE.CanvasTexture {
+  const key = String(value);
+  const cached = valueTextureCache.get(key);
+  if (cached) return cached;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 64px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(value), 64, 68);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  valueTextureCache.set(key, texture);
+  return texture;
+}
+
 function Hero({ pose, mine, hp, clickable, onSelect }: HeroProps) {
   const color = mine ? theme.colors.heroMine : theme.colors.heroOpponent;
   const meshRef = useRef<THREE.Mesh>(null!);
@@ -19,6 +43,7 @@ function Hero({ pose, mine, hp, clickable, onSelect }: HeroProps) {
   const prevHp = useRef(hp);
   const flashIntensity = useRef(0);
   const basePosition = useRef(new THREE.Vector3(...pose.position));
+  const valueTexture = useMemo(() => getValueTexture(hp), [hp]);
 
   useEffect(() => {
     if (hp < prevHp.current) flashIntensity.current = 1;
@@ -55,6 +80,10 @@ function Hero({ pose, mine, hp, clickable, onSelect }: HeroProps) {
     >
       <cylinderGeometry args={[0.5, 0.5, 0.16, 32]} />
       <meshStandardMaterial ref={materialRef} color={color} />
+      <mesh position={[0, 0.081, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.42, 32]} />
+        <meshBasicMaterial map={valueTexture} transparent />
+      </mesh>
     </mesh>
   );
 }

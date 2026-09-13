@@ -16,7 +16,6 @@
   --hud-gold-dim: rgba(201, 164, 65, 0.4);
   --hud-gold-bright: #f0cf6b;
   --hud-hp: #d1483f;
-  --hud-mana: #4f8cff;
   --hud-ink: #f2ead5;
   --hud-ink-dim: #a9a496;
 
@@ -321,31 +320,26 @@ button {
   color: #1a0906;
 }
 
-.mana-crystals {
+.coin-badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  flex-wrap: wrap;
+  gap: 0.3rem;
 }
 
-.mana-crystal {
-  width: 9px;
-  height: 9px;
-  background: #262a34;
-  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+.coin-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+  background: radial-gradient(circle at 35% 30%, var(--hud-gold-bright), var(--hud-gold) 75%);
+  box-shadow: 0 0 5px 1px rgba(201, 164, 65, 0.6);
 }
 
-.mana-crystal.filled {
-  background: radial-gradient(circle at 35% 30%, #a9c8ff, var(--hud-mana) 75%);
-  box-shadow: 0 0 5px 1px rgba(79, 140, 255, 0.75);
-}
-
-.mana-label {
-  margin-left: 0.15rem;
+.coin-value {
   font-variant-numeric: tabular-nums;
-  font-size: 0.75rem;
-  color: var(--hud-ink-dim);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--hud-gold-bright);
 }
 
 .hud-deck {
@@ -447,6 +441,40 @@ button {
   font-size: 0.85rem;
   text-align: center;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+/* -- Indicateur de phase -- */
+
+.phase-indicator {
+  position: absolute;
+  right: clamp(0.6rem, 2vw, 1.4rem);
+  bottom: calc(clamp(0.6rem, 2vw, 1.4rem) + 4.4rem);
+  margin: 0;
+  text-align: right;
+  color: var(--hud-ink-dim);
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  letter-spacing: 0.04rem;
+  pointer-events: none;
+}
+
+/* -- Bannière "Combat !" -- */
+
+.combat-banner {
+  position: absolute;
+  top: clamp(3.4rem, 8vw, 4.5rem);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.45rem 2rem;
+  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
+  clip-path: polygon(4% 0%, 96% 0%, 100% 50%, 96% 100%, 4% 100%, 0% 50%);
+  border-top: 1px solid var(--hud-hp);
+  border-bottom: 1px solid var(--hud-hp);
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  letter-spacing: 0.08rem;
+  color: var(--hud-hp);
   pointer-events: none;
 }
 

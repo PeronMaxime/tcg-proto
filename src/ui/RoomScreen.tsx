@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { RULES_VERSION } from '../game/rules';
 import type { Room } from '../game/types';
-import { clearCurrentRoomCode, mySeat, subscribeToRoom } from '../net/rooms';
+import { clearCurrentRoomCode, mySeat, rematch, subscribeToRoom } from '../net/rooms';
 import GameScreen from './GameScreen';
 import Lobby from './Lobby';
 
@@ -48,6 +49,20 @@ function RoomScreen({ code, onLeave }: RoomScreenProps) {
 
   if (!room.state) {
     return <Lobby room={room} onCancel={handleLeave} />;
+  }
+
+  // T7 : une room reçue avec un état d'une autre version de règles (ou sans `rulesVersion`)
+  // ferait planter le rendu du plateau au lieu de simplement ne plus être jouable.
+  if (room.state.rulesVersion !== RULES_VERSION) {
+    return (
+      <div>
+        <p className="error">Cette partie utilise d’anciennes règles.</p>
+        <div className="lobby-actions">
+          <button onClick={() => rematch(room)}>Nouvelle partie</button>
+          <button onClick={handleLeave}>Retour au menu</button>
+        </div>
+      </div>
+    );
   }
 
   return <GameScreen room={room} seat={seat} onLeaveToMenu={handleLeave} />;
