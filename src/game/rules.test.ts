@@ -40,6 +40,7 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
     market: [],
     hand: [],
     zones: emptyZones(),
+    discard: [],
     ...overrides,
   };
 }
@@ -90,6 +91,7 @@ describe('createInitialState', () => {
       expect(player.coins).toBe(0);
       expect(player.hand).toEqual([]);
       expect(player.market).toEqual([]);
+      expect(player.discard).toEqual([]);
       expect(player.hp).toBe(20);
     }
     expect(state.phase).toBe('start');
@@ -295,6 +297,60 @@ describe('applyAction - place', () => {
   });
 });
 
+describe('applyAction - sell', () => {
+  it('retire une carte posée, la met en défausse et donne 1 pièce', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.coins = 2;
+    state.players.p1.zones.attack[3] = makeCard('wolf', 'w1');
+
+    const next = applyAction(state, 'p1', { type: 'sell', uid: 'w1' });
+
+    expect(next).not.toBeNull();
+    expect(next!.players.p1.zones.attack[3]).toBeNull();
+    expect(next!.players.p1.discard.map((c) => c.uid)).toEqual(['w1']);
+    expect(next!.players.p1.coins).toBe(3);
+    expect(next!.lastEvent).toEqual({ id: 1, type: 'sell', seat: 'p1', uid: 'w1', zone: 'attack', slot: 3 });
+  });
+
+  it('fonctionne pour un monstre en défense et un enchantement', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.defense[1] = makeCard('guard', 'g1');
+    state.players.p1.zones.enchant[2] = makeCard('banner', 'b1');
+
+    const afterDefense = applyAction(state, 'p1', { type: 'sell', uid: 'g1' });
+    expect(afterDefense!.players.p1.zones.defense[1]).toBeNull();
+    expect(afterDefense!.players.p1.discard.map((c) => c.uid)).toEqual(['g1']);
+
+    const afterEnchant = applyAction(afterDefense!, 'p1', { type: 'sell', uid: 'b1' });
+    expect(afterEnchant!.players.p1.zones.enchant[2]).toBeNull();
+    expect(afterEnchant!.players.p1.discard.map((c) => c.uid)).toEqual(['g1', 'b1']);
+  });
+
+  it("refuse une carte qui n'est pas sur le board (main, marché) ou qui n'existe pas", () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.hand = [makeCard('squire', 'h1')];
+    state.players.p1.market = [makeCard('wolf', 'm1')];
+
+    expect(applyAction(state, 'p1', { type: 'sell', uid: 'h1' })).toBeNull();
+    expect(applyAction(state, 'p1', { type: 'sell', uid: 'm1' })).toBeNull();
+    expect(applyAction(state, 'p1', { type: 'sell', uid: 'unknown' })).toBeNull();
+  });
+
+  it("refuse de vendre une carte de l'adversaire", () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p2.zones.attack[0] = makeCard('wolf', 'w1');
+
+    expect(applyAction(state, 'p1', { type: 'sell', uid: 'w1' })).toBeNull();
+  });
+
+  it("n'est pas limité à la phase main (autorisé aussi en phase market)", () => {
+    const state = baseState({ phase: 'market' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
+
+    expect(applyAction(state, 'p1', { type: 'sell', uid: 'w1' })).not.toBeNull();
+  });
+});
+
 describe('resolveCombat', () => {
   function playerWith(zoneCards: Partial<Record<Zone, (string | null)[]>>, hp = 20): PlayerState {
     const p = freshPlayer({ hp });
@@ -454,11 +510,12 @@ describe('partie simulée (invariants)', () => {
           p.zones.attack.filter(Boolean).length +
           p.zones.defense.filter(Boolean).length +
           p.zones.enchant.filter(Boolean).length;
-        expect(p.deck.length + p.market.length + p.hand.length + placed).toBe(50);
+        expect(p.deck.length + p.market.length + p.hand.length + placed + p.discard.length).toBe(50);
         const uids = new Set([
           ...p.deck.map((c) => c.uid),
           ...p.market.map((c) => c.uid),
           ...p.hand.map((c) => c.uid),
+          ...p.discard.map((c) => c.uid),
           ...p.zones.attack.filter((c): c is CardInstance => c !== null).map((c) => c.uid),
           ...p.zones.defense.filter((c): c is CardInstance => c !== null).map((c) => c.uid),
           ...p.zones.enchant.filter((c): c is CardInstance => c !== null).map((c) => c.uid),

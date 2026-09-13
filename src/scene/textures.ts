@@ -179,3 +179,10 @@ export function getCardBackTexture(): THREE.CanvasTexture {
 
   return backTextureCache;
 }
+
+// Image PNG de la même face que celle affichée sur la carte 3D (§6.3), pour le zoom HTML au
+// clic sur une carte du board : garantit que le zoom montre exactement les mêmes chiffres,
+// sans dupliquer le dessin.
+export function getCardFaceDataUrl(def: CardDef, stats: MonsterFaceStats | null): string {
+  return getCardFaceTexture(def, stats).image.toDataURL('image/png');
+}

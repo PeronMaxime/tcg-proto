@@ -101,6 +101,20 @@ export function deckPose(mine: boolean): Pose {
   };
 }
 
+// Pile de défausse (cartes vendues) : juste à côté du deck, un peu plus loin du centre —
+// « en dessous » du deck vu de l'écran de son propriétaire.
+const DISCARD_OFFSET = 0.9;
+const DISCARD_MINE: [number, number, number] = [4.3, 0.1, 2.2 + DISCARD_OFFSET];
+const DISCARD_OPPONENT: [number, number, number] = [4.3, 0.1, -2.2 - DISCARD_OFFSET];
+
+export function discardPose(mine: boolean): Pose {
+  return {
+    position: mine ? DISCARD_MINE : DISCARD_OPPONENT,
+    rotation: [-Math.PI / 2, 0, 0],
+    scale: BOARD_CARD_SCALE,
+  };
+}
+
 // Le marché flotte au centre, face à la caméra, du côté du joueur actif (H4 : visible des
 // deux joueurs). `mine` = est-ce le marché de "moi" (vu depuis mon écran) ?
 export function marketCardPose(index: number, total: number, mine: boolean): Pose {

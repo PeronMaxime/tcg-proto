@@ -1,10 +1,14 @@
 import { Canvas } from '@react-three/fiber';
-import { useEffect, useRef, useState } from 'react';
-import type { Room, Seat, Zone } from '../game/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { getCardDef, isMonster } from '../game/cards';
+import { isActionLegal } from '../game/rules';
+import type { GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
 import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, rematch, sendAction } from '../net/rooms';
 import Board from '../scene/Board';
+import { computeMonsterFaceStats } from '../scene/cardFaceStats';
 import CameraRig from '../scene/CameraRig';
 import { CAMERA } from '../scene/layout';
+import { getCardFaceDataUrl } from '../scene/textures';
 import { useCombatPlayback } from './useCombatPlayback';
 
 // Écran de jeu : scène 3D plein écran + HUD superposé en surcouche. Un seul <Canvas>, y
@@ -87,9 +91,32 @@ function hintText(isMyTurn: boolean, playing: boolean, phase: string): string {
   return '';
 }
 
+interface ZoomedCard {
+  owner: Seat;
+  zone: Zone;
+  slot: number;
+  cardId: string;
+  uid: string;
+}
+
+// Cherche une carte posée (n'importe laquelle des deux boards) par son uid, pour le zoom
+// au clic sur une carte du board (§ demande utilisateur : zoom + vente).
+function findZoneCard(state: GameState, uid: string): ZoomedCard | null {
+  for (const owner of ['p1', 'p2'] as Seat[]) {
+    for (const zone of ['attack', 'defense', 'enchant'] as Zone[]) {
+      const slot = state.players[owner].zones[zone].findIndex((s) => s?.uid === uid);
+      if (slot !== -1) {
+        return { owner, zone, slot, cardId: state.players[owner].zones[zone][slot]!.cardId, uid };
+      }
+    }
+  }
+  return null;
+}
+
 function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const state = room.state!;
   const [selectedHandUid, setSelectedHandUid] = useState<string | null>(null);
+  const [zoomedUid, setZoomedUid] = useState<string | null>(null);
   const [turnBanner, setTurnBanner] = useState<{ seat: Seat; coinsGained: number; key: number } | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
   const lastHandledTurnEventId = useRef<number | undefined>(undefined);
@@ -165,7 +192,10 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setSelectedHandUid(null);
+      if (e.key === 'Escape') {
+        setSelectedHandUid(null);
+        setZoomedUid(null);
+      }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -206,6 +236,11 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     await sendAction(room, seat, { type: 'endTurn' });
   }
 
+  async function sellCard(uid: string) {
+    await sendAction(room, seat, { type: 'sell', uid });
+    setZoomedUid(null);
+  }
+
   async function handleRematch() {
     await rematch(room);
   }
@@ -229,6 +264,21 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const mainButtonLabel = state.phase === 'market' ? 'Terminer les achats' : 'Combat !';
   const mainButtonAction = state.phase === 'market' ? endMarket : endTurn;
   const mainButtonEnabled = interactive && (state.phase === 'market' || state.phase === 'main');
+
+  const zoomed = zoomedUid ? findZoneCard(state, zoomedUid) : null;
+  const zoomImageUrl = useMemo(() => {
+    if (!zoomed) return null;
+    const def = getCardDef(zoomed.cardId);
+    const stats = isMonster(def)
+      ? computeMonsterFaceStats(state.players[zoomed.owner], zoomed.cardId, zoomed.zone as MonsterZone, zoomed.uid, null)
+          .stats
+      : null;
+    return getCardFaceDataUrl(def, stats);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, zoomedUid]);
+  const canSell = Boolean(
+    zoomed && zoomed.owner === seat && interactive && isActionLegal(state, seat, { type: 'sell', uid: zoomed.uid }),
+  );
 
   return (
     <div
@@ -256,6 +306,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           onBuy={buy}
           onSelectHandCard={setSelectedHandUid}
           onPlace={place}
+          onZoomCard={setZoomedUid}
           onDeselect={() => setSelectedHandUid(null)}
         />
       </Canvas>
@@ -324,6 +375,26 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           </button>
 
           <p className="hint">{hintText(isMyTurn, playing, state.phase)}</p>
+        </div>
+      )}
+
+      {zoomed && zoomImageUrl && (
+        <div className="card-zoom-backdrop" onClick={() => setZoomedUid(null)}>
+          <div className="card-zoom-panel" onClick={(e) => e.stopPropagation()}>
+            <button className="card-zoom-close" onClick={() => setZoomedUid(null)} aria-label="Fermer">
+              ×
+            </button>
+            <img className="card-zoom-image" src={zoomImageUrl} alt="" />
+            {zoomed.owner === seat && (
+              <button
+                className="hud-button hud-button--gold card-zoom-sell"
+                disabled={!canSell}
+                onClick={() => sellCard(zoomed.uid)}
+              >
+                Vendre (+1 pièce)
+              </button>
+            )}
+          </div>
         </div>
       )}
 

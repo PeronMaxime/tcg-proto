@@ -1,13 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { getCardDef, isMonster } from '../game/cards';
-import { getMonsterStats, isActionLegal, opponentOf, ZONE_SIZES } from '../game/rules';
+import { isActionLegal, opponentOf, ZONE_SIZES } from '../game/rules';
 import type { GameState, MonsterZone, Seat, Zone } from '../game/types';
 import type { ActiveCombatStep, CombatView } from '../ui/useCombatPlayback';
+import { computeMonsterFaceStats } from './cardFaceStats';
 import type { AttackTrigger, HaloKind } from './Card';
 import Card from './Card';
 import Hero from './Hero';
 import {
   deckPose,
+  discardPose,
   handCardPose,
   marketCardPose,
   playerTokenPose,
@@ -33,6 +35,7 @@ interface BoardProps {
   onBuy: (uid: string) => void;
   onSelectHandCard: (uid: string | null) => void;
   onPlace: (zone: Zone, slot: number) => void;
+  onZoomCard: (uid: string) => void;
   onDeselect: () => void;
 }
 
@@ -50,7 +53,7 @@ interface RenderEntry {
   onSelect?: () => void;
 }
 
-function DeckPile({ pose, count }: { pose: Pose; count: number }) {
+function DeckPile({ pose, count, color }: { pose: Pose; count: number; color: string }) {
   const height = Math.max(0.02, count * 0.008);
   return (
     <mesh
@@ -59,15 +62,9 @@ function DeckPile({ pose, count }: { pose: Pose; count: number }) {
       receiveShadow
     >
       <boxGeometry args={[1.0 * pose.scale, height, 1.4 * pose.scale]} />
-      <meshStandardMaterial color={theme.colors.cardBack} />
+      <meshStandardMaterial color={color} />
     </mesh>
   );
-}
-
-function baseMonsterStats(cardId: string): { attack: number; defense: number } {
-  const def = getCardDef(cardId);
-  if (!isMonster(def)) throw new Error(`Carte non-monstre: ${cardId}`);
-  return { attack: def.attack, defense: def.defense };
 }
 
 function Board({
@@ -81,6 +78,7 @@ function Board({
   onBuy,
   onSelectHandCard,
   onPlace,
+  onZoomCard,
   onDeselect,
 }: BoardProps) {
   const opponentSeat: Seat = opponentOf(seat);
@@ -180,24 +178,11 @@ function Board({
       let stats: MonsterFaceStats | null = null;
       let ko = false;
       if (isMonster(def)) {
-        const effective = getMonsterStats(ownerPlayer, slot.cardId, zone as MonsterZone);
-        const base = baseMonsterStats(slot.cardId);
-        let defenseValue = effective.defense;
-        let defenseTone: MonsterFaceStats['defenseTone'] = effective.defense > base.defense ? 'buffed' : 'base';
-        if (zone === 'defense' && combatView) {
-          const overridden = combatView.defense.get(slot.uid);
-          if (overridden !== undefined) {
-            defenseValue = overridden;
-            if (overridden < effective.defense) defenseTone = 'wounded';
-          }
-          ko = combatView.ko.has(slot.uid);
-        }
-        stats = {
-          attack: effective.attack,
-          defense: defenseValue,
-          attackTone: effective.attack > base.attack ? 'buffed' : 'base',
-          defenseTone,
-        };
+        // `zone` est forcément 'attack' ou 'defense' ici : les règles n'autorisent un
+        // monstre que sur ces deux zones (`isActionLegal`).
+        const computed = computeMonsterFaceStats(ownerPlayer, slot.cardId, zone as MonsterZone, slot.uid, combatView);
+        stats = computed.stats;
+        ko = computed.ko;
       }
 
       entries.push({
@@ -210,7 +195,10 @@ function Board({
         mine,
         halo: 'none',
         hoverable: false,
-        clickable: false,
+        // Une carte posée (la mienne ou celle de l'adversaire) s'ouvre en grand au clic ; le
+        // bouton Vendre n'apparaît que pour la mienne (géré dans GameScreen).
+        clickable: true,
+        onSelect: () => onZoomCard(slot.uid),
       });
     }
   }
@@ -229,6 +217,29 @@ function Board({
         stats: null,
         ko: false,
         pose: deckPose(mine),
+        hidden: true,
+        mine,
+        halo: 'none',
+        hoverable: false,
+        clickable: false,
+      });
+    }
+  }
+
+  // --- Carte vendue qui vole vers la défausse ---
+  if (state.lastEvent?.type === 'sell') {
+    const owner = state.lastEvent.seat;
+    const ownerPlayer = state.players[owner];
+    const mine = owner === seat;
+    const uid = state.lastEvent.uid;
+    const card = ownerPlayer.discard.find((c) => c.uid === uid);
+    if (card) {
+      entries.push({
+        uid: card.uid,
+        cardId: card.cardId,
+        stats: null,
+        ko: false,
+        pose: discardPose(mine),
         hidden: true,
         mine,
         halo: 'none',
@@ -323,8 +334,10 @@ function Board({
         onSelect={undefined}
       />
 
-      <DeckPile pose={deckPose(true)} count={me.deck.length} />
-      <DeckPile pose={deckPose(false)} count={opponent.deck.length} />
+      <DeckPile pose={deckPose(true)} count={me.deck.length} color={theme.colors.cardBack} />
+      <DeckPile pose={deckPose(false)} count={opponent.deck.length} color={theme.colors.cardBack} />
+      <DeckPile pose={discardPose(true)} count={me.discard.length} color={theme.colors.discardPile} />
+      <DeckPile pose={discardPose(false)} count={opponent.discard.length} color={theme.colors.discardPile} />
 
       {entries.map((entry) => (
         <Card

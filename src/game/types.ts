@@ -42,6 +42,7 @@ export interface PlayerState {
   market: CardInstance[]; // marché du tour en cours ; vide hors phase 'market'
   hand: CardInstance[];
   zones: Record<Zone, Slot[]>; // longueurs fixes 5 / 5 / 3 ; index 0 = emplacement de gauche
+  discard: CardInstance[]; // cartes vendues (`sell`), jamais retirées autrement
 }
 
 export type Action =
@@ -49,6 +50,7 @@ export type Action =
   | { type: 'buy'; uid: string }
   | { type: 'endMarket' }
   | { type: 'place'; uid: string; zone: Zone; slot: number }
+  | { type: 'sell'; uid: string }
   | { type: 'endTurn' };
 
 export type CombatTarget = { kind: 'monster'; uid: string } | { kind: 'player' };
@@ -66,6 +68,7 @@ export type GameEvent =
   | { id: number; type: 'buy'; seat: Seat; uid: string }
   | { id: number; type: 'marketEnd'; seat: Seat; returnedUids: string[] }
   | { id: number; type: 'place'; seat: Seat; uid: string; zone: Zone; slot: number }
+  | { id: number; type: 'sell'; seat: Seat; uid: string; zone: Zone; slot: number }
   | { id: number; type: 'combat'; seat: Seat; steps: CombatStep[] };
 
 export interface GameState {

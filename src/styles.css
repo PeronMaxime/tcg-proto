@@ -605,6 +605,61 @@ button {
   }
 }
 
+/* -- Zoom sur une carte du board (clic sur une carte posée) -- */
+
+.card-zoom-backdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 6, 10, 0.72);
+  z-index: 10;
+}
+
+.card-zoom-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.card-zoom-image {
+  width: min(60vw, 320px);
+  aspect-ratio: 5 / 7;
+  border-radius: 14px;
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.6),
+    0 0 0 2px var(--hud-gold-dim);
+}
+
+.card-zoom-close {
+  position: absolute;
+  top: -0.6rem;
+  right: -0.6rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--hud-gold-dim);
+  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
+  color: var(--hud-ink);
+  font-size: 1.2rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-zoom-close:hover {
+  border-color: var(--hud-gold);
+}
+
+.card-zoom-sell:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* -- Écran de fin de partie -- */
 
 .end-overlay {

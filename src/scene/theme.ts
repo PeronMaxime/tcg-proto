@@ -5,6 +5,7 @@ export const theme = {
     tableTop: '#1c1f26',
     cardBack: '#2a2e38',
     cardBackAccent: '#4f8cff',
+    discardPile: '#3a2426',
     heroMine: '#4f8cff',
     heroOpponent: '#ff5c5c',
     haloPlayable: '#4fd67a',

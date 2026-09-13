@@ -54,6 +54,7 @@ export function createInitialState(random: () => number = Math.random): GameStat
       market: [],
       hand: [],
       zones: emptyZones(),
+      discard: [],
     };
   }
 
@@ -134,13 +135,20 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
       if (!card) return false;
       const size = ZONE_SIZES[action.zone];
       if (!Number.isInteger(action.slot) || action.slot < 0 || action.slot >= size) return false;
-      // H10 : pas de défausse, vente ni retrait d'une carte posée — si toutes les zones
+      // H10 : pas de défausse ni de retrait gratuit d'une carte posée — si toutes les zones
       // légales sont pleines, cette action est simplement refusée et la carte reste en main.
+      // (le retrait contre 1 pièce, `sell` ci-dessous, a été ajouté après coup à la demande
+      // explicite de l'utilisateur : H10 ne portait que sur un retrait/une défausse gratuits.)
       if (player.zones[action.zone][action.slot] !== null) return false;
       const def = getCardDef(card.cardId);
       if (action.zone === 'enchant') return def.kind === 'enchantment';
       return def.kind === 'monster';
     }
+
+    case 'sell':
+      return (['attack', 'defense', 'enchant'] as Zone[]).some((zone) =>
+        player.zones[zone].some((s) => s?.uid === action.uid),
+      );
 
     case 'endTurn':
       return state.phase === 'main';
@@ -195,6 +203,23 @@ function applyPlace(next: GameState, seat: Seat, uid: string, zone: Zone, slot: 
   // des zones tel qu'il est au moment de l'appel, donc juste après la phase principale.
   player.zones[zone][slot] = card;
   next.lastEvent = { id: next.eventSeq, type: 'place', seat, uid, zone, slot };
+}
+
+// Vente d'une carte posée : elle quitte son emplacement, rejoint la défausse (jamais
+// mélangée au deck) et rapporte 1 pièce à son propriétaire (ajouté à la demande explicite
+// de l'utilisateur, voir la note sur H10 plus haut).
+function applySell(next: GameState, seat: Seat, uid: string): void {
+  const player = next.players[seat];
+  for (const zone of ['attack', 'defense', 'enchant'] as Zone[]) {
+    const slot = player.zones[zone].findIndex((s) => s?.uid === uid);
+    if (slot === -1) continue;
+    const card = player.zones[zone][slot]!;
+    player.zones[zone][slot] = null;
+    player.discard.push(card);
+    player.coins += 1;
+    next.lastEvent = { id: next.eventSeq, type: 'sell', seat, uid, zone, slot };
+    return;
+  }
 }
 
 interface CombatResult {
@@ -277,6 +302,9 @@ export function applyAction(state: GameState, seat: Seat, action: Action): GameS
       break;
     case 'place':
       applyPlace(next, seat, action.uid, action.zone, action.slot);
+      break;
+    case 'sell':
+      applySell(next, seat, action.uid);
       break;
     case 'endTurn':
       applyEndTurn(next, seat);

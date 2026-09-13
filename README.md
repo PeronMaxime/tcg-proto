@@ -67,6 +67,9 @@ le détail des décisions. Résumé :
   PV (20 PV de départ, 0 PV = défaite).
 - Les enchantements posés appliquent un effet permanent à **tout le board de leur
   propriétaire** (`getMonsterStats` dans `rules.ts`) tant qu'ils restent en jeu.
+- **Vendre une carte posée** (clic sur la carte → zoom → bouton « Vendre ») la retire
+  définitivement du board vers une pile de défausse (jamais remélangée au deck) et rapporte
+  1 pièce (action `sell` dans `rules.ts`).
 
 Plusieurs points sont des **hypothèses par défaut**, marquées `// Hn` dans le code (H1 à H10 —
 voir le plan) : entre autres, aucun dégât ne persiste sur un monstre d'un combat à l'autre
