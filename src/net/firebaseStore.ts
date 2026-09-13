@@ -22,9 +22,15 @@ let db: Firestore | null = null;
 function getDb(): Firestore {
   if (!db) {
     const app = initializeApp(firebaseConfig);
-    // Firestore refuse les valeurs `undefined` : le code utilise `null` partout,
-    // cette option n'est qu'un filet de sécurité.
-    db = initializeFirestore(app, { ignoreUndefinedProperties: true });
+    db = initializeFirestore(app, {
+      // Firestore refuse les valeurs `undefined` : le code utilise `null` partout,
+      // cette option n'est qu'un filet de sécurité.
+      ignoreUndefinedProperties: true,
+      // Certains réseaux mobiles/opérateurs bloquent le canal de streaming (WebChannel)
+      // utilisé par `onSnapshot` : les écritures/lectures ponctuelles passent, mais les
+      // mises à jour temps réel n'arrivent jamais. Le long-polling contourne le blocage.
+      experimentalAutoDetectLongPolling: true,
+    });
   }
   return db;
 }
