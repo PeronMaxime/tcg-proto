@@ -131,13 +131,20 @@ export async function rematch(room: Room): Promise<void> {
 
 // Marque le siège `seat` comme parti (bouton « Quitter » en cours de partie). Le client
 // adverse expulse alors son joueur et supprime la room si personne ne revient à temps
-// (voir `ABANDON_TIMEOUT_MS` et `deleteRoom`, utilisés dans GameScreen).
+// (voir `ABANDON_TIMEOUT_MS` et `deleteRoom`, utilisés dans GameScreen). Si l'autre siège
+// était déjà marqué parti, plus personne n'attend : la room est supprimée immédiatement.
 export async function leaveMatch(room: Room, seat: Seat): Promise<void> {
-  await roomStore.transact(room.code, (existing) => {
+  const opponentSeat: Seat = seat === 'p1' ? 'p2' : 'p1';
+
+  const updated = await roomStore.transact(room.code, (existing) => {
     if (!existing) return null;
     const leftAt = existing.leftAt ?? freshLeftAt();
     return { ...existing, leftAt: { ...leftAt, [seat]: Date.now() } };
   });
+
+  if (updated?.leftAt?.[opponentSeat]) {
+    await roomStore.remove(room.code);
+  }
 }
 
 export async function deleteRoom(code: string): Promise<void> {
