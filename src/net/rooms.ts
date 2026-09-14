@@ -17,6 +17,10 @@ function freshLeftAt(): Record<Seat, number | null> {
   return { p1: null, p2: null };
 }
 
+function freshRematchReady(): Record<Seat, boolean> {
+  return { p1: false, p2: false };
+}
+
 export class RoomError extends Error {}
 
 // Code de la room courante (D7) : reconnexion automatique après un rafraîchissement.
@@ -58,6 +62,7 @@ export async function createRoom(): Promise<string> {
         state: null,
         createdAt: Date.now(),
         leftAt: freshLeftAt(),
+        rematchReady: freshRematchReady(),
       };
       return fresh;
     });
@@ -88,6 +93,7 @@ export async function joinRoom(rawCode: string): Promise<Room> {
       state: createInitialState(),
       status: 'playing',
       leftAt: freshLeftAt(),
+      rematchReady: freshRematchReady(),
     };
     return joined;
   });
@@ -116,6 +122,8 @@ export async function sendAction(room: Room, seat: Seat, action: Action): Promis
   await roomStore.set(room.code, nextRoom);
 }
 
+// Redémarrage immédiat, sans attendre l'autre siège : réservé au cas où la partie reçue
+// utilise d'anciennes règles (RoomScreen, avant même que la partie ait vraiment commencé).
 export async function rematch(room: Room): Promise<void> {
   await roomStore.transact(room.code, (existing) => {
     if (!existing) return null;
@@ -124,8 +132,31 @@ export async function rematch(room: Room): Promise<void> {
       state: createInitialState(),
       status: 'playing',
       leftAt: freshLeftAt(),
+      rematchReady: freshRematchReady(),
     };
     return restarted;
+  });
+}
+
+// Revanche demandée depuis l'écran de victoire (demande utilisateur : LES DEUX joueurs
+// doivent cliquer sur « Revanche » pour que la partie redémarre). Le siège qui clique est
+// marqué prêt ; dès que les deux le sont, une nouvelle partie démarre et les marques sont
+// remises à zéro.
+export async function requestRematch(room: Room, seat: Seat): Promise<void> {
+  await roomStore.transact(room.code, (existing) => {
+    if (!existing) return null;
+    const ready = { ...(existing.rematchReady ?? freshRematchReady()), [seat]: true };
+    if (ready.p1 && ready.p2) {
+      const restarted: Room = {
+        ...existing,
+        state: createInitialState(),
+        status: 'playing',
+        leftAt: freshLeftAt(),
+        rematchReady: freshRematchReady(),
+      };
+      return restarted;
+    }
+    return { ...existing, rematchReady: ready };
   });
 }
 
@@ -141,7 +172,8 @@ export async function leaveMatch(room: Room, seat: Seat): Promise<void> {
   const updated = await roomStore.transact(room.code, (existing) => {
     if (!existing) return null;
     const leftAt = existing.leftAt ?? freshLeftAt();
-    return { ...existing, leftAt: { ...leftAt, [seat]: Date.now() } };
+    const rematchReady = { ...(existing.rematchReady ?? freshRematchReady()), [seat]: false };
+    return { ...existing, leftAt: { ...leftAt, [seat]: Date.now() }, rematchReady };
   });
 
   if (updated?.leftAt?.[opponentSeat]) {

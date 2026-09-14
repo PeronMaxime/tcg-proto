@@ -29,6 +29,9 @@ import type { MonsterFaceStats } from './textures';
 export interface DragState {
   uid: string;
   start: { x: number; y: number };
+  // Présent quand on saisit une carte déjà posée pour la déplacer dans sa zone plutôt qu'une
+  // carte de la main pour la poser.
+  origin?: { zone: MonsterZone; slot: number };
 }
 
 interface BoardProps {
@@ -40,8 +43,16 @@ interface BoardProps {
   combatView: CombatView | null; // surcharges d'affichage pendant la lecture (§7)
   activeStep: ActiveCombatStep | null; // coup en cours de fente (§7)
   displayedHp: Record<Seat, number>; // PV affichés pendant la lecture (§7.3)
+  marketVisible: boolean; // le marché du joueur actif peut être masqué à sa demande (bouton HUD)
   onBuy: (uid: string) => void;
-  onDragStart: (uid: string, clientX: number, clientY: number) => void;
+  // `origin` n'est présent que lorsqu'on saisit une carte déjà posée (pour la déplacer dans
+  // sa zone), pas une carte de la main (pour la poser).
+  onDragStart: (
+    uid: string,
+    clientX: number,
+    clientY: number,
+    origin?: { zone: MonsterZone; slot: number },
+  ) => void;
   onDragHover: (target: DropTarget | null) => void;
   onDrop: (target: DropTarget | null) => void;
   isOverFusionZone: (clientX: number, clientY: number) => boolean;
@@ -95,6 +106,7 @@ function Board({
   combatView,
   activeStep,
   displayedHp,
+  marketVisible,
   onBuy,
   onDragStart,
   onDragHover,
@@ -157,8 +169,11 @@ function Board({
   const activePlayer = state.players[state.turn];
   for (const [index, card] of activePlayer.market.entries()) {
     const mine = state.turn === seat;
+    // Demande utilisateur : je peux masquer mon propre marché (bouton HUD) sans que ça
+    // affecte l'affichage (toujours face cachée) chez l'adversaire.
+    if (mine && !marketVisible) continue;
     const buyable =
-      interactive && mine && state.phase === 'market' && isActionLegal(state, seat, { type: 'buy', uid: card.uid });
+      interactive && mine && state.phase === 'main' && isActionLegal(state, seat, { type: 'buy', uid: card.uid });
     entries.push({
       uid: card.uid,
       cardId: card.cardId,
@@ -203,6 +218,12 @@ function Board({
         ko = computed.ko;
       }
 
+      // Une carte déjà posée peut être déplacée à la souris vers un autre emplacement libre
+      // de SA zone pendant la phase principale (demande utilisateur) : uniquement la mienne,
+      // uniquement en attaque/défense (pas les enchantements).
+      const movable = mine && canDrag && (zone === 'attack' || zone === 'defense');
+      const dragged = slot.uid === drag?.uid;
+
       entries.push({
         uid: slot.uid,
         cardId: slot.cardId,
@@ -211,35 +232,15 @@ function Board({
         pose,
         hidden: false,
         mine,
-        halo: 'none',
+        halo: dragged ? 'selected' : 'none',
         hoverable: false,
         // Une carte posée (la mienne ou celle de l'adversaire) s'ouvre en grand au clic ; le
         // bouton Vendre n'apparaît que pour la mienne (géré dans GameScreen).
         clickable: true,
         onSelect: () => onZoomCard(slot.uid),
-      });
-    }
-  }
-
-  // --- Retours au deck : invendus qui volent vers la pile (§6.5) ---
-  if (state.lastEvent?.type === 'marketEnd') {
-    const owner = state.lastEvent.seat;
-    const ownerPlayer = state.players[owner];
-    const mine = owner === seat;
-    for (const uid of state.lastEvent.returnedUids) {
-      const card = ownerPlayer.deck.find((c) => c.uid === uid);
-      if (!card) continue;
-      entries.push({
-        uid: card.uid,
-        cardId: card.cardId,
-        stats: null,
-        ko: false,
-        pose: deckPose(mine),
-        hidden: true,
-        mine,
-        halo: 'none',
-        hoverable: false,
-        clickable: false,
+        onDragStart: movable
+          ? (x, y) => onDragStart(slot.uid, x, y, { zone: zone as MonsterZone, slot: index })
+          : undefined,
       });
     }
   }
@@ -324,17 +325,31 @@ function Board({
     };
   }
 
-  const isLegalSlot = (zone: Zone, slot: number) =>
-    drag !== null && isActionLegal(state, seat, { type: 'place', uid: drag.uid, zone, slot });
+  const isLegalSlot = (zone: Zone, slot: number) => {
+    if (drag === null) return false;
+    if (drag.origin) return zone === drag.origin.zone && isActionLegal(state, seat, { type: 'move', uid: drag.uid, slot });
+    return isActionLegal(state, seat, { type: 'place', uid: drag.uid, zone, slot });
+  };
+
+  // Le marché ouvert affiche des cartes face cachée chez l'adversaire et un fond plus sombre
+  // aide à les distinguer sans éblouir ; une fois masqué (bouton HUD), rien ne justifie de
+  // garder la table sombre donc on l'éclaircit pour une meilleure lisibilité générale.
+  const brightTable = !marketVisible;
+  const tableColor = brightTable ? theme.colors.tableTopBright : theme.colors.tableTop;
+  const ambientIntensity = brightTable ? 1.6 : 1.15;
+  const keyLightIntensity = brightTable ? 2.1 : 1.6;
+  const fillLightIntensity = brightTable ? 0.8 : 0.5;
 
   return (
     <>
-      <ambientLight intensity={0.7} />
-      <directionalLight position={[3, 8, 4]} intensity={1.1} castShadow />
+      <ambientLight intensity={ambientIntensity} />
+      <hemisphereLight args={[tableColor, '#05060a', 0.5]} />
+      <directionalLight position={[3, 8, 4]} intensity={keyLightIntensity} castShadow />
+      <directionalLight position={[-4, 5, -3]} intensity={fillLightIntensity} />
 
       <mesh position={[0, -0.06, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[14, 12]} />
-        <meshStandardMaterial color={theme.colors.tableTop} />
+        <meshStandardMaterial color={tableColor} />
       </mesh>
 
       {zonesToRender.map(({ owner, zone }) => {

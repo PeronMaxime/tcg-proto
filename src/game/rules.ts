@@ -166,14 +166,13 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
       return state.phase === 'start';
 
     case 'buy': {
-      if (state.phase !== 'market') return false;
+      // Le marché reste accessible pendant toute la phase principale, jusqu'au combat
+      // (demande utilisateur) : on peut vendre une carte posée pour racheter avec la pièce.
+      if (state.phase !== 'main') return false;
       const card = player.market.find((c) => c.uid === action.uid);
       if (!card) return false;
       return getCardDef(card.cardId).cost <= player.coins;
     }
-
-    case 'endMarket':
-      return state.phase === 'market';
 
     case 'place': {
       if (state.phase !== 'main') return false;
@@ -191,6 +190,21 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
       // Une carte qui peut fusionner (2 exemplaires normaux déjà posés) ne sert qu'à la
       // fusion : elle ne se pose pas (demande utilisateur).
       return def.kind === 'monster' && !canFuse(player, card);
+    }
+
+    case 'move': {
+      // Repositionne une carte déjà posée à l'intérieur de SA zone (attaque ou défense)
+      // uniquement : pas de changement de zone (demande utilisateur).
+      if (state.phase !== 'main') return false;
+      if (!Number.isInteger(action.slot)) return false;
+      for (const zone of ['attack', 'defense'] as MonsterZone[]) {
+        const from = player.zones[zone].findIndex((s) => s?.uid === action.uid);
+        if (from === -1) continue;
+        if (action.slot === from) return false; // pas de no-op
+        if (action.slot < 0 || action.slot >= ZONE_SIZES[zone]) return false;
+        return player.zones[zone][action.slot] === null;
+      }
+      return false;
     }
 
     case 'fuse': {
@@ -224,7 +238,7 @@ function applyBeginTurn(next: GameState, seat: Seat): void {
   }
   player.market = market;
 
-  next.phase = 'market';
+  next.phase = 'main';
   next.lastEvent = { id: next.eventSeq, type: 'turnStart', seat, coinsGained: gain };
 }
 
@@ -236,17 +250,6 @@ function applyBuy(next: GameState, seat: Seat, uid: string): void {
   player.coins -= getCardDef(card.cardId).cost;
   player.hand.push(card);
   next.lastEvent = { id: next.eventSeq, type: 'buy', seat, uid };
-}
-
-function applyEndMarket(next: GameState, seat: Seat): void {
-  const player = next.players[seat];
-  // H5 : les invendus retournent au fond du deck, dans l'ordre du marché (index 0 en premier
-  // donc tout au fond ; la dernière carte du marché finit juste sous le dessus actuel).
-  const returnedUids = player.market.map((c) => c.uid);
-  player.deck = [...player.market, ...player.deck];
-  player.market = [];
-  next.phase = 'main';
-  next.lastEvent = { id: next.eventSeq, type: 'marketEnd', seat, returnedUids };
 }
 
 function applyPlace(next: GameState, seat: Seat, uid: string, zone: Zone, slot: number): void {
@@ -261,6 +264,22 @@ function applyPlace(next: GameState, seat: Seat, uid: string, zone: Zone, slot: 
   // E3 : Invoqué se déclenche après que la carte a rejoint le board (elle en fait donc partie).
   const effects = fireTrigger(next, seat, card, 'summon');
   next.lastEvent = { id: next.eventSeq, type: 'place', seat, uid, zone, slot, effects };
+}
+
+// Repositionne une carte déjà posée dans un autre emplacement libre de SA zone (attaque ou
+// défense) : pas de déclenchement de capacité (la carte ne quitte pas le board, E3/E4 ne
+// s'appliquent qu'à la pose/vente), pas de changement de zone (`isActionLegal` l'impose déjà).
+function applyMove(next: GameState, seat: Seat, uid: string, slot: number): void {
+  const player = next.players[seat];
+  for (const zone of ['attack', 'defense'] as MonsterZone[]) {
+    const from = player.zones[zone].findIndex((s) => s?.uid === uid);
+    if (from === -1) continue;
+    const card = player.zones[zone][from]!;
+    player.zones[zone][from] = null;
+    player.zones[zone][slot] = card;
+    next.lastEvent = { id: next.eventSeq, type: 'move', seat, uid, zone, from, to: slot };
+    return;
+  }
 }
 
 // Fusion dorée : la carte en main devient dorée (elle reste en main) et absorbe les
@@ -583,6 +602,14 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
 }
 
 function applyEndTurn(next: GameState, seat: Seat): void {
+  const player = next.players[seat];
+  // Le marché reste ouvert jusqu'ici (achats possibles pendant toute la phase principale) :
+  // les invendus retournent au fond du deck, dans l'ordre du marché (H5), juste avant le combat.
+  if (player.market.length > 0) {
+    player.deck = [...player.market, ...player.deck];
+    player.market = [];
+  }
+
   const defenderSeat = opponentOf(seat);
   const hpBefore = snapshotHp(next);
   const { steps, stalemate } = resolveCombat(next, seat); // mute `next` (dégâts, buffs, pièces...)
@@ -608,11 +635,11 @@ export function applyAction(state: GameState, seat: Seat, action: Action): GameS
     case 'buy':
       applyBuy(next, seat, action.uid);
       break;
-    case 'endMarket':
-      applyEndMarket(next, seat);
-      break;
     case 'place':
       applyPlace(next, seat, action.uid, action.zone, action.slot);
+      break;
+    case 'move':
+      applyMove(next, seat, action.uid, action.slot);
       break;
     case 'fuse':
       applyFuse(next, seat, action.uid);

@@ -2,10 +2,11 @@
 // en dur ailleurs dans la scène 3D).
 export const theme = {
   colors: {
-    tableTop: '#1c1f26',
-    cardBack: '#2a2e38',
-    cardBackAccent: '#4f8cff',
-    discardPile: '#3a2426',
+    tableTop: '#30343f',
+    tableTopBright: '#484f60',
+    cardBack: '#3d4252',
+    cardBackAccent: '#6fa2ff',
+    discardPile: '#4a2f32',
     heroMine: '#4f8cff',
     heroOpponent: '#ff5c5c',
     haloPlayable: '#4fd67a',
@@ -21,10 +22,10 @@ export const theme = {
     gold: '#d4a82a',
     goldLight: '#fff1a8',
     goldDark: '#7a5a0c',
-    zoneAttack: '#5a2a2a',
-    zoneDefense: '#26385a',
-    zoneEnchant: '#3a2a5a',
-    zoneOutline: 'rgba(255, 255, 255, 0.18)',
+    zoneAttack: '#8a4444',
+    zoneDefense: '#3a5a8f',
+    zoneEnchant: '#5c3f96',
+    zoneOutline: 'rgba(255, 255, 255, 0.4)',
   },
   card: {
     width: 1.2,

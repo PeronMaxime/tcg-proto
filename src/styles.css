@@ -493,6 +493,29 @@ button {
   border-color: rgba(209, 72, 63, 0.5);
 }
 
+/* -- Bouton d'affichage/masquage du marché -- */
+
+.market-toggle-button {
+  position: absolute;
+  /* Sous le badge room + le bouton Quitter (haut droite) : le haut gauche est déjà pris par
+     la plaque de l'adversaire (.hud-plate--top). */
+  top: calc(clamp(0.6rem, 2vw, 1.4rem) + 5.8rem);
+  right: clamp(0.6rem, 2vw, 1.4rem);
+  padding: 0.35rem 0.7rem;
+  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
+  border: 1px solid var(--hud-gold-dim);
+  border-radius: 4px;
+  color: var(--hud-ink);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.market-toggle-button:hover {
+  border-color: var(--hud-gold);
+}
+
 .abandon-notice {
   position: absolute;
   top: clamp(0.6rem, 2vw, 1.4rem);
@@ -828,6 +851,17 @@ button {
 .hud-button--gold {
   border-color: var(--hud-gold);
   color: var(--hud-gold-bright);
+}
+
+.hud-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.rematch-notice {
+  color: var(--hud-gold-bright);
+  font-family: var(--font-body);
+  margin: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

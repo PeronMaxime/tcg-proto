@@ -1,7 +1,7 @@
 export type Seat = 'p1' | 'p2';
 export type MonsterZone = 'attack' | 'defense';
 export type Zone = MonsterZone | 'enchant';
-export type Phase = 'start' | 'market' | 'main';
+export type Phase = 'start' | 'main';
 
 export type EnchantmentEffect =
   | { type: 'monsterBuff'; zone: MonsterZone | 'all'; attack: number; defense: number }
@@ -66,7 +66,7 @@ export interface PlayerState {
   coins: number;
   turnsPlayed: number; // tours commencés par CE joueur : base du gain de pièces (R1)
   deck: CardInstance[]; // le haut du deck est la fin du tableau, le fond est le début
-  market: CardInstance[]; // marché du tour en cours ; vide hors phase 'market'
+  market: CardInstance[]; // marché du tour en cours ; accessible tant que la phase 'main' dure, vidé à la fin du tour
   hand: CardInstance[];
   zones: Record<Zone, Slot[]>; // longueurs fixes 5 / 5 / 3 ; index 0 = emplacement de gauche
   discard: CardInstance[]; // cartes vendues (`sell`), jamais retirées autrement
@@ -75,8 +75,10 @@ export interface PlayerState {
 export type Action =
   | { type: 'beginTurn' }
   | { type: 'buy'; uid: string }
-  | { type: 'endMarket' }
   | { type: 'place'; uid: string; zone: Zone; slot: number }
+  // Déplace une carte déjà posée vers un autre emplacement LIBRE de la même zone (attaque ou
+  // défense) : on ne peut pas changer de zone en la déplaçant (demande utilisateur).
+  | { type: 'move'; uid: string; slot: number }
   | { type: 'fuse'; uid: string } // uid : la carte en main qui devient dorée
   | { type: 'sell'; uid: string }
   | { type: 'endTurn' };
@@ -109,8 +111,8 @@ export interface CombatStep {
 export type GameEvent =
   | { id: number; type: 'turnStart'; seat: Seat; coinsGained: number }
   | { id: number; type: 'buy'; seat: Seat; uid: string }
-  | { id: number; type: 'marketEnd'; seat: Seat; returnedUids: string[] }
   | { id: number; type: 'place'; seat: Seat; uid: string; zone: Zone; slot: number; effects: EffectLog[] }
+  | { id: number; type: 'move'; seat: Seat; uid: string; zone: MonsterZone; from: number; to: number }
   // `uid` : la carte en main devenue dorée ; `fusedUids` : les 2 exemplaires absorbés.
   | { id: number; type: 'fuse'; seat: Seat; uid: string; fusedUids: string[] }
   | { id: number; type: 'sell'; seat: Seat; uid: string; zone: Zone; slot: number; effects: EffectLog[] }
@@ -148,4 +150,9 @@ export interface Room {
   // Horodatage du dernier abandon de partie par siège, ou null si présent/jamais parti.
   // Absent sur les rooms créées avant cette fonctionnalité (accès toujours via `?.`).
   leftAt: Record<Seat, number | null>;
+  // Un siège qui a cliqué « Revanche » sur l'écran de victoire (demande utilisateur : la
+  // partie ne redémarre que quand LES DEUX sièges sont prêts). Remis à `{ p1: false, p2:
+  // false }` dès qu'une nouvelle partie démarre. Absent sur les rooms créées avant cette
+  // fonctionnalité (accès toujours via `?.`).
+  rematchReady?: Record<Seat, boolean>;
 }

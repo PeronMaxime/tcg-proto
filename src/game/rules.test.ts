@@ -125,7 +125,7 @@ describe('applyAction - beginTurn', () => {
 
     expect(next).not.toBeNull();
     expect(next!.players.p1.coins).toBe(1);
-    expect(next!.phase).toBe('market');
+    expect(next!.phase).toBe('main');
     expect(next!.players.p1.market).toHaveLength(3);
     expect(next!.lastEvent).toEqual({ id: 1, type: 'turnStart', seat: 'p1', coinsGained: 1 });
   });
@@ -136,7 +136,6 @@ describe('applyAction - beginTurn', () => {
     state.players.p1.deck = Array.from({ length: 6 }, (_, i) => makeCard('rampart', `d${i}`));
 
     state = applyAction(state, 'p1', { type: 'beginTurn' })!;
-    state = applyAction(state, 'p1', { type: 'endMarket' })!;
     // On force un retour rapide à la phase start de p1 pour tester le 2e tour sans dépendre
     // du combat : on triche juste sur `turn`/`phase` de l'état intermédiaire.
     state.phase = 'start';
@@ -167,7 +166,7 @@ describe('applyAction - beginTurn', () => {
     empty.players.p1.deck = [];
     const nextEmpty = applyAction(empty, 'p1', { type: 'beginTurn' })!;
     expect(nextEmpty.players.p1.market).toEqual([]);
-    expect(nextEmpty.phase).toBe('market');
+    expect(nextEmpty.phase).toBe('main');
   });
 
   it('une Trésorerie posée ajoute +1, deux en ajoutent +2', () => {
@@ -182,7 +181,7 @@ describe('applyAction - beginTurn', () => {
   });
 
   it('refuse hors de la phase start et hors de son tour', () => {
-    const notStart = baseState({ phase: 'market' });
+    const notStart = baseState({ phase: 'main' });
     expect(applyAction(notStart, 'p1', { type: 'beginTurn' })).toBeNull();
 
     const notMyTurn = baseState({ phase: 'start', turn: 'p2' });
@@ -199,7 +198,7 @@ describe('applyAction - beginTurn', () => {
 
 describe('applyAction - buy', () => {
   it('achète une carte du marché : main +1, pièces débitées', () => {
-    const state = baseState({ phase: 'market' });
+    const state = baseState({ phase: 'main' });
     state.players.p1.coins = 5;
     state.players.p1.market = [makeCard('archer', 'm1')]; // coût 3
 
@@ -213,43 +212,63 @@ describe('applyAction - buy', () => {
   });
 
   it('refuse si les pièces sont insuffisantes', () => {
-    const state = baseState({ phase: 'market' });
+    const state = baseState({ phase: 'main' });
     state.players.p1.coins = 1;
     state.players.p1.market = [makeCard('titan', 'm1')]; // coût 8
     expect(applyAction(state, 'p1', { type: 'buy', uid: 'm1' })).toBeNull();
   });
 
   it("refuse si l'uid est absent du marché", () => {
-    const state = baseState({ phase: 'market' });
+    const state = baseState({ phase: 'main' });
     state.players.p1.market = [makeCard('squire', 'm1')];
     expect(applyAction(state, 'p1', { type: 'buy', uid: 'missing' })).toBeNull();
   });
 
-  it('refuse en phase main', () => {
-    const state = baseState({ phase: 'main' });
+  it('refuse hors de la phase main', () => {
+    const state = baseState({ phase: 'start' });
     state.players.p1.market = [makeCard('squire', 'm1')];
     expect(applyAction(state, 'p1', { type: 'buy', uid: 'm1' })).toBeNull();
   });
-});
 
-describe('applyAction - endMarket', () => {
-  it('renvoie les invendus au fond du deck, dans l’ordre (H5)', () => {
-    const state = baseState({ phase: 'market' });
+  // Le marché reste accessible pendant TOUTE la phase principale (demande utilisateur) : on
+  // peut vendre une carte posée pour racheter avec la pièce obtenue, sans étape séparée.
+  it('reste accessible après avoir posé des cartes, dans la même phase main', () => {
+    let state = baseState({ phase: 'main' });
+    state.players.p1.coins = 5;
+    state.players.p1.market = [makeCard('archer', 'm1'), makeCard('squire', 'm2')];
+    state.players.p1.hand = [makeCard('wolf', 'h1')];
+
+    state = applyAction(state, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 0 })!;
+    const next = applyAction(state, 'p1', { type: 'buy', uid: 'm2' });
+
+    expect(next).not.toBeNull();
+    expect(next!.players.p1.hand.map((c) => c.uid)).toEqual(['m2']);
+  });
+
+  it("permet de vendre une carte posée puis de racheter avec la pièce obtenue", () => {
+    let state = baseState({ phase: 'main' });
+    state.players.p1.coins = 0;
+    state.players.p1.market = [makeCard('squire', 'm1')]; // coût 1
+    state.players.p1.zones.attack[0] = makeCard('guard', 'g1');
+
+    state = applyAction(state, 'p1', { type: 'sell', uid: 'g1' })!;
+    expect(state.players.p1.coins).toBe(1);
+
+    const next = applyAction(state, 'p1', { type: 'buy', uid: 'm1' });
+    expect(next).not.toBeNull();
+    expect(next!.players.p1.coins).toBe(0);
+  });
+
+  it("les invendus retournent au fond du deck au moment d'endTurn (H5)", () => {
+    const state = baseState({ phase: 'main' });
     state.players.p1.deck = [makeCard('golem', 'rest')];
     state.players.p1.market = [makeCard('squire', 'm1'), makeCard('wolf', 'm2')];
 
-    const next = applyAction(state, 'p1', { type: 'endMarket' });
+    const next = applyAction(state, 'p1', { type: 'endTurn' });
 
     expect(next).not.toBeNull();
     expect(next!.players.p1.deck.map((c) => c.uid)).toEqual(['m1', 'm2', 'rest']);
     expect(next!.players.p1.market).toEqual([]);
-    expect(next!.phase).toBe('main');
-    expect(next!.lastEvent).toEqual({
-      id: 1,
-      type: 'marketEnd',
-      seat: 'p1',
-      returnedUids: ['m1', 'm2'],
-    });
   });
 });
 
@@ -295,14 +314,48 @@ describe('applyAction - place', () => {
     expect(applyAction(state, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 1.5 })).toBeNull();
   });
 
-  it('refuse une carte hors main et un placement en phase market', () => {
+  it('refuse une carte hors main et un placement hors phase main', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.hand = [makeCard('squire', 'h1')];
     expect(applyAction(state, 'p1', { type: 'place', uid: 'unknown', zone: 'attack', slot: 0 })).toBeNull();
 
-    const marketState = baseState({ phase: 'market' });
-    marketState.players.p1.hand = [makeCard('squire', 'h1')];
-    expect(applyAction(marketState, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 0 })).toBeNull();
+    const startState = baseState({ phase: 'start' });
+    startState.players.p1.hand = [makeCard('squire', 'h1')];
+    expect(applyAction(startState, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 0 })).toBeNull();
+  });
+});
+
+describe('applyAction - move', () => {
+  it('déplace une carte posée vers un autre emplacement libre de la même zone', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
+
+    const next = applyAction(state, 'p1', { type: 'move', uid: 'w1', slot: 3 });
+
+    expect(next).not.toBeNull();
+    expect(next!.players.p1.zones.attack[0]).toBeNull();
+    expect(next!.players.p1.zones.attack[3]?.uid).toBe('w1');
+    expect(next!.lastEvent).toEqual({ id: 1, type: 'move', seat: 'p1', uid: 'w1', zone: 'attack', from: 0, to: 3 });
+  });
+
+  it('refuse un emplacement occupé, un slot identique, ou hors phase main', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.defense[0] = makeCard('wolf', 'w1');
+    state.players.p1.zones.defense[1] = makeCard('guard', 'g1');
+
+    expect(applyAction(state, 'p1', { type: 'move', uid: 'w1', slot: 1 })).toBeNull(); // occupé
+    expect(applyAction(state, 'p1', { type: 'move', uid: 'w1', slot: 0 })).toBeNull(); // no-op
+
+    const startState = baseState({ phase: 'start' });
+    startState.players.p1.zones.defense[0] = makeCard('wolf', 'w1');
+    expect(applyAction(startState, 'p1', { type: 'move', uid: 'w1', slot: 1 })).toBeNull();
+  });
+
+  it("refuse une carte qui n'est pas sur le board (main, marché) ou qui n'existe pas", () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.hand = [makeCard('squire', 'h1')];
+    expect(applyAction(state, 'p1', { type: 'move', uid: 'h1', slot: 0 })).toBeNull();
+    expect(applyAction(state, 'p1', { type: 'move', uid: 'unknown', slot: 0 })).toBeNull();
   });
 });
 
@@ -387,10 +440,10 @@ describe('fusion dorée', () => {
     expect(applyAction(state, 'p1', { type: 'fuse', uid: 'b3' })).toBeNull();
     expect(applyAction(state, 'p1', { type: 'fuse', uid: 'w1' })).toBeNull();
 
-    const market = baseState({ phase: 'market' });
-    market.players.p1 = structuredClone(state.players.p1);
-    market.players.p1.hand = [makeCard('wolf', 'w3')];
-    expect(applyAction(market, 'p1', { type: 'fuse', uid: 'w3' })).toBeNull();
+    const startState = baseState({ phase: 'start' });
+    startState.players.p1 = structuredClone(state.players.p1);
+    startState.players.p1.hand = [makeCard('wolf', 'w3')];
+    expect(applyAction(startState, 'p1', { type: 'fuse', uid: 'w3' })).toBeNull();
   });
 
   it('une carte qui peut fusionner ne peut pas être posée, même sur un emplacement libre', () => {
@@ -515,8 +568,8 @@ describe('applyAction - sell', () => {
     expect(applyAction(state, 'p1', { type: 'sell', uid: 'w1' })).toBeNull();
   });
 
-  it("n'est pas limité à la phase main (autorisé aussi en phase market)", () => {
-    const state = baseState({ phase: 'market' });
+  it("n'est pas limité à la phase main (autorisé aussi en phase start)", () => {
+    const state = baseState({ phase: 'start' });
     state.players.p1.zones.attack[0] = makeCard('guard', 'g1');
 
     expect(applyAction(state, 'p1', { type: 'sell', uid: 'g1' })).not.toBeNull();
@@ -968,7 +1021,7 @@ describe('applyAction - endTurn', () => {
   });
 
   it('refuse endTurn hors phase main', () => {
-    const state = baseState({ phase: 'market' });
+    const state = baseState({ phase: 'start' });
     expect(applyAction(state, 'p1', { type: 'endTurn' })).toBeNull();
   });
 });
@@ -1022,29 +1075,28 @@ describe('partie simulée (invariants)', () => {
 
       if (state.phase === 'start') {
         state = applyAction(state, seat, { type: 'beginTurn' })!;
-      } else if (state.phase === 'market') {
+      } else {
+        // Phase main : le marché reste ouvert tout du long, le bot achète d'abord si possible.
         const affordable = state.players[seat].market.find((c) => getCardDef(c.cardId).cost <= state.players[seat].coins);
         if (affordable) {
           state = applyAction(state, seat, { type: 'buy', uid: affordable.uid })!;
         } else {
-          state = applyAction(state, seat, { type: 'endMarket' })!;
-        }
-      } else {
-        const card = state.players[seat].hand[0];
-        if (!card) {
-          state = applyAction(state, seat, { type: 'endTurn' })!;
-        } else if (applyAction(state, seat, { type: 'fuse', uid: card.uid })) {
-          // Une carte fusionnable ne peut pas être posée : le bot fusionne.
-          state = applyAction(state, seat, { type: 'fuse', uid: card.uid })!;
-        } else {
-          const def = getCardDef(card.cardId);
-          const zone: Zone = def.kind === 'enchantment' ? 'enchant' : 'attack';
-          const slot = firstLegalSlot(state, seat, zone) ?? firstLegalSlot(state, seat, 'defense');
-          if (slot === null) {
+          const card = state.players[seat].hand[0];
+          if (!card) {
             state = applyAction(state, seat, { type: 'endTurn' })!;
+          } else if (applyAction(state, seat, { type: 'fuse', uid: card.uid })) {
+            // Une carte fusionnable ne peut pas être posée : le bot fusionne.
+            state = applyAction(state, seat, { type: 'fuse', uid: card.uid })!;
           } else {
-            const actualZone: Zone = zone === 'attack' && firstLegalSlot(state, seat, 'attack') === null ? 'defense' : zone;
-            state = applyAction(state, seat, { type: 'place', uid: card.uid, zone: actualZone, slot })!;
+            const def = getCardDef(card.cardId);
+            const zone: Zone = def.kind === 'enchantment' ? 'enchant' : 'attack';
+            const slot = firstLegalSlot(state, seat, zone) ?? firstLegalSlot(state, seat, 'defense');
+            if (slot === null) {
+              state = applyAction(state, seat, { type: 'endTurn' })!;
+            } else {
+              const actualZone: Zone = zone === 'attack' && firstLegalSlot(state, seat, 'attack') === null ? 'defense' : zone;
+              state = applyAction(state, seat, { type: 'place', uid: card.uid, zone: actualZone, slot })!;
+            }
           }
         }
       }

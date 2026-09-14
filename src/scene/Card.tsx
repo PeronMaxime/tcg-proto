@@ -228,13 +228,44 @@ function Card({
     <group
       ref={groupRef}
       onClick={(e) => {
-        if (!clickable) return;
+        // Quand la carte accepte aussi le glisser (carte posée déplaçable), le clic est géré
+        // par le seuil de mouvement ci-dessous (onPointerDown) pour ne pas ouvrir le zoom au
+        // simple relâchement d'un début de glisser.
+        if (!clickable || onDragStart) return;
         e.stopPropagation();
         onSelect?.();
       }}
       onPointerDown={(e) => {
         if (!onDragStart || e.nativeEvent.button !== 0) return;
         e.stopPropagation();
+        // Une carte à la fois cliquable (zoom) et glissable (déplacement posé) : on ne décide
+        // entre les deux qu'après un léger seuil de mouvement, pour ne pas perdre le clic.
+        if (clickable && onSelect) {
+          const startX = e.nativeEvent.clientX;
+          const startY = e.nativeEvent.clientY;
+          const threshold = 6;
+          let dragStarted = false;
+          const onMove = (ev: PointerEvent) => {
+            if (dragStarted) return;
+            if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > threshold) {
+              dragStarted = true;
+              cleanup();
+              setHovered(false);
+              onDragStart(startX, startY);
+            }
+          };
+          const onUp = () => {
+            cleanup();
+            if (!dragStarted) onSelect();
+          };
+          function cleanup() {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+          }
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', onUp);
+          return;
+        }
         setHovered(false);
         onDragStart(e.nativeEvent.clientX, e.nativeEvent.clientY);
       }}

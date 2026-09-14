@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { describeAbility, getCardDef, isMonster } from '../game/cards';
 import { isActionLegal } from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
-import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, rematch, sendAction } from '../net/rooms';
+import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, requestRematch, sendAction } from '../net/rooms';
 import Board, { type DragState } from '../scene/Board';
 import { computeMonsterFaceStats } from '../scene/cardFaceStats';
 import CameraRig from '../scene/CameraRig';
@@ -87,21 +87,18 @@ function combatBannerText(cycle: number, phase: 'melee' | 'breakthrough', stalem
 function phaseLabel(isMyTurn: boolean, playing: boolean, phase: string, turnNumber: number): string {
   if (playing) return 'Combat…';
   if (isMyTurn) {
-    if (phase === 'market') return `Tour ${turnNumber} · Marché`;
-    if (phase === 'main') return `Tour ${turnNumber} · Pose tes cartes`;
+    if (phase === 'main') return `Tour ${turnNumber} · Marché & pose de cartes`;
     return `Tour ${turnNumber}`;
   }
-  if (phase === 'market') return "Tour de l'adversaire · Marché";
-  if (phase === 'main') return "Tour de l'adversaire · Pose ses cartes";
+  if (phase === 'main') return "Tour de l'adversaire · Marché & pose de cartes";
   return "Tour de l'adversaire";
 }
 
 function hintText(isMyTurn: boolean, playing: boolean, phase: string, fusable: boolean): string {
   if (playing) return '';
   if (!isMyTurn) return "En attente de l'adversaire…";
-  if (phase === 'market') return 'Clique une carte du marché pour l’acheter';
   if (fusable) return 'Relâche la carte dans la zone de fusion pour créer un monstre doré';
-  if (phase === 'main') return 'Fais glisser une carte de ta main sur un emplacement libre';
+  if (phase === 'main') return 'Achète, pose ou déplace tes cartes, puis lance le combat';
   return '';
 }
 
@@ -137,6 +134,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const [zoomedUid, setZoomedUid] = useState<string | null>(null);
   const [turnBanner, setTurnBanner] = useState<{ seat: Seat; coinsGained: number; key: number } | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
+  const [marketVisible, setMarketVisible] = useState(true);
   const [effectToasts, setEffectToasts] = useState<EffectToast[]>([]);
   const lastHandledTurnEventId = useRef<number | undefined>(undefined);
   const lastAutoBeginTurnEventSeq = useRef<number | null>(null);
@@ -286,6 +284,12 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     cancelDrag();
   }, [state.phase, state.turn]);
 
+  // Le marché masqué (bouton HUD) redevient visible au tour suivant, pour ne pas le laisser
+  // caché par surprise sans que le joueur s'en souvienne.
+  useEffect(() => {
+    setMarketVisible(true);
+  }, [state.turn]);
+
   // `beginTurn` automatique (T3) : le client du nouveau joueur actif l'envoie dès que la
   // lecture du combat précédent est terminée. Garde par `eventSeq` : une seule tentative par
   // état (StrictMode double les effets ; l'action redevenant illégale ensuite est un second
@@ -299,10 +303,6 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
 
   async function buy(uid: string) {
     await sendAction(room, seat, { type: 'buy', uid });
-  }
-
-  async function endMarket() {
-    await sendAction(room, seat, { type: 'endMarket' });
   }
 
   function cancelDrag() {
@@ -322,6 +322,8 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     try {
       if (target.kind === 'fusion') {
         await sendAction(room, seat, { type: 'fuse', uid: drag.uid });
+      } else if (drag.origin) {
+        await sendAction(room, seat, { type: 'move', uid: drag.uid, slot: target.slot });
       } else {
         await sendAction(room, seat, { type: 'place', uid: drag.uid, zone: target.zone, slot: target.slot });
       }
@@ -350,7 +352,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   }
 
   async function handleRematch() {
-    await rematch(room);
+    await requestRematch(room, seat);
   }
 
   async function leaveGame() {
@@ -369,9 +371,12 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   }
 
   const showVictory = Boolean(state.winner) && !playing;
-  const mainButtonLabel = state.phase === 'market' ? 'Terminer les achats' : 'Combat !';
-  const mainButtonAction = state.phase === 'market' ? endMarket : endTurn;
-  const mainButtonEnabled = interactive && (state.phase === 'market' || state.phase === 'main');
+  const rematchReady = room.rematchReady ?? { p1: false, p2: false };
+  const iAmReadyForRematch = rematchReady[seat];
+  const opponentReadyForRematch = rematchReady[opponentSeat];
+  const mainButtonLabel = 'Combat !';
+  const mainButtonAction = endTurn;
+  const mainButtonEnabled = interactive && state.phase === 'main';
 
   const zoomed = zoomedUid ? findZoneCard(state, zoomedUid) : null;
   const zoomImageUrl = useMemo(() => {
@@ -410,10 +415,11 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           combatView={combatView}
           activeStep={activeStep}
           displayedHp={displayedHp}
+          marketVisible={marketVisible}
           onBuy={buy}
-          onDragStart={(uid, x, y) => {
+          onDragStart={(uid, x, y, origin) => {
             setZoomedUid(null);
-            setDrag({ uid, start: { x, y } });
+            setDrag({ uid, start: { x, y }, origin });
           }}
           onDragHover={setDropTarget}
           onDrop={handleDrop}
@@ -449,6 +455,16 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             </svg>
             <span>Quitter</span>
           </button>
+
+          {isMyTurn && state.phase === 'main' && (
+            <button
+              className="market-toggle-button"
+              onClick={() => setMarketVisible((v) => !v)}
+              title={marketVisible ? 'Masquer le marché' : 'Afficher le marché'}
+            >
+              {marketVisible ? 'Masquer le marché' : 'Afficher le marché'}
+            </button>
+          )}
 
           {abandonCountdown !== null && (
             <div className="abandon-notice">
@@ -538,13 +554,16 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             {state.winner === seat ? 'Victoire !' : 'Défaite'}
           </h1>
           <div className="end-actions">
-            <button className="hud-button hud-button--gold" onClick={handleRematch}>
-              Revanche
+            <button className="hud-button hud-button--gold" onClick={handleRematch} disabled={iAmReadyForRematch}>
+              {iAmReadyForRematch ? "En attente de l'adversaire…" : 'Revanche'}
             </button>
             <button className="hud-button" onClick={leaveGame}>
               Retour au menu
             </button>
           </div>
+          {opponentReadyForRematch && !iAmReadyForRematch && (
+            <p className="rematch-notice">{opponentName} veut une revanche !</p>
+          )}
         </div>
       )}
     </div>

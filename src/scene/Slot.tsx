@@ -57,7 +57,7 @@ function Slot({ pose, zone, highlighted, hovered }: SlotProps) {
     <group position={[pose.position[0], 0.005, pose.position[2]]} rotation={[-Math.PI / 2, 0, 0]}>
       <mesh>
         <planeGeometry args={[width * 0.72 + 0.08, height * 0.72 + 0.08]} />
-        <meshBasicMaterial color={ZONE_COLOR[zone]} map={outlineMap} transparent opacity={0.55} />
+        <meshBasicMaterial color={ZONE_COLOR[zone]} map={outlineMap} transparent opacity={0.8} />
       </mesh>
       <mesh position={[0, 0, 0.001]}>
         <planeGeometry args={[width * 0.72 + 0.2, height * 0.72 + 0.2]} />
