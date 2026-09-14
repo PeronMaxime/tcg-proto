@@ -292,13 +292,19 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   }, [state.turn]);
 
   // Plus rien à acheter (coins insuffisants pour toutes les cartes restantes) : le marché se
-  // referme tout seul (demande utilisateur), rouvrable manuellement via le bouton HUD.
+  // referme tout seul (demande utilisateur), rouvrable manuellement via le bouton HUD. Ne se
+  // déclenche que sur la transition achetable → plus achetable (ex. juste après un achat qui
+  // épuise les pièces), pas à chaque rendu : sinon rouvrir manuellement le marché alors que
+  // rien n'est toujours achetable le refermerait aussitôt (bug corrigé ici).
   const canBuyAnything = me.market.some((card) => isActionLegal(state, seat, { type: 'buy', uid: card.uid }));
+  const prevCanBuyAnythingRef = useRef(canBuyAnything);
   useEffect(() => {
-    if (marketVisible && isMyTurn && state.phase === 'main' && !canBuyAnything) {
+    const wasBuyable = prevCanBuyAnythingRef.current;
+    prevCanBuyAnythingRef.current = canBuyAnything;
+    if (wasBuyable && !canBuyAnything && marketVisible && isMyTurn && state.phase === 'main') {
       setMarketVisible(false);
     }
-  }, [marketVisible, isMyTurn, state.phase, canBuyAnything]);
+  }, [canBuyAnything, marketVisible, isMyTurn, state.phase]);
 
   // Clic en dehors du rectangle du marché (calculé à chaque frame par `MarketZoneTracker` côté
   // 3D, lu ici au clic) : referme le marché, sauf clic sur son propre bouton d'affichage qui
