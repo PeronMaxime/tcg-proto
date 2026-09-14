@@ -122,6 +122,12 @@ function fusionPartners(player: PlayerState, card: CardInstance): { zone: Monste
   return partners;
 }
 
+// `card` (en main) est un monstre normal avec assez d'exemplaires posés pour fusionner.
+function canFuse(player: PlayerState, card: CardInstance): boolean {
+  if (card.golden || !isMonster(getCardDef(card.cardId))) return false;
+  return fusionPartners(player, card).length >= FUSION_COUNT - 1;
+}
+
 function coinsPerTurnBonus(player: PlayerState): number {
   let bonus = 0;
   for (const slot of player.zones.enchant) {
@@ -166,7 +172,9 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
       if (player.zones[action.zone][action.slot] !== null) return false;
       const def = getCardDef(card.cardId);
       if (action.zone === 'enchant') return def.kind === 'enchantment';
-      return def.kind === 'monster';
+      // Une carte qui peut fusionner (2 exemplaires normaux déjà posés) ne sert qu'à la
+      // fusion : elle ne se pose pas (demande utilisateur).
+      return def.kind === 'monster' && !canFuse(player, card);
     }
 
     case 'fuse': {
@@ -174,8 +182,7 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
       // (on peut donc fusionner même avec un board plein).
       if (state.phase !== 'main') return false;
       const card = player.hand.find((c) => c.uid === action.uid);
-      if (!card || card.golden || !isMonster(getCardDef(card.cardId))) return false;
-      return fusionPartners(player, card).length >= FUSION_COUNT - 1;
+      return card !== undefined && canFuse(player, card);
     }
 
     case 'sell':

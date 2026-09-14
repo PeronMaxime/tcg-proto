@@ -373,20 +373,27 @@ describe('fusion dorée', () => {
     expect(applyAction(market, 'p1', { type: 'fuse', uid: 'w3' })).toBeNull();
   });
 
-  it('poser un 3e exemplaire sur un emplacement ne fusionne pas', () => {
+  it('une carte qui peut fusionner ne peut pas être posée, même sur un emplacement libre', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
     state.players.p1.zones.attack[1] = makeCard('wolf', 'w2');
     state.players.p1.hand = [makeCard('wolf', 'w3')];
 
-    const next = applyAction(state, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 2 })!;
+    expect(applyAction(state, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 2 })).toBeNull();
+    expect(applyAction(state, 'p1', { type: 'place', uid: 'w3', zone: 'defense', slot: 0 })).toBeNull();
+  });
 
-    expect(next.players.p1.zones.attack.slice(0, 3)).toEqual([
-      makeCard('wolf', 'w1'),
-      makeCard('wolf', 'w2'),
-      makeCard('wolf', 'w3'),
-    ]);
-    expect(next.players.p1.discard).toEqual([]);
+  it("le 2e exemplaire se pose normalement, et un exemplaire se repose dès qu'il ne peut plus fusionner", () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
+    state.players.p1.hand = [makeCard('wolf', 'w2'), makeCard('wolf', 'w3')];
+
+    const afterSecond = applyAction(state, 'p1', { type: 'place', uid: 'w2', zone: 'attack', slot: 1 })!;
+    expect(afterSecond.players.p1.zones.attack[1]?.uid).toBe('w2');
+    expect(applyAction(afterSecond, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 2 })).toBeNull();
+
+    const afterSell = applyAction(afterSecond, 'p1', { type: 'sell', uid: 'w1' })!;
+    expect(applyAction(afterSell, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 2 })).not.toBeNull();
   });
 
   it('un monstre doré a ses stats de base doublées, enchantements ajoutés ensuite', () => {
@@ -663,6 +670,9 @@ describe('partie simulée (invariants)', () => {
         const card = state.players[seat].hand[0];
         if (!card) {
           state = applyAction(state, seat, { type: 'endTurn' })!;
+        } else if (applyAction(state, seat, { type: 'fuse', uid: card.uid })) {
+          // Une carte fusionnable ne peut pas être posée : le bot fusionne.
+          state = applyAction(state, seat, { type: 'fuse', uid: card.uid })!;
         } else {
           const def = getCardDef(card.cardId);
           const zone: Zone = def.kind === 'enchantment' ? 'enchant' : 'attack';

@@ -74,7 +74,9 @@ le détail des décisions. Résumé :
   confondues), une zone de fusion apparaît au milieu de l'écran. Relâcher la carte dedans
   envoie les 2 exemplaires posés en défausse et transforme la carte en **monstre doré**, qui
   reste en main et se repose ensuite comme une autre carte — la fusion marche donc même
-  avec un board plein. Un monstre doré a son attaque et sa défense de base doublées (les
+  avec un board plein. Tant que la fusion est possible, cette 3e carte ne peut **pas** être
+  posée sur un emplacement : relâchée ailleurs que dans la zone de fusion, elle revient en
+  main. Un monstre doré a son attaque et sa défense de base doublées (les
   bonus d'enchantement s'ajoutent ensuite, sans être doublés) et ne fusionne plus (action
   `fuse` dans `rules.ts`).
 - **Marché** : seul le joueur actif voit ses cartes ; l'adversaire les voit face cachée.
