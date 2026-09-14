@@ -336,16 +336,16 @@ function Board({
   // garder la table sombre donc on l'éclaircit pour une meilleure lisibilité générale.
   const brightTable = !marketVisible;
   const tableColor = brightTable ? theme.colors.tableTopBright : theme.colors.tableTop;
-  const ambientIntensity = brightTable ? 1.6 : 1.15;
-  const keyLightIntensity = brightTable ? 2.1 : 1.6;
-  const fillLightIntensity = brightTable ? 0.8 : 0.5;
+  const ambientIntensity = brightTable ? 1.15 : 0.7;
+  const keyLightIntensity = brightTable ? 1.6 : 1.1;
+  const fillLightIntensity = brightTable ? 0.5 : 0;
 
   return (
     <>
       <ambientLight intensity={ambientIntensity} />
-      <hemisphereLight args={[tableColor, '#05060a', 0.5]} />
+      {brightTable && <hemisphereLight args={[tableColor, '#05060a', 0.5]} />}
       <directionalLight position={[3, 8, 4]} intensity={keyLightIntensity} castShadow />
-      <directionalLight position={[-4, 5, -3]} intensity={fillLightIntensity} />
+      {brightTable && <directionalLight position={[-4, 5, -3]} intensity={fillLightIntensity} />}
 
       <mesh position={[0, -0.06, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[14, 12]} />
@@ -366,6 +366,7 @@ function Board({
               zone={zone}
               highlighted={legal}
               hovered={hovered}
+              bright={brightTable}
             />
           );
         });

@@ -15,6 +15,9 @@ interface SlotProps {
   zone: Zone;
   highlighted: boolean;
   hovered: boolean;
+  // Vrai quand le marché est masqué : le plateau passe alors à un éclairage plus clair
+  // (demande utilisateur), donc les emplacements suivent avec une teinte/opacité plus vive.
+  bright: boolean;
 }
 
 const ZONE_COLOR: Record<Zone, string> = {
@@ -23,12 +26,18 @@ const ZONE_COLOR: Record<Zone, string> = {
   enchant: theme.colors.zoneEnchant,
 };
 
-function outlineTexture(): THREE.CanvasTexture {
+const ZONE_COLOR_BRIGHT: Record<Zone, string> = {
+  attack: theme.colors.zoneAttackBright,
+  defense: theme.colors.zoneDefenseBright,
+  enchant: theme.colors.zoneEnchantBright,
+};
+
+function outlineTexture(color: string): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 128;
   canvas.height = 128;
   const ctx = canvas.getContext('2d')!;
-  ctx.strokeStyle = theme.colors.zoneOutline;
+  ctx.strokeStyle = color;
   ctx.lineWidth = 6;
   ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
   const texture = new THREE.CanvasTexture(canvas);
@@ -36,15 +45,20 @@ function outlineTexture(): THREE.CanvasTexture {
   return texture;
 }
 
-let cachedOutline: THREE.CanvasTexture | null = null;
-function getOutlineTexture(): THREE.CanvasTexture {
-  if (!cachedOutline) cachedOutline = outlineTexture();
-  return cachedOutline;
+const cachedOutlines = new Map<string, THREE.CanvasTexture>();
+function getOutlineTexture(color: string): THREE.CanvasTexture {
+  let cached = cachedOutlines.get(color);
+  if (!cached) {
+    cached = outlineTexture(color);
+    cachedOutlines.set(color, cached);
+  }
+  return cached;
 }
 
-function Slot({ pose, zone, highlighted, hovered }: SlotProps) {
+function Slot({ pose, zone, highlighted, hovered, bright }: SlotProps) {
   const { width, height } = theme.card;
-  const outlineMap = useMemo(() => getOutlineTexture(), []);
+  const outlineColor = bright ? theme.colors.zoneOutlineBright : theme.colors.zoneOutline;
+  const outlineMap = useMemo(() => getOutlineTexture(outlineColor), [outlineColor]);
   const haloRef = useRef<THREE.MeshBasicMaterial>(null!);
 
   useFrame(() => {
@@ -57,7 +71,12 @@ function Slot({ pose, zone, highlighted, hovered }: SlotProps) {
     <group position={[pose.position[0], 0.005, pose.position[2]]} rotation={[-Math.PI / 2, 0, 0]}>
       <mesh>
         <planeGeometry args={[width * 0.72 + 0.08, height * 0.72 + 0.08]} />
-        <meshBasicMaterial color={ZONE_COLOR[zone]} map={outlineMap} transparent opacity={0.8} />
+        <meshBasicMaterial
+          color={bright ? ZONE_COLOR_BRIGHT[zone] : ZONE_COLOR[zone]}
+          map={outlineMap}
+          transparent
+          opacity={bright ? 0.8 : 0.55}
+        />
       </mesh>
       <mesh position={[0, 0, 0.001]}>
         <planeGeometry args={[width * 0.72 + 0.2, height * 0.72 + 0.2]} />
