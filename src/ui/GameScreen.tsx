@@ -4,7 +4,7 @@ import { describeAbility, getCardDef, isMonster } from '../game/cards';
 import { isActionLegal } from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
 import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, requestRematch, sendAction } from '../net/rooms';
-import Board, { type DragState } from '../scene/Board';
+import Board, { type DragState, type ScreenRect } from '../scene/Board';
 import { computeMonsterFaceStats } from '../scene/cardFaceStats';
 import CameraRig from '../scene/CameraRig';
 import type { DropTarget } from '../scene/DragController';
@@ -131,6 +131,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const fusionZoneRef = useRef<HTMLDivElement>(null);
+  const marketZoneRectRef = useRef<ScreenRect | null>(null);
   const [zoomedUid, setZoomedUid] = useState<string | null>(null);
   const [turnBanner, setTurnBanner] = useState<{ seat: Seat; coinsGained: number; key: number } | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -290,6 +291,31 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     setMarketVisible(true);
   }, [state.turn]);
 
+  // Plus rien à acheter (coins insuffisants pour toutes les cartes restantes) : le marché se
+  // referme tout seul (demande utilisateur), rouvrable manuellement via le bouton HUD.
+  const canBuyAnything = me.market.some((card) => isActionLegal(state, seat, { type: 'buy', uid: card.uid }));
+  useEffect(() => {
+    if (marketVisible && isMyTurn && state.phase === 'main' && !canBuyAnything) {
+      setMarketVisible(false);
+    }
+  }, [marketVisible, isMyTurn, state.phase, canBuyAnything]);
+
+  // Clic en dehors du rectangle du marché (calculé à chaque frame par `MarketZoneTracker` côté
+  // 3D, lu ici au clic) : referme le marché, sauf clic sur son propre bouton d'affichage qui
+  // gère déjà l'ouverture/fermeture (demande utilisateur).
+  useEffect(() => {
+    if (!marketVisible || !isMyTurn || state.phase !== 'main') return;
+    function onPointerDown(e: PointerEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('.market-toggle-button')) return;
+      const rect = marketZoneRectRef.current;
+      const inside = rect && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (!inside) setMarketVisible(false);
+    }
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, [marketVisible, isMyTurn, state.phase]);
+
   // `beginTurn` automatique (T3) : le client du nouveau joueur actif l'envoie dès que la
   // lecture du combat précédent est terminée. Garde par `eventSeq` : une seule tentative par
   // état (StrictMode double les effets ; l'action redevenant illégale ensuite est un second
@@ -416,6 +442,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           activeStep={activeStep}
           displayedHp={displayedHp}
           marketVisible={marketVisible}
+          marketZoneRectRef={marketZoneRectRef}
           onBuy={buy}
           onDragStart={(uid, x, y, origin) => {
             setZoomedUid(null);

@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
-import type * as THREE from 'three';
+import { useFrame, useThree } from '@react-three/fiber';
+import { useEffect, useRef, type RefObject } from 'react';
+import * as THREE from 'three';
 import { getCardDef, isMonster } from '../game/cards';
 import { getBaseMonsterStats, isActionLegal, opponentOf, ZONE_SIZES } from '../game/rules';
 import type { CardInstance, GameState, MonsterZone, Seat, Zone } from '../game/types';
@@ -44,6 +45,9 @@ interface BoardProps {
   activeStep: ActiveCombatStep | null; // coup en cours de fente (§7)
   displayedHp: Record<Seat, number>; // PV affichés pendant la lecture (§7.3)
   marketVisible: boolean; // le marché du joueur actif peut être masqué à sa demande (bouton HUD)
+  // Rectangle écran (mis à jour à chaque frame) englobant mon marché affiché, lu par
+  // GameScreen pour fermer le marché au clic en dehors (demande utilisateur).
+  marketZoneRectRef: RefObject<ScreenRect | null>;
   onBuy: (uid: string) => void;
   // `origin` n'est présent que lorsqu'on saisit une carte déjà posée (pour la déplacer dans
   // sa zone), pas une carte de la main (pour la poser).
@@ -57,6 +61,70 @@ interface BoardProps {
   onDrop: (target: DropTarget | null) => void;
   isOverFusionZone: (clientX: number, clientY: number) => boolean;
   onZoomCard: (uid: string) => void;
+}
+
+export interface ScreenRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+// Marge autour des cartes du marché pour définir « la zone du marché » au clic-extérieur
+// (demande utilisateur) : assez large pour ne pas fermer le marché en cliquant juste à côté
+// d'une carte, sans couvrir tout l'écran.
+const MARKET_ZONE_PADDING_PX = 48;
+
+// Recalcule à chaque frame le rectangle écran englobant mon marché affiché (`count` cartes,
+// pose définie par `marketCardPose`), écrit dans `rectRef` (pas de state React : lu au clic,
+// jamais affiché). Composant sans rendu, monté seulement le temps où le marché existe.
+function MarketZoneTracker({ count, rectRef }: { count: number; rectRef: RefObject<ScreenRect | null> }) {
+  const { camera, gl } = useThree();
+  const corner = useRef(new THREE.Vector3());
+
+  useFrame(() => {
+    if (count === 0) {
+      rectRef.current = null;
+      return;
+    }
+    const canvasRect = gl.domElement.getBoundingClientRect();
+    const scale = marketCardPose(0, count, true).scale;
+    const halfW = (theme.card.width * scale) / 2;
+    const halfH = (theme.card.height * scale) / 2;
+    const rotationX = marketCardPose(0, count, true).rotation[0];
+    const cos = Math.cos(rotationX);
+    const sin = Math.sin(rotationX);
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (let index = 0; index < count; index++) {
+      const [px, py, pz] = marketCardPose(index, count, true).position;
+      for (const dx of [-halfW, halfW]) {
+        for (const dy of [-halfH, halfH]) {
+          corner.current.set(px + dx, py + dy * cos, pz + dy * sin);
+          corner.current.project(camera);
+          const screenX = canvasRect.left + ((corner.current.x + 1) / 2) * canvasRect.width;
+          const screenY = canvasRect.top + ((1 - corner.current.y) / 2) * canvasRect.height;
+          minX = Math.min(minX, screenX);
+          maxX = Math.max(maxX, screenX);
+          minY = Math.min(minY, screenY);
+          maxY = Math.max(maxY, screenY);
+        }
+      }
+    }
+
+    rectRef.current = {
+      left: minX - MARKET_ZONE_PADDING_PX,
+      top: minY - MARKET_ZONE_PADDING_PX,
+      right: maxX + MARKET_ZONE_PADDING_PX,
+      bottom: maxY + MARKET_ZONE_PADDING_PX,
+    };
+  });
+
+  return null;
 }
 
 interface RenderEntry {
@@ -107,6 +175,7 @@ function Board({
   activeStep,
   displayedHp,
   marketVisible,
+  marketZoneRectRef,
   onBuy,
   onDragStart,
   onDragHover,
@@ -342,6 +411,8 @@ function Board({
 
   return (
     <>
+      <MarketZoneTracker count={state.turn === seat ? me.market.length : 0} rectRef={marketZoneRectRef} />
+
       <ambientLight intensity={ambientIntensity} />
       {brightTable && <hemisphereLight args={[tableColor, '#05060a', 0.5]} />}
       <directionalLight position={[3, 8, 4]} intensity={keyLightIntensity} castShadow />
