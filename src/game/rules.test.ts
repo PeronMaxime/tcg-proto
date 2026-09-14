@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildStarterDeck, getCardDef, STARTER_COUNTS } from './cards';
+import { buildStarterDeck, CARD_CATALOG, getCardDef, isAbilityAllowed, isMonster, STARTER_COUNTS } from './cards';
 import {
   applyAction,
   createInitialState,
   getMonsterStats,
+  MIN_ATTACK,
   opponentOf,
   resolveCombat,
+  STARTING_HP,
   ZONE_SIZES,
 } from './rules';
 import type { CardInstance, GameState, PlayerState, Seat, Zone } from './types';
@@ -47,7 +49,7 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
 
 function baseState(overrides: Partial<GameState> = {}): GameState {
   return {
-    rulesVersion: 4,
+    rulesVersion: 5,
     turn: 'p1',
     phase: 'main',
     turnNumber: 1,
@@ -76,6 +78,12 @@ describe('catalogue et deck de départ', () => {
     const total = Object.values(STARTER_COUNTS).reduce((a, b) => a + b, 0);
     expect(total).toBe(50);
   });
+
+  it('tout monstre a une attaque de base >= 1 (cohérent avec le plancher MIN_ATTACK, E16)', () => {
+    for (const def of CARD_CATALOG) {
+      if (isMonster(def)) expect(def.attack).toBeGreaterThanOrEqual(1);
+    }
+  });
 });
 
 describe('createInitialState', () => {
@@ -97,7 +105,7 @@ describe('createInitialState', () => {
     expect(state.phase).toBe('start');
     expect(state.turn).toBe('p1');
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(4);
+    expect(state.rulesVersion).toBe(5);
   });
 
   it('est déterministe pour une même graine', () => {
@@ -110,7 +118,7 @@ describe('createInitialState', () => {
 describe('applyAction - beginTurn', () => {
   it('donne 1 pièce au 1er tour', () => {
     const state = baseState({ phase: 'start' });
-    state.players.p1.deck = [makeCard('squire', 'd1'), makeCard('wolf', 'd2'), makeCard('guard', 'd3')];
+    state.players.p1.deck = [makeCard('rampart', 'd1'), makeCard('banner', 'd2'), makeCard('blessing', 'd3')];
     state.players.p1.coins = 0;
 
     const next = applyAction(state, 'p1', { type: 'beginTurn' });
@@ -125,7 +133,7 @@ describe('applyAction - beginTurn', () => {
   it('cumule les pièces au 2e tour (R1)', () => {
     let state = baseState({ phase: 'start' });
     state.players.p1.coins = 0;
-    state.players.p1.deck = Array.from({ length: 6 }, (_, i) => makeCard('squire', `d${i}`));
+    state.players.p1.deck = Array.from({ length: 6 }, (_, i) => makeCard('rampart', `d${i}`));
 
     state = applyAction(state, 'p1', { type: 'beginTurn' })!;
     state = applyAction(state, 'p1', { type: 'endMarket' })!;
@@ -140,7 +148,7 @@ describe('applyAction - beginTurn', () => {
 
   it('pioche les 3 cartes du haut du deck (fin du tableau)', () => {
     const state = baseState({ phase: 'start' });
-    state.players.p1.deck = [makeCard('squire', 'bottom'), makeCard('wolf', 'mid'), makeCard('guard', 'top')];
+    state.players.p1.deck = [makeCard('rampart', 'bottom'), makeCard('banner', 'mid'), makeCard('blessing', 'top')];
 
     const next = applyAction(state, 'p1', { type: 'beginTurn' })!;
 
@@ -150,7 +158,7 @@ describe('applyAction - beginTurn', () => {
 
   it('marché de 2 si le deck a 2 cartes, vide si le deck est vide (H7)', () => {
     const twoCards = baseState({ phase: 'start' });
-    twoCards.players.p1.deck = [makeCard('squire', 'a'), makeCard('wolf', 'b')];
+    twoCards.players.p1.deck = [makeCard('rampart', 'a'), makeCard('banner', 'b')];
     const nextTwo = applyAction(twoCards, 'p1', { type: 'beginTurn' })!;
     expect(nextTwo.players.p1.market).toHaveLength(2);
     expect(nextTwo.players.p1.deck).toHaveLength(0);
@@ -246,14 +254,15 @@ describe('applyAction - endMarket', () => {
 });
 
 describe('applyAction - place', () => {
-  it('pose un monstre en attaque et en défense', () => {
+  it('pose un monstre en attaque et en défense (rampart : pas de capacité)', () => {
     const state = baseState({ phase: 'main' });
-    state.players.p1.hand = [makeCard('squire', 'h1'), makeCard('wolf', 'h2')];
+    state.players.p1.hand = [makeCard('guard', 'h1'), makeCard('drake', 'h2')];
     state.players.p1.coins = 5;
 
     const afterAttack = applyAction(state, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 0 });
     expect(afterAttack!.players.p1.zones.attack[0]?.uid).toBe('h1');
-    expect(afterAttack!.players.p1.coins).toBe(5); // pose gratuite
+    expect(afterAttack!.players.p1.coins).toBe(5); // pose gratuite, ni guard ni drake n'ont de capacité Invoqué
+    expect(afterAttack!.lastEvent).toMatchObject({ type: 'place', effects: [] });
 
     const afterDefense = applyAction(afterAttack!, 'p1', { type: 'place', uid: 'h2', zone: 'defense', slot: 2 });
     expect(afterDefense!.players.p1.zones.defense[2]?.uid).toBe('h2');
@@ -344,6 +353,17 @@ describe('fusion dorée', () => {
     expect(next.players.p1.zones.defense[0]?.uid).toBe('w1');
   });
 
+  it('efface le buff des exemplaires absorbés (E9)', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = { uid: 'w1', cardId: 'wolf', buff: { attack: 1, defense: 1 } };
+    state.players.p1.zones.attack[1] = makeCard('wolf', 'w2');
+    state.players.p1.hand = [makeCard('wolf', 'w3')];
+
+    const next = applyAction(state, 'p1', { type: 'fuse', uid: 'w3' })!;
+    const absorbed = next.players.p1.discard.find((c) => c.uid === 'w1')!;
+    expect(absorbed.buff).toBeUndefined();
+  });
+
   it("refuse avec 1 seul exemplaire posé ; ne compte ni les dorés ni ceux de l'adversaire", () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.attack[0] = { uid: 'g1', cardId: 'wolf', golden: true };
@@ -399,24 +419,34 @@ describe('fusion dorée', () => {
   it('un monstre doré a ses stats de base doublées, enchantements ajoutés ensuite', () => {
     const player = freshPlayer();
     player.zones.enchant[0] = makeCard('banner', 'b1'); // +1 atq en attaque
-    expect(getMonsterStats(player, 'wolf', 'attack', true)).toEqual({ attack: 3 * 2 + 1, defense: 1 * 2 });
-    expect(getMonsterStats(player, 'wolf', 'defense', true)).toEqual({ attack: 6, defense: 2 });
+    const golden: CardInstance = { uid: 'w', cardId: 'wolf', golden: true };
+    expect(getMonsterStats(player, golden, 'attack')).toEqual({ attack: 3 * 2 + 1, defense: 1 * 2 });
+    expect(getMonsterStats(player, golden, 'defense')).toEqual({ attack: 6, defense: 2 });
   });
 
   it('en combat, un attaquant doré frappe deux fois plus fort et un défenseur doré encaisse le double', () => {
+    // titan/archer n'ont qu'une capacité Invoqué (aucune capacité de combat), donc ce
+    // combat n'en déclenche aucune : les chiffres sont uniquement ceux du doublement doré.
     const state = baseState();
-    state.players.p1.zones.attack[0] = { uid: 'a1', cardId: 'wolf', golden: true }; // 6 atq
-    state.players.p2.zones.defense[0] = { uid: 'd1', cardId: 'guard', golden: true }; // 8 déf
+    state.players.p1.zones.attack[0] = { uid: 'a1', cardId: 'titan', golden: true }; // 14 atq
+    state.players.p2.zones.defense[0] = { uid: 'd1', cardId: 'archer', golden: true }; // 4 déf, 6 atq
 
     const { steps } = resolveCombat(state, 'p1');
-    expect(steps[0]).toMatchObject({ damage: 6, target: { kind: 'monster', uid: 'd1' }, remaining: 2 });
+    expect(steps[0]).toMatchObject({
+      damage: 14,
+      target: { kind: 'monster', uid: 'd1' },
+      remaining: 0,
+      retaliation: 6,
+      attackerRemaining: 14 - 6,
+    });
   });
 });
 
 describe('applyAction - sell', () => {
-  it('retire une carte posée, la met en défausse et donne 1 pièce', () => {
+  it('retire une carte posée, la met en défausse, donne 1 pièce et déclenche Vendu (Loup : +2 PV)', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.coins = 2;
+    state.players.p1.hp = 10;
     state.players.p1.zones.attack[3] = makeCard('wolf', 'w1');
 
     const next = applyAction(state, 'p1', { type: 'sell', uid: 'w1' });
@@ -425,7 +455,33 @@ describe('applyAction - sell', () => {
     expect(next!.players.p1.zones.attack[3]).toBeNull();
     expect(next!.players.p1.discard.map((c) => c.uid)).toEqual(['w1']);
     expect(next!.players.p1.coins).toBe(3);
-    expect(next!.lastEvent).toEqual({ id: 1, type: 'sell', seat: 'p1', uid: 'w1', zone: 'attack', slot: 3 });
+    expect(next!.players.p1.hp).toBe(12); // E8 : Loup - Vendu : +2 PV
+    expect(next!.lastEvent).toEqual({
+      id: 1,
+      type: 'sell',
+      seat: 'p1',
+      uid: 'w1',
+      zone: 'attack',
+      slot: 3,
+      effects: [{ seat: 'p1', sourceUid: 'w1', cardId: 'wolf', trigger: 'sold', effect: { type: 'healSelf', amount: 2 } }],
+    });
+  });
+
+  it('Trésorerie : 1 (vente) + 2 (Vendu) pièces', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.coins = 0;
+    state.players.p1.zones.enchant[0] = makeCard('treasury', 't1');
+
+    const next = applyAction(state, 'p1', { type: 'sell', uid: 't1' })!;
+    expect(next.players.p1.coins).toBe(3);
+  });
+
+  it('efface le buff de la carte vendue (E9)', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = { uid: 'g1', cardId: 'guard', buff: { attack: 1, defense: 1 } };
+
+    const next = applyAction(state, 'p1', { type: 'sell', uid: 'g1' })!;
+    expect(next.players.p1.discard[0].buff).toBeUndefined();
   });
 
   it('fonctionne pour un monstre en défense et un enchantement', () => {
@@ -461,13 +517,20 @@ describe('applyAction - sell', () => {
 
   it("n'est pas limité à la phase main (autorisé aussi en phase market)", () => {
     const state = baseState({ phase: 'market' });
-    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
+    state.players.p1.zones.attack[0] = makeCard('guard', 'g1');
 
-    expect(applyAction(state, 'p1', { type: 'sell', uid: 'w1' })).not.toBeNull();
+    expect(applyAction(state, 'p1', { type: 'sell', uid: 'g1' })).not.toBeNull();
   });
 });
 
-describe('resolveCombat', () => {
+// ---------------------------------------------------------------------------------------
+// Combat : riposte et cycles (§7.1) — cartes neutres en combat : Archère et Titan n'ont
+// qu'une capacité Invoqué (aucune capacité de combat), donc leurs échanges ne déclenchent
+// rien et isolent la mécanique pure de `resolveCombat`. L'Écuyer (Invoqué/KO) est neutre
+// aussi tant que son deck est vide (pioche sans effet).
+// ---------------------------------------------------------------------------------------
+
+describe('combat : riposte et cycles', () => {
   function playerWith(zoneCards: Partial<Record<Zone, (string | null)[]>>, hp = 20): PlayerState {
     const p = freshPlayer({ hp });
     for (const [zone, cards] of Object.entries(zoneCards) as [Zone, (string | null)[]][]) {
@@ -476,77 +539,142 @@ describe('resolveCombat', () => {
     return p;
   }
 
-  it('attaque de gauche à droite en sautant les emplacements vides', () => {
+  it('riposte : dégâts simultanés dans les deux sens (E13)', () => {
     const state = baseState();
-    state.players.p1 = playerWith({ attack: ['squire', null, 'wolf'] });
-    state.players.p2 = playerWith({ defense: ['squire', 'squire', 'squire', 'squire', 'squire'] });
+    state.players.p1 = playerWith({ attack: ['archer'] }); // 3 atq / 2 déf
+    state.players.p2 = playerWith({ defense: ['titan'] }); // 7 atq / 7 déf
 
     const { steps } = resolveCombat(state, 'p1');
-    expect(steps.map((s) => s.attackerUid)).toEqual(['attack0', 'attack2']);
+    expect(steps[0]).toMatchObject({
+      cycle: 1,
+      damage: 3,
+      remaining: 4, // 7 - 3
+      retaliation: 7,
+      attackerRemaining: 0, // 2 - 7, clampé (H2)
+    });
   });
 
-  it('un attaquant frappe le défenseur debout le plus à gauche ; les blessures passent au suivant', () => {
+  it('un défenseur mis KO par le coup reçoit quand même sa riposte (E5, E13)', () => {
     const state = baseState();
-    state.players.p1 = playerWith({ attack: ['wolf', 'wolf'] }); // 3 atq chacun
-    state.players.p2 = playerWith({ defense: ['squire'] }); // 2 déf
+    state.players.p1 = playerWith({ attack: ['archer'] }); // 3 atq / 2 déf
+    state.players.p2 = playerWith({ defense: ['squire'] }); // 1 atq / 2 déf
 
     const { steps } = resolveCombat(state, 'p1');
-    // Le 1er wolf met le défenseur KO (3 > 2) ; le 2e frappe directement les PV (H2 : excédent perdu).
-    expect(steps[0].target).toEqual({ kind: 'monster', uid: 'defense0' });
-    expect(steps[0].remaining).toBe(0);
-    expect(steps[1].target).toEqual({ kind: 'player' });
+    expect(steps[0]).toMatchObject({ damage: 3, remaining: 0, retaliation: 1, attackerRemaining: 1 });
   });
 
-  it('un KO passe au défenseur suivant, les blessures non létales persistent pour le prochain attaquant', () => {
+  it('cycles : deux Écuyers s’affrontent sur 2 cycles jusqu’au KO mutuel, puis aucune percée', () => {
     const state = baseState();
-    state.players.p1 = playerWith({ attack: ['squire', 'squire'] }); // 1 atq chacun
-    state.players.p2 = playerWith({ defense: ['squire', 'guard'] }); // 2 déf, 4 déf
+    state.players.p1 = playerWith({ attack: ['squire'] }); // 1 atq / 2 déf
+    state.players.p2 = playerWith({ defense: ['squire'] }, 20);
+
+    const { steps, stalemate } = resolveCombat(state, 'p1');
+    expect(steps.map((s) => s.cycle)).toEqual([1, 2]);
+    expect(steps[0]).toMatchObject({ damage: 1, remaining: 1, retaliation: 1, attackerRemaining: 1 });
+    expect(steps[1]).toMatchObject({ damage: 1, remaining: 0, retaliation: 1, attackerRemaining: 0 });
+    expect(stalemate).toBe(false);
+    // Tous les attaquants KO -> aucune percée, PV du défenseur inchangés.
+    expect(state.players.p2.hp).toBe(20);
+  });
+
+  it("un attaquant KO par riposte au cycle 1 n'apparaît plus dans les coups suivants", () => {
+    const state = baseState();
+    // Golem : 1 atq / 8 déf, aucune capacité Attaque (seulement Défend) -> neutre ici.
+    state.players.p1 = playerWith({ attack: ['archer', 'golem'] }); // 3/2 puis 1/8
+    state.players.p2 = playerWith({ defense: ['titan'] }); // 7 atq / 7 déf
 
     const { steps } = resolveCombat(state, 'p1');
-    expect(steps[0]).toMatchObject({ target: { kind: 'monster', uid: 'defense0' }, remaining: 1 });
-    expect(steps[1]).toMatchObject({ target: { kind: 'monster', uid: 'defense0' }, remaining: 0 });
+    // Cycle 1 : les deux attaquants frappent (le défenseur survit aux deux coups) ;
+    // l'archère (2 déf) meurt à la riposte du titan (7 atq), le golem (8 déf) survit.
+    expect(steps[0]).toMatchObject({ cycle: 1, attackerUid: 'attack0', damage: 3, remaining: 4, attackerRemaining: 0 });
+    expect(steps[1]).toMatchObject({ cycle: 1, attackerUid: 'attack1', damage: 1, remaining: 3, attackerRemaining: 1 });
+    // Cycle 2 : seul le golem attaque encore (l'archère est KO, absente des coups suivants).
+    expect(steps[2]).toMatchObject({ cycle: 2, attackerUid: 'attack1', damage: 1, remaining: 2, attackerRemaining: 0 });
+    expect(steps.filter((s) => s.cycle === 2).every((s) => s.attackerUid !== 'attack0')).toBe(true);
   });
 
-  it('sans défenseur, les dégâts vont aux PV ; excédent perdu', () => {
+  it('le dernier défenseur tombe en milieu de cycle -> les attaquants suivants frappent en percée, chacun une fois, y compris ceux qui avaient déjà frappé (E15)', () => {
     const state = baseState();
-    state.players.p1 = playerWith({ attack: ['wolf'] }); // 3 atq
-    state.players.p2 = playerWith({ defense: ['squire'] }, 20); // 2 déf
-
-    const { steps, defenderHp } = resolveCombat(state, 'p1');
-    expect(steps[0].target).toEqual({ kind: 'monster', uid: 'defense0' });
-    expect(steps[0].remaining).toBe(0); // KO, pas de dégâts transférés (H2)
-    expect(defenderHp).toBe(20);
-  });
-
-  it("les enchantements du propriétaire s'appliquent, pas ceux de l'adversaire", () => {
-    const state = baseState();
-    state.players.p1 = playerWith({ attack: ['squire'], enchant: ['banner'] }); // +1 atq
-    state.players.p2 = playerWith({ defense: ['squire'], enchant: ['banner'] }); // n'affecte pas p1
-
-    const stats = getMonsterStats(state.players.p1, 'squire', 'attack');
-    expect(stats.attack).toBe(2); // 1 de base + 1 de mon étendard
+    state.players.p1 = playerWith({ attack: ['titan', 'archer'] }); // 7/7 puis 3/2
+    state.players.p2 = playerWith({ defense: ['squire'] }, 20); // 1/2, seul défenseur
 
     const { steps } = resolveCombat(state, 'p1');
-    expect(steps[0].damage).toBe(2);
+    // Mêlée cycle 1 : seul le titan frappe (le défenseur tombe), l'archère n'a plus de cible.
+    const melee = steps.filter((s) => s.target.kind === 'monster');
+    expect(melee).toHaveLength(1);
+    expect(melee[0]).toMatchObject({ attackerUid: 'attack0', remaining: 0 });
+    // Percée : titan ET archère frappent le héros, chacun une fois (cycle = dernier cycle + 1).
+    const breakthrough = steps.filter((s) => s.target.kind === 'player');
+    expect(breakthrough.map((s) => s.attackerUid)).toEqual(['attack0', 'attack1']);
+    expect(breakthrough.every((s) => s.cycle === 2)).toBe(true);
+    expect(state.players.p2.hp).toBe(20 - 7 - 3);
   });
 
-  it('Rempart : +1 déf en défense seulement ; deux Remparts : +2', () => {
-    const player = playerWith({ enchant: ['rampart', 'rampart'] });
-    const stats = getMonsterStats(player, 'squire', 'defense');
-    expect(stats.defense).toBe(2 + 2);
-    const attackStats = getMonsterStats(player, 'squire', 'attack');
-    expect(attackStats.attack).toBe(1); // pas de bonus en attaque
-  });
-
-  it('les PV tombent à 0 : le combat s’arrête (H9)', () => {
+  it('aucun défenseur au départ -> chaque attaquant frappe le héros une fois (comportement conservé)', () => {
     const state = baseState();
-    state.players.p1 = playerWith({ attack: ['titan', 'titan'] }); // 7 atq chacun
+    state.players.p1 = playerWith({ attack: ['archer', 'titan'] });
+    state.players.p2 = playerWith({});
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps).toHaveLength(2);
+    expect(steps.every((s) => s.target.kind === 'player' && s.cycle === 1)).toBe(true);
+    expect(state.players.p2.hp).toBe(20 - 3 - 7);
+  });
+
+  it('attaque minimum 1 (E16) : un buff négatif ne fait jamais descendre en dessous de MIN_ATTACK', () => {
+    const player = freshPlayer();
+    const debuffed: CardInstance = { uid: 'x', cardId: 'squire', buff: { attack: -99, defense: 0 } };
+    expect(getMonsterStats(player, debuffed, 'attack').attack).toBe(MIN_ATTACK);
+    expect(MIN_ATTACK).toBe(1);
+  });
+
+  it('combat nul (E16) : inatteignable avec les règles actuelles — un bouclier absorbe le coup mais pas la riposte', () => {
+    const state = baseState();
+    state.players.p1 = playerWith({ attack: ['squire'] }); // 1 atq
+    state.players.p2 = playerWith({ defense: ['guard'] }, 20); // Défend : shield 1 -> absorbe le coup de 1
+
+    const { steps, stalemate } = resolveCombat(state, 'p1');
+    expect(steps[0].damage).toBe(0); // coup entièrement absorbé (shield >= dégâts)
+    expect(steps[0].retaliation).toBeGreaterThan(0); // la riposte n'est pas affectée par shield
+    expect(stalemate).toBe(false);
+  });
+
+  it('excédent de dégâts perdu (H2), dans les deux sens', () => {
+    const state = baseState();
+    state.players.p1 = playerWith({ attack: ['squire'] }); // 1 atq / 2 déf
+    state.players.p2 = playerWith({ defense: ['titan'] }, 20); // 7 atq / 7 déf
+
+    const { steps } = resolveCombat(state, 'p1');
+    // Le titan (7 atq) inflige une riposte largement supérieure aux 2 déf de l'écuyer.
+    expect(steps[0]).toMatchObject({ damage: 1, remaining: 6, retaliation: 7, attackerRemaining: 0 });
+  });
+
+  it('H1 : après le combat, aucune trace de dégât ne persiste sur les monstres', () => {
+    const state = baseState();
+    state.players.p1 = playerWith({ attack: ['squire'] });
+    state.players.p2 = playerWith({ defense: ['squire'] });
+
+    resolveCombat(state, 'p1'); // mute `state` (comme `applyEndTurn` le fait sur un clone)
+
+    const survivorCard = state.players.p1.zones.attack[0];
+    const opponentCard = state.players.p2.zones.defense[0];
+    // Les instances de carte ne portent aucune trace de dégâts : `damageTaken` est purement
+    // interne à `resolveCombat` (les deux monstres sont posés sans capacité de combat autre
+    // qu'un KO sans effet ici car leur deck est vide, donc rien d'autre n'a pu muter la carte).
+    expect(survivorCard).toEqual({ uid: 'attack0', cardId: 'squire' });
+    expect(opponentCard).toEqual({ uid: 'defense0', cardId: 'squire' });
+  });
+
+  it("victoire en percée : le combat s'arrête au 0 PV, les coups suivants ne sont pas résolus (H9)", () => {
+    const state = baseState();
+    state.players.p1 = playerWith({ attack: ['titan', 'titan', 'titan'] }); // 7 atq chacun
     state.players.p2 = playerWith({}, 10);
 
-    const { steps, defenderHp } = resolveCombat(state, 'p1');
-    // 1er coup : 10 - 7 = 3 PV. 2e coup : 3 - 7 -> 0, tue et arrête le combat (H9).
-    expect(defenderHp).toBe(0);
+    const { steps } = resolveCombat(state, 'p1');
+    // 10 - 7 = 3, puis 3 - 7 -> 0 (tue, H9) : le 3e titan ne frappe pas.
     expect(steps).toHaveLength(2);
+    expect(state.players.p2.hp).toBe(0);
+    expect(state.winner).toBe('p1');
   });
 
   it('zone d’attaque vide -> steps vide', () => {
@@ -560,13 +688,248 @@ describe('resolveCombat', () => {
     expect(opponentOf('p1')).toBe('p2');
     expect(opponentOf('p2')).toBe('p1');
   });
+
+  it("les enchantements du propriétaire s'appliquent, pas ceux de l'adversaire", () => {
+    const state = baseState();
+    state.players.p1 = playerWith({ attack: ['squire'], enchant: ['banner'] }); // +1 atq
+    state.players.p2 = playerWith({ defense: ['squire'], enchant: ['banner'] }); // n'affecte pas p1
+
+    const stats = getMonsterStats(state.players.p1, makeCard('squire'), 'attack');
+    expect(stats.attack).toBe(2); // 1 de base + 1 de mon étendard
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0].damage).toBe(2);
+  });
+
+  it('Rempart : +1 déf en défense seulement ; deux Remparts : +2', () => {
+    const player = playerWith({ enchant: ['rampart', 'rampart'] });
+    const stats = getMonsterStats(player, makeCard('squire'), 'defense');
+    expect(stats.defense).toBe(2 + 2);
+    const attackStats = getMonsterStats(player, makeCard('squire'), 'attack');
+    expect(attackStats.attack).toBe(1); // pas de bonus en attaque
+  });
+
+  it('E17 : un monstre à défense effective <= 0 ne participe pas au combat', () => {
+    const state = baseState();
+    state.players.p1 = playerWith({ attack: ['squire', 'archer'] });
+    // L'écuyer attaquant a une défense effective nulle (debuff manuel) : il est exclu.
+    state.players.p1.zones.attack[0] = { uid: 'weak', cardId: 'squire', buff: { attack: 0, defense: -5 } };
+    state.players.p2 = playerWith({ defense: ['titan'] });
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps.every((s) => s.attackerUid !== 'weak')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Effets déclenchés (§7.2)
+// ---------------------------------------------------------------------------------------
+
+describe('effets déclenchés', () => {
+  it('catalogue : toutes les capacités respectent isAbilityAllowed ; le deck fait toujours 50', () => {
+    for (const def of CARD_CATALOG) {
+      for (const ability of def.abilities ?? []) {
+        expect(isAbilityAllowed(def, ability)).toBe(true);
+      }
+    }
+    const total = Object.values(STARTER_COUNTS).reduce((a, b) => a + b, 0);
+    expect(total).toBe(50);
+  });
+
+  it('Invoqué : Écuyer posé -> +1 pièce, logué dans lastEvent.effects', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.coins = 0;
+    state.players.p1.hand = [makeCard('squire', 's1')];
+
+    const next = applyAction(state, 'p1', { type: 'place', uid: 's1', zone: 'attack', slot: 0 })!;
+
+    expect(next.players.p1.coins).toBe(1);
+    expect(next.lastEvent).toMatchObject({
+      type: 'place',
+      effects: [{ seat: 'p1', sourceUid: 's1', cardId: 'squire', trigger: 'summon', effect: { type: 'gainCoins', amount: 1 } }],
+    });
+  });
+
+  it("Invoqué : Archère posée avec l'adversaire à 1 PV -> victoire immédiate", () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.hand = [makeCard('archer', 'a1')];
+    state.players.p2.hp = 1;
+
+    const next = applyAction(state, 'p1', { type: 'place', uid: 'a1', zone: 'attack', slot: 0 })!;
+
+    expect(next.winner).toBe('p1');
+    expect(next.players.p2.hp).toBe(0);
+  });
+
+  it('Invoqué : Titan -> +1/+1 sur les autres monstres, pas sur lui-même', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('squire', 's1');
+    state.players.p1.hand = [makeCard('titan', 't1')];
+
+    const next = applyAction(state, 'p1', { type: 'place', uid: 't1', zone: 'defense', slot: 0 })!;
+
+    const squire = next.players.p1.zones.attack[0]!;
+    expect(squire.buff).toEqual({ attack: 1, defense: 1 });
+    const titan = next.players.p1.zones.defense[0]!;
+    expect(titan.buff).toBeUndefined();
+    expect(getMonsterStats(next.players.p1, squire, 'attack')).toEqual({ attack: 2, defense: 3 });
+  });
+
+  it('Vendu : Loup -> +2 PV (E8, plafonné à STARTING_HP)', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.hp = STARTING_HP - 1;
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
+
+    const next = applyAction(state, 'p1', { type: 'sell', uid: 'w1' })!;
+    expect(next.players.p1.hp).toBe(STARTING_HP); // plafonné, pas 21
+  });
+
+  it('Vendu/fusion : le buff est supprimé sur la carte qui part en défausse', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = { uid: 'g1', cardId: 'guard', buff: { attack: 2, defense: 2 } };
+
+    const next = applyAction(state, 'p1', { type: 'sell', uid: 'g1' })!;
+    expect(next.players.p1.discard[0].buff).toBeUndefined();
+  });
+
+  it('Attaque : Loup (3 atq) contre le héros -> 5 dégâts ; contre un monstre -> 5 dégâts sans changer la riposte', () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
+    state.players.p1.zones.attack[1] = makeCard('wolf', 'w2');
+    state.players.p2.zones.defense[0] = makeCard('titan', 't1'); // 7 atq / 7 déf, pas de capacité de combat
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ damage: 5, retaliation: 7 }); // 3 + 2 (bonusDamage), riposte inchangée
+  });
+
+  it('Attaque : le Chevalier gagne +1 attaque à chaque cycle, buff conservé au combat suivant', () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('knight', 'k1'); // 3 atq / 4 déf
+    state.players.p2.zones.defense[0] = makeCard('titan', 't1'); // 7 atq / 7 déf : encaisse plusieurs cycles
+
+    resolveCombat(state, 'p1');
+    const knight = state.players.p1.zones.attack[0]!;
+    expect(knight.buff?.attack).toBeGreaterThanOrEqual(1);
+    const attacksLanded = knight.buff!.attack;
+
+    // Combat suivant : le buff est toujours là et continue de grandir.
+    state.players.p1.zones.attack[0] = knight; // même instance, buff conservé (E9)
+    state.players.p2.zones.defense[0] = makeCard('titan', 't2');
+    resolveCombat(state, 'p1');
+    expect(knight.buff!.attack).toBeGreaterThan(attacksLanded);
+  });
+
+  it('Défend : le Garde absorbe une partie du coup à chaque cycle, sa riposte est inchangée', () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('archer', 'a1'); // 3 atq / 2 déf
+    state.players.p2.zones.defense[0] = makeCard('guard', 'g1'); // 1 atq / 4 déf, Défend : shield 1
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ damage: 2, remaining: 2, retaliation: 1 }); // 3 - 1 (shield)
+  });
+
+  it("Défend : Golem inflige des dégâts au héros adverse dès la riposte, peut faire perdre l'attaquant avant tout coup", () => {
+    const state = baseState({ phase: 'main', turnNumber: 4 });
+    state.players.p1.hp = 1; // l'attaquant actif
+    state.players.p1.zones.attack[0] = makeCard('squire', 'a1');
+    state.players.p2.zones.defense[0] = makeCard('golem', 'g1'); // Défend : 1 dégât au héros adverse
+
+    const next = applyAction(state, 'p1', { type: 'endTurn' })!;
+
+    expect(next.winner).toBe('p2');
+    expect(next.players.p1.hp).toBe(0);
+    // H9 généralisé (E7) : ni le tour ni la phase ne changent.
+    expect(next.turn).toBe('p1');
+    expect(next.phase).toBe('main');
+    const step = next.lastEvent as Extract<typeof next.lastEvent, { type: 'combat' }>;
+    expect(step.steps[0]).toMatchObject({ damage: 0, retaliation: 0 });
+  });
+
+  it("KO : l'Écuyer défenseur mis KO pioche la carte du dessus de son deck ; deck vide -> rien", () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('titan', 't1'); // 7 atq, tue l'écuyer d'un coup
+    state.players.p2.zones.defense[0] = makeCard('squire', 's1');
+    state.players.p2.deck = [makeCard('rampart', 'top')];
+
+    resolveCombat(state, 'p1');
+    expect(state.players.p2.hand.map((c) => c.uid)).toEqual(['top']);
+    expect(state.players.p2.deck).toEqual([]);
+
+    const emptyDeckState = baseState();
+    emptyDeckState.players.p1.zones.attack[0] = makeCard('titan', 't1');
+    emptyDeckState.players.p2.zones.defense[0] = makeCard('squire', 's1');
+    resolveCombat(emptyDeckState, 'p1');
+    expect(emptyDeckState.players.p2.hand).toEqual([]);
+  });
+
+  it("KO : l'Écuyer attaquant mis KO par riposte pioche aussi (son propriétaire est le joueur actif)", () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('squire', 's1'); // 1 atq / 2 déf
+    state.players.p1.deck = [makeCard('rampart', 'top')];
+    state.players.p2.zones.defense[0] = makeCard('titan', 't1'); // riposte 7 : tue l'écuyer
+
+    resolveCombat(state, 'p1');
+    expect(state.players.p1.hand.map((c) => c.uid)).toEqual(['top']);
+  });
+
+  it('KO : déclenché une seule fois par combat même si le combat continue', () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('titan', 't1'); // tue le défenseur immédiatement
+    state.players.p1.zones.attack[1] = makeCard('archer', 'a1'); // frappera en percée, pas le même défenseur
+    state.players.p2.zones.defense[0] = makeCard('squire', 's1');
+    state.players.p2.deck = [makeCard('rampart', 'x1'), makeCard('rampart', 'x2')];
+
+    resolveCombat(state, 'p1');
+    // Une seule pioche malgré 2 attaquants dans le combat : le KO de l'écuyer ne se
+    // déclenche qu'une fois (il n'est plus une cible valide ensuite).
+    expect(state.players.p2.hand).toHaveLength(1);
+  });
+
+  it('KO : Drake -> +3 PV (plafond STARTING_HP)', () => {
+    const state = baseState();
+    state.players.p1.hp = STARTING_HP - 1;
+    state.players.p1.zones.attack[0] = makeCard('drake', 'd1'); // 5 atq / 4 déf
+    state.players.p2.zones.defense[0] = makeCard('titan', 't1'); // riposte 7 : tue le drake
+
+    resolveCombat(state, 'p1');
+    expect(state.players.p1.hp).toBe(STARTING_HP); // plafonné
+  });
+
+  it('Ordre des effets dans un échange : Attaque puis KO du défenseur (E5, E2)', () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('knight', 'k1'); // Attaque : buff self
+    state.players.p2.zones.defense[0] = makeCard('squire', 's1'); // KO : pioche (pas de Défend)
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0].effects.map((e) => e.trigger)).toEqual(['attack', 'ko']);
+  });
+
+  it('CombatStep.hp et hpBefore restent cohérents avec les PV finaux', () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('titan', 't1');
+    state.players.p2 = { ...state.players.p2, hp: 20, zones: emptyZones() } as PlayerState;
+
+    const next = applyAction(state, 'p1', { type: 'endTurn' })!;
+    const combatEvent = next.lastEvent as Extract<typeof next.lastEvent, { type: 'combat' }>;
+    expect(combatEvent.hpBefore).toEqual({ p1: 20, p2: 20 });
+    expect(combatEvent.steps.at(-1)!.hp).toEqual({ p1: next.players.p1.hp, p2: next.players.p2.hp });
+  });
+
+  it('Doré : un Écuyer doré posé donne toujours +1 pièce (E10 : les effets ne sont pas doublés)', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.coins = 0;
+    state.players.p1.hand = [{ uid: 's1', cardId: 'squire', golden: true }];
+
+    const next = applyAction(state, 'p1', { type: 'place', uid: 's1', zone: 'attack', slot: 0 })!;
+    expect(next.players.p1.coins).toBe(1);
+  });
 });
 
 describe('applyAction - endTurn', () => {
   it('après le combat, les zones sont identiques à avant (H1)', () => {
     const state = baseState({ phase: 'main' });
-    state.players.p1.zones.attack[0] = makeCard('wolf', 'atk');
-    state.players.p2.zones.defense[0] = makeCard('squire', 'def');
+    state.players.p1.zones.attack[0] = makeCard('archer', 'atk');
+    state.players.p2.zones.defense[0] = makeCard('titan', 'def');
     const zonesBefore = structuredClone(state.players.p2.zones);
 
     const next = applyAction(state, 'p1', { type: 'endTurn' });
@@ -596,7 +959,7 @@ describe('applyAction - endTurn', () => {
     expect(next!.turn).toBe('p2');
     expect(next!.phase).toBe('start');
     expect(next!.turnNumber).toBe(5);
-    expect(next!.lastEvent).toMatchObject({ type: 'combat', seat: 'p1', steps: [] });
+    expect(next!.lastEvent).toMatchObject({ type: 'combat', seat: 'p1', steps: [], stalemate: false });
   });
 
   it('applyAction renvoie null une fois winner défini', () => {

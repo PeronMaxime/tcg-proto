@@ -1,22 +1,26 @@
 // Règles v1 — voir PLAN-tcg-proto-regles-v1.md ; hypothèses marquées `Hn`.
+// Règles v2 (combat en cycles, riposte, capacités) — voir PLAN-effets-triggers.md ;
+// nouvelles hypothèses marquées `En`.
 // Module pur : pas d'accès réseau, pas de React, pas de Date.now(). Le seul hasard
 // (mélange des decks) passe par le paramètre `random` pour rester testable.
 
 import { buildStarterDeck, getCardDef, isMonster } from './cards';
 import type {
   Action,
+  AbilityEffect,
   CardInstance,
   CombatStep,
-  CombatTarget,
+  EffectLog,
   GameState,
   MonsterZone,
   PlayerState,
   Seat,
   Slot,
+  Trigger,
   Zone,
 } from './types';
 
-export const RULES_VERSION = 4;
+export const RULES_VERSION = 5;
 export const STARTING_HP = 20;
 export const MARKET_SIZE = 3;
 export const ZONE_SIZES: Record<Zone, number> = { attack: 5, defense: 5, enchant: 3 };
@@ -26,6 +30,13 @@ export const ZONE_SIZES: Record<Zone, number> = { attack: 5, defense: 5, enchant
 // multipliées par GOLDEN_MULTIPLIER.
 export const FUSION_COUNT = 3;
 export const GOLDEN_MULTIPLIER = 2;
+// E16 : l'attaque effective d'un monstre vaut au moins 1 (c'est la stat qui est plancher,
+// pas les dégâts — un `shield` peut encore réduire un coup à 0).
+export const MIN_ATTACK = 1;
+// E16 : filet de sécurité purement défensif contre un combat qui ne se terminerait jamais
+// (aucun effet actuel ne peut réduire la riposte sous 1, donc ce cas n'est pas atteignable
+// avec les règles actuelles ; il le sera peut-être avec de futures capacités).
+export const MAX_COMBAT_CYCLES = 20;
 
 function shuffle<T>(items: T[], random: () => number): T[] {
   const copy = [...items];
@@ -87,16 +98,21 @@ export function getBaseMonsterStats(cardId: string, golden = false): { attack: n
   return { attack: def.attack * multiplier, defense: def.defense * multiplier };
 }
 
-// Stats effectives d'un monstre : base (doublée s'il est doré) + somme des `monsterBuff`
-// des enchantements posés par SON propriétaire (R3 : les effets se cumulent et ne touchent
-// que le board de leur propriétaire). Les bonus d'enchantement ne sont pas doublés.
+// Stats effectives d'un monstre posé : base (doublée s'il est doré) + buff permanent (E9,
+// non doublé) + somme des `monsterBuff` des enchantements posés par SON propriétaire (R3 :
+// les effets se cumulent et ne touchent que le board de leur propriétaire, non doublés non
+// plus). L'attaque a un plancher de `MIN_ATTACK` (E16) ; la défense n'en a pas (E17 : un
+// monstre à défense ≤ 0 est filtré ailleurs, pas ici).
 export function getMonsterStats(
   player: PlayerState,
-  cardId: string,
+  card: CardInstance,
   zone: MonsterZone,
-  golden = false,
 ): { attack: number; defense: number } {
-  let { attack, defense } = getBaseMonsterStats(cardId, golden);
+  let { attack, defense } = getBaseMonsterStats(card.cardId, card.golden === true);
+  if (card.buff) {
+    attack += card.buff.attack;
+    defense += card.buff.defense;
+  }
   for (const slot of player.zones.enchant) {
     if (!slot) continue;
     const enchantDef = getCardDef(slot.cardId);
@@ -107,7 +123,7 @@ export function getMonsterStats(
       defense += effect.defense;
     }
   }
-  return { attack, defense };
+  return { attack: Math.max(MIN_ATTACK, attack), defense };
 }
 
 // Exemplaires posés (attaque puis défense, de gauche à droite) avec lesquels `card` peut
@@ -242,7 +258,9 @@ function applyPlace(next: GameState, seat: Seat, uid: string, zone: Zone, slot: 
   // tour — `place` ne fait qu'écrire dans `zones`, et `resolveCombat` (plus bas) lit l'état
   // des zones tel qu'il est au moment de l'appel, donc juste après la phase principale.
   player.zones[zone][slot] = card;
-  next.lastEvent = { id: next.eventSeq, type: 'place', seat, uid, zone, slot };
+  // E3 : Invoqué se déclenche après que la carte a rejoint le board (elle en fait donc partie).
+  const effects = fireTrigger(next, seat, card, 'summon');
+  next.lastEvent = { id: next.eventSeq, type: 'place', seat, uid, zone, slot, effects };
 }
 
 // Fusion dorée : la carte en main devient dorée (elle reste en main) et absorbe les
@@ -255,6 +273,7 @@ function applyFuse(next: GameState, seat: Seat, uid: string): void {
   for (const { zone, slot } of fusionPartners(player, card).slice(0, FUSION_COUNT - 1)) {
     const absorbed = player.zones[zone][slot]!;
     player.zones[zone][slot] = null;
+    clearBuff(absorbed); // E9 : le buff disparaît, la carte quitte le board (fusion)
     player.discard.push(absorbed);
     fusedUids.push(absorbed.uid);
   }
@@ -272,73 +291,304 @@ function applySell(next: GameState, seat: Seat, uid: string): void {
     if (slot === -1) continue;
     const card = player.zones[zone][slot]!;
     player.zones[zone][slot] = null;
+    clearBuff(card); // E9 : le buff disparaît, la carte quitte le board (vente)
     player.discard.push(card);
     player.coins += 1;
-    next.lastEvent = { id: next.eventSeq, type: 'sell', seat, uid, zone, slot };
+    // E4 : Vendu se déclenche après que la carte a quitté le board, la pièce versée, en défausse.
+    const effects = fireTrigger(next, seat, card, 'sold');
+    next.lastEvent = { id: next.eventSeq, type: 'sell', seat, uid, zone, slot, effects };
     return;
   }
 }
 
-interface CombatResult {
-  steps: CombatStep[];
-  defenderHp: number;
+// ---------------------------------------------------------------------------------------
+// Effets déclenchés (§3.2-§3.3 du plan) — E1 à E12
+// ---------------------------------------------------------------------------------------
+
+// Seul point d'entrée des dégâts au héros (E7) : fixe le vainqueur au premier 0. Les appels
+// une fois `winner` fixé sont des no-op (E7 : on arrête de résoudre quoi que ce soit).
+function damageHero(state: GameState, seat: Seat, amount: number): void {
+  if (state.winner !== null) return;
+  const player = state.players[seat];
+  player.hp = Math.max(0, player.hp - amount);
+  if (player.hp === 0) state.winner = opponentOf(seat);
 }
 
-// Combat automatique (auto-battler) : les attaquants de `attackerSeat`, de gauche à droite,
-// frappent le défenseur adverse debout le plus à gauche (R4), ou les PV s'il n'y en a plus.
-// H8 : le défenseur ne riposte jamais — seule l'attaque effective de l'attaquant compte,
-// aucun dégât n'est renvoyé vers son propre camp.
+// E8 : soins plafonnés à STARTING_HP.
+function healHero(state: GameState, seat: Seat, amount: number): void {
+  const player = state.players[seat];
+  player.hp = Math.min(STARTING_HP, player.hp + amount);
+}
+
+// E9 : buff permanent cumulable, stocké sur l'instance ; n'écrit rien pour un buff nul.
+function addBuff(card: CardInstance, attack: number, defense: number): void {
+  if (attack === 0 && defense === 0) return;
+  card.buff = { attack: (card.buff?.attack ?? 0) + attack, defense: (card.buff?.defense ?? 0) + defense };
+}
+
+// E9 : le buff disparaît quand la carte quitte le board (vente, fusion) — jamais de champ
+// `buff` explicite sur une carte qui n'en a pas.
+function clearBuff(card: CardInstance): void {
+  delete card.buff;
+}
+
+// E10 : les valeurs d'effet ne sont PAS doublées pour un monstre doré en v1 (seules les
+// stats de base le sont, via `getBaseMonsterStats`). Centralisé ici pour pouvoir changer
+// d'avis facilement sans toucher chaque site d'appel.
+function effectAmount(_card: CardInstance, value: number): number {
+  return value;
+}
+
+interface HitModifiers {
+  bonusDamage: number;
+  damageReduction: number;
+}
+
+function applyAbilityEffect(
+  state: GameState,
+  seat: Seat,
+  card: CardInstance,
+  effect: AbilityEffect,
+  hit: HitModifiers | undefined,
+): void {
+  switch (effect.type) {
+    case 'gainCoins':
+      state.players[seat].coins += effectAmount(card, effect.amount);
+      break;
+    case 'damageOpponent':
+      damageHero(state, opponentOf(seat), effectAmount(card, effect.amount));
+      break;
+    case 'healSelf':
+      healHero(state, seat, effectAmount(card, effect.amount));
+      break;
+    case 'drawCard': {
+      const player = state.players[seat];
+      const count = effectAmount(card, effect.count);
+      for (let i = 0; i < count; i++) {
+        const drawn = player.deck.pop(); // E11 : le dessus du deck est la fin du tableau
+        if (drawn) player.hand.push(drawn);
+      }
+      break;
+    }
+    case 'buff': {
+      const attack = effectAmount(card, effect.attack);
+      const defense = effectAmount(card, effect.defense);
+      if (effect.target === 'self') {
+        addBuff(card, attack, defense);
+      } else {
+        const player = state.players[seat];
+        for (const zone of ['attack', 'defense'] as MonsterZone[]) {
+          for (const slot of player.zones[zone]) {
+            if (slot && slot.uid !== card.uid) addBuff(slot, attack, defense);
+          }
+        }
+      }
+      break;
+    }
+    case 'bonusDamage': // E12 : Attaque uniquement
+      if (hit) hit.bonusDamage += effectAmount(card, effect.amount);
+      break;
+    case 'shield': // E12 : Défend uniquement
+      if (hit) hit.damageReduction += effectAmount(card, effect.amount);
+      break;
+  }
+}
+
+// Résout toutes les capacités `trigger` de `card` (propriétaire `seat`), dans l'ordre du
+// tableau `abilities` (E2), en mutant `state`. S'arrête dès que `state.winner` est fixé
+// (E7). `hit` n'est fourni que pour Attaque / Défend ; `bonusDamage` / `shield` l'alimentent
+// (E12).
+function fireTrigger(
+  state: GameState,
+  seat: Seat,
+  card: CardInstance,
+  trigger: Trigger,
+  hit?: HitModifiers,
+): EffectLog[] {
+  const def = getCardDef(card.cardId);
+  const logs: EffectLog[] = [];
+  for (const ability of def.abilities ?? []) {
+    if (ability.trigger !== trigger) continue;
+    if (state.winner !== null) break; // E7
+    applyAbilityEffect(state, seat, card, ability.effect, hit);
+    logs.push({ seat, sourceUid: card.uid, cardId: card.cardId, trigger, effect: ability.effect });
+    if (state.winner !== null) break; // E7
+  }
+  return logs;
+}
+
+// ---------------------------------------------------------------------------------------
+// Combat (§1bis, §3.5) — E13 à E17
+// ---------------------------------------------------------------------------------------
+
+interface Fighter {
+  card: CardInstance;
+  seat: Seat;
+  damageTaken: number;
+  ko: boolean;
+}
+
+// Défense restante = max(0, défense effective (relue à chaque fois, E9) − dégâts subis).
+// H2 : l'excédent de dégâts au-delà de 0 est perdu, dans les deux sens (coup et riposte).
+function currentDefense(state: GameState, fighter: Fighter, zone: MonsterZone): number {
+  const effective = getMonsterStats(state.players[fighter.seat], fighter.card, zone).defense;
+  return Math.max(0, effective - fighter.damageTaken);
+}
+
+function standingFighters(state: GameState, fighters: Fighter[], zone: MonsterZone): Fighter[] {
+  return fighters.filter((f) => !f.ko && currentDefense(state, f, zone) > 0);
+}
+
+// E17 : un monstre dont la défense effective est ≤ 0 au début du combat n'y participe pas.
+function buildFighters(state: GameState, seat: Seat, zone: MonsterZone): Fighter[] {
+  const player = state.players[seat];
+  const fighters: Fighter[] = [];
+  for (const slot of player.zones[zone]) {
+    if (!slot) continue;
+    const fighter: Fighter = { card: slot, seat, damageTaken: 0, ko: false };
+    if (currentDefense(state, fighter, zone) > 0) fighters.push(fighter);
+  }
+  return fighters;
+}
+
+function snapshotHp(state: GameState): Record<Seat, number> {
+  return { p1: state.players.p1.hp, p2: state.players.p2.hp };
+}
+
+export interface CombatResult {
+  steps: CombatStep[];
+  stalemate: boolean;
+}
+
+// Combat automatique (auto-battler) en cycles avec riposte (E13-E17) : les attaquants de
+// `attackerSeat`, de gauche à droite, frappent le défenseur adverse debout le plus à gauche
+// (R4) ; le défenseur ciblé riposte sur l'attaquant. Tant qu'il reste un attaquant ET un
+// défenseur debout, un nouveau cycle démarre (E14). Quand tous les défenseurs sont tombés
+// (ou qu'il n'y en avait aucun), les attaquants encore debout percent jusqu'au héros (E15).
+// MUTE `state` directement (dégâts au héros, buffs, pièces, pioche...) : l'appelant doit lui
+// passer un état déjà cloné (`applyEndTurn` lui passe `next`).
 export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResult {
   const defenderSeat = opponentOf(attackerSeat);
-  const attackerPlayer = state.players[attackerSeat];
-  const defenderPlayer = state.players[defenderSeat];
-
-  const attackers = attackerPlayer.zones.attack.filter((slot): slot is CardInstance => slot !== null);
-
-  const defenders = defenderPlayer.zones.defense
-    .map((slot, index) =>
-      slot
-        ? {
-            uid: slot.uid,
-            current: getMonsterStats(defenderPlayer, slot.cardId, 'defense', slot.golden).defense,
-            index,
-          }
-        : null,
-    )
-    .filter((d): d is { uid: string; current: number; index: number } => d !== null && d.current > 0);
+  const attackers = buildFighters(state, attackerSeat, 'attack');
+  const defenders = buildFighters(state, defenderSeat, 'defense');
 
   const steps: CombatStep[] = [];
-  let pv = defenderPlayer.hp;
+  let cycle = 0;
+  let stalemate = false;
 
-  for (const attacker of attackers) {
-    const atk = Math.max(0, getMonsterStats(attackerPlayer, attacker.cardId, 'attack', attacker.golden).attack);
-    const target = defenders.find((d) => d.current > 0);
+  // --- Mêlée (E14) ---
+  while (
+    state.winner === null &&
+    standingFighters(state, attackers, 'attack').length > 0 &&
+    standingFighters(state, defenders, 'defense').length > 0
+  ) {
+    if (cycle >= MAX_COMBAT_CYCLES) {
+      stalemate = true; // E16 : filet de sécurité
+      break;
+    }
+    cycle += 1;
+    let damageThisCycle = 0;
 
-    if (target) {
-      target.current = Math.max(0, target.current - atk); // H2 : excédent perdu
-      const combatTarget: CombatTarget = { kind: 'monster', uid: target.uid };
-      steps.push({ attackerUid: attacker.uid, target: combatTarget, damage: atk, remaining: target.current });
-    } else {
-      pv = Math.max(0, pv - atk);
-      const combatTarget: CombatTarget = { kind: 'player' };
-      steps.push({ attackerUid: attacker.uid, target: combatTarget, damage: atk, remaining: pv });
-      if (pv === 0) break; // H9 : le combat s'arrête dès que les PV tombent à 0
+    for (const attacker of attackers) {
+      if (attacker.ko || currentDefense(state, attacker, 'attack') <= 0) continue;
+      if (state.winner !== null) break; // E7
+      const remainingDefenders = standingFighters(state, defenders, 'defense');
+      // Le dernier défenseur est tombé en cours de cycle : la mêlée s'arrête immédiatement,
+      // les attaquants suivants du cycle frapperont en percée (E14).
+      if (remainingDefenders.length === 0) break;
+      const target = remainingDefenders[0];
+
+      const hit: HitModifiers = { bonusDamage: 0, damageReduction: 0 };
+      let effects = fireTrigger(state, attackerSeat, attacker.card, 'attack', hit);
+      if (state.winner === null) {
+        effects = effects.concat(fireTrigger(state, defenderSeat, target.card, 'defend', hit));
+      }
+
+      let damage = 0;
+      let retaliation = 0;
+      if (state.winner === null) {
+        const attackerStats = getMonsterStats(state.players[attackerSeat], attacker.card, 'attack');
+        const targetStats = getMonsterStats(state.players[defenderSeat], target.card, 'defense');
+        damage = Math.max(0, attackerStats.attack + hit.bonusDamage - hit.damageReduction);
+        retaliation = targetStats.attack; // E13 : attaque effective du défenseur, plancher ≥ 1 (E16)
+      }
+
+      // Dégâts simultanés (E5, E13) : un défenseur mis KO par la riposte quand même.
+      target.damageTaken += damage;
+      attacker.damageTaken += retaliation;
+      damageThisCycle += damage + retaliation;
+
+      const targetRemaining = currentDefense(state, target, 'defense');
+      if (targetRemaining === 0 && !target.ko) {
+        target.ko = true;
+        if (state.winner === null) effects = effects.concat(fireTrigger(state, defenderSeat, target.card, 'ko'));
+      }
+      const attackerRemaining = currentDefense(state, attacker, 'attack');
+      if (attackerRemaining === 0 && !attacker.ko) {
+        attacker.ko = true;
+        if (state.winner === null) effects = effects.concat(fireTrigger(state, attackerSeat, attacker.card, 'ko'));
+      }
+
+      steps.push({
+        cycle,
+        attackerUid: attacker.card.uid,
+        target: { kind: 'monster', uid: target.card.uid },
+        damage,
+        remaining: targetRemaining,
+        retaliation,
+        attackerRemaining,
+        effects,
+        hp: snapshotHp(state),
+      });
+    }
+
+    // E16 : un cycle complet sans le moindre dégât (des deux côtés) est un match nul.
+    if (state.winner === null && damageThisCycle === 0) {
+      stalemate = true;
+      break;
     }
   }
 
-  return { steps, defenderHp: pv };
+  // --- Percée (E15), seulement si la mêlée s'est arrêtée faute de défenseur debout ---
+  if (state.winner === null && !stalemate && standingFighters(state, defenders, 'defense').length === 0) {
+    for (const attacker of attackers) {
+      if (attacker.ko || currentDefense(state, attacker, 'attack') <= 0) continue;
+      if (state.winner !== null) break; // E7
+
+      const hit: HitModifiers = { bonusDamage: 0, damageReduction: 0 };
+      const effects = fireTrigger(state, attackerSeat, attacker.card, 'attack', hit);
+
+      let damage = 0;
+      if (state.winner === null) {
+        const attackerStats = getMonsterStats(state.players[attackerSeat], attacker.card, 'attack');
+        damage = Math.max(0, attackerStats.attack + hit.bonusDamage); // ≥ 1 (E16), pas de riposte en percée
+        damageHero(state, defenderSeat, damage);
+      }
+
+      steps.push({
+        cycle: cycle + 1,
+        attackerUid: attacker.card.uid,
+        target: { kind: 'player' },
+        damage,
+        remaining: state.players[defenderSeat].hp,
+        retaliation: 0,
+        attackerRemaining: currentDefense(state, attacker, 'attack'),
+        effects,
+        hp: snapshotHp(state),
+      });
+    }
+  }
+
+  return { steps, stalemate };
 }
 
 function applyEndTurn(next: GameState, seat: Seat): void {
   const defenderSeat = opponentOf(seat);
-  const { steps, defenderHp } = resolveCombat(next, seat);
-  next.players[defenderSeat].hp = defenderHp; // H1 : aucune blessure ne persiste sur les monstres
-  next.lastEvent = { id: next.eventSeq, type: 'combat', seat, steps };
+  const hpBefore = snapshotHp(next);
+  const { steps, stalemate } = resolveCombat(next, seat); // mute `next` (dégâts, buffs, pièces...)
+  next.lastEvent = { id: next.eventSeq, type: 'combat', seat, steps, hpBefore, stalemate };
 
-  if (defenderHp === 0) {
-    next.winner = seat; // H9 : ni changement de tour ni de phase
-    return;
-  }
+  if (next.winner !== null) return; // H9 : ni changement de tour ni de phase
 
   next.turn = defenderSeat;
   next.phase = 'start';

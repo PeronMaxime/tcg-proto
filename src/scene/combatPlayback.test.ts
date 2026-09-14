@@ -7,7 +7,7 @@ import {
   START_DELAY_MS,
   STEP_MS,
 } from './combatPlayback';
-import type { CombatStep } from '../game/types';
+import type { CombatStep, Seat } from '../game/types';
 
 describe('playbackCursor', () => {
   it('est terminé immédiatement pour zéro coup', () => {
@@ -51,39 +51,87 @@ describe('playbackCursor', () => {
 });
 
 describe('combatDisplay', () => {
+  const hpBefore: Record<Seat, number> = { p1: 20, p2: 20 };
+
+  function step(overrides: Partial<CombatStep> & Pick<CombatStep, 'attackerUid' | 'target'>): CombatStep {
+    return {
+      cycle: 1,
+      damage: 1,
+      remaining: 0,
+      retaliation: 0,
+      attackerRemaining: 5,
+      effects: [],
+      hp: { p1: 20, p2: 20 },
+      ...overrides,
+    };
+  }
+
   const steps: CombatStep[] = [
-    { attackerUid: 'a1', target: { kind: 'monster', uid: 'd1' }, damage: 1, remaining: 1 },
-    { attackerUid: 'a2', target: { kind: 'monster', uid: 'd1' }, damage: 1, remaining: 0 },
-    { attackerUid: 'a3', target: { kind: 'player' }, damage: 3, remaining: 5 },
+    step({
+      attackerUid: 'a1',
+      target: { kind: 'monster', uid: 'd1' },
+      damage: 1,
+      remaining: 1,
+      retaliation: 2,
+      attackerRemaining: 3,
+      hp: { p1: 20, p2: 20 },
+    }),
+    step({
+      attackerUid: 'a2',
+      target: { kind: 'monster', uid: 'd1' },
+      damage: 1,
+      remaining: 0,
+      retaliation: 0,
+      attackerRemaining: 5,
+      hp: { p1: 20, p2: 20 },
+    }),
+    step({
+      attackerUid: 'a3',
+      target: { kind: 'player' },
+      cycle: 2,
+      damage: 3,
+      remaining: 5,
+      retaliation: 0,
+      attackerRemaining: 5,
+      hp: { p1: 20, p2: 17 },
+    }),
   ];
 
-  it('début : rien appliqué', () => {
-    const display = combatDisplay(steps, 0);
+  it('début : rien appliqué, PV = hpBefore', () => {
+    const display = combatDisplay(steps, 0, hpBefore);
     expect(display.defense.size).toBe(0);
     expect(display.ko.size).toBe(0);
-    expect(display.pendingPlayerDamage).toBe(3);
+    expect(display.hp).toEqual(hpBefore);
+    expect(display.appliedEffects).toEqual([]);
+    expect(display.phase).toBe('melee');
   });
 
-  it('milieu : blessure affichée puis KO du même défenseur', () => {
-    const wounded = combatDisplay(steps, 1);
+  it('milieu : blessure et riposte affichées, puis KO du défenseur', () => {
+    const wounded = combatDisplay(steps, 1, hpBefore);
     expect(wounded.defense.get('d1')).toBe(1);
+    expect(wounded.defense.get('a1')).toBe(3); // riposte : l'attaquant encaisse aussi (E13)
     expect(wounded.ko.has('d1')).toBe(false);
+    expect(wounded.hp).toEqual(steps[0].hp);
 
-    const koed = combatDisplay(steps, 2);
+    const koed = combatDisplay(steps, 2, hpBefore);
     expect(koed.defense.get('d1')).toBe(0);
     expect(koed.ko.has('d1')).toBe(true);
   });
 
-  it('fin : tout appliqué, plus de dégâts en attente', () => {
-    const display = combatDisplay(steps, 3);
-    expect(display.pendingPlayerDamage).toBe(0);
+  it('fin : tout appliqué, PV du joueur mis à jour, phase percée', () => {
+    const display = combatDisplay(steps, 3, hpBefore);
+    expect(display.hp).toEqual({ p1: 20, p2: 17 });
     expect(display.ko.has('d1')).toBe(true);
+    expect(display.complete).toBe(true);
+    expect(display.phase).toBe('breakthrough');
+    expect(display.cycle).toBe(2);
   });
 
-  it('zéro coup : displays vides', () => {
-    const display = combatDisplay([], 0);
+  it('zéro coup : displays vides, PV = hpBefore', () => {
+    const display = combatDisplay([], 0, hpBefore);
     expect(display.defense.size).toBe(0);
     expect(display.ko.size).toBe(0);
-    expect(display.pendingPlayerDamage).toBe(0);
+    expect(display.hp).toEqual(hpBefore);
+    expect(display.complete).toBe(true);
   });
 });

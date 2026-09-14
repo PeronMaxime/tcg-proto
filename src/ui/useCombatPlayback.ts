@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { combatDisplay, playbackCursor } from '../scene/combatPlayback';
-import type { CombatStep, CombatTarget, GameState, Seat } from '../game/types';
-import { opponentOf } from '../game/rules';
+import type { CombatStep, CombatTarget, EffectLog, GameState, Seat } from '../game/types';
+import { STARTING_HP } from '../game/rules';
 
 // Hook de lecture animée du combat (§7.2) : détecte un nouvel évènement `combat`, fait
 // avancer un curseur de temps via requestAnimationFrame, et en dérive les surcharges
@@ -10,7 +10,12 @@ import { opponentOf } from '../game/rules';
 export interface CombatView {
   defense: Map<string, number>;
   ko: Set<string>;
-  pendingPlayerDamage: number;
+  hp: Record<Seat, number>;
+  appliedEffects: EffectLog[];
+  cycle: number;
+  phase: 'melee' | 'breakthrough';
+  complete: boolean;
+  stalemate: boolean;
 }
 
 export interface ActiveCombatStep {
@@ -27,11 +32,15 @@ export interface CombatPlaybackResult {
   displayedHp: Record<Seat, number>;
 }
 
+const DEFAULT_HP: Record<Seat, number> = { p1: STARTING_HP, p2: STARTING_HP };
+
 export function useCombatPlayback(state: GameState): CombatPlaybackResult {
   const lastHandledIdRef = useRef<number | undefined>(undefined);
   const startedAtRef = useRef<number | null>(null);
   const stepsRef = useRef<CombatStep[]>([]);
   const attackerSeatRef = useRef<Seat>('p1');
+  const hpBeforeRef = useRef<Record<Seat, number>>(DEFAULT_HP);
+  const stalemateRef = useRef(false);
   const eventIdRef = useRef(0);
   const [, forceRender] = useState(0);
 
@@ -57,6 +66,8 @@ export function useCombatPlayback(state: GameState): CombatPlaybackResult {
     if (event?.type === 'combat' && event.steps.length > 0) {
       stepsRef.current = event.steps;
       attackerSeatRef.current = event.seat;
+      hpBeforeRef.current = event.hpBefore;
+      stalemateRef.current = event.stalemate;
       eventIdRef.current = event.id;
       startedAtRef.current = performance.now();
     } else {
@@ -92,13 +103,8 @@ export function useCombatPlayback(state: GameState): CombatPlaybackResult {
 
   const elapsed = performance.now() - startedAtRef.current;
   const cursor = playbackCursor(elapsed, stepsRef.current.length);
-  const view = combatDisplay(stepsRef.current, cursor.applied);
-  const defenderSeat = opponentOf(attackerSeatRef.current);
-
-  const displayedHp: Record<Seat, number> = {
-    ...baseHp,
-    [defenderSeat]: baseHp[defenderSeat] + view.pendingPlayerDamage,
-  };
+  const view = combatDisplay(stepsRef.current, cursor.applied, hpBeforeRef.current);
+  const combatView: CombatView = { ...view, stalemate: stalemateRef.current };
 
   const activeStep: ActiveCombatStep | null =
     cursor.lungeIndex !== null
@@ -110,5 +116,5 @@ export function useCombatPlayback(state: GameState): CombatPlaybackResult {
         }
       : null;
 
-  return { playing: true, combatView: view, activeStep, displayedHp };
+  return { playing: true, combatView, activeStep, displayedHp: combatView.hp };
 }

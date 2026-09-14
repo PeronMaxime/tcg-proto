@@ -2,12 +2,15 @@
 // en cours de fente et combien de coups ont déjà leur impact affiché. Les DEUX clients
 // partagent la même liste de coups (`GameEvent` de type `combat`) et rejouent donc la même
 // animation, sans état intermédiaire à synchroniser (T4).
+//
+// PLAN-effets-triggers.md §6.2 : un combat peut maintenant compter plusieurs dizaines de
+// coups (mêlée en cycles, E14) — cadence resserrée par rapport à la v1.
 
-import type { CombatStep } from '../game/types';
+import type { CombatStep, EffectLog, Seat } from '../game/types';
 
 export const START_DELAY_MS = 400;
-export const STEP_MS = 750;
-export const IMPACT_MS = 225; // milieu de la fente de 0.45 s de Card.tsx
+export const STEP_MS = 550;
+export const IMPACT_MS = 160; // milieu de la fente de Card.tsx
 export const END_PAUSE_MS = 700;
 
 export interface PlaybackCursor {
@@ -34,15 +37,25 @@ export function playbackCursor(elapsedMs: number, stepCount: number): PlaybackCu
 }
 
 export interface CombatDisplay {
-  defense: Map<string, number>; // défense affichée des défenseurs déjà touchés
+  // Défense affichée pour chaque carte déjà touchée (cible ET attaquant, celui-ci recevant
+  // la riposte, E13) — les deux camps peuvent donc apparaître ici.
+  defense: Map<string, number>;
   ko: Set<string>;
-  pendingPlayerDamage: number; // dégâts aux PV pas encore « arrivés »
+  hp: Record<Seat, number>; // PV des deux joueurs après le dernier coup appliqué
+  appliedEffects: EffectLog[]; // effets des coups déjà appliqués, dans l'ordre
+  cycle: number; // cycle du dernier coup appliqué (ou du coup en cours)
+  phase: 'melee' | 'breakthrough'; // mêlée (E14) ou percée (E15) du coup courant
+  complete: boolean; // tous les coups ont déjà leur impact affiché
 }
 
-export function combatDisplay(steps: CombatStep[], applied: number): CombatDisplay {
+export function combatDisplay(
+  steps: CombatStep[],
+  applied: number,
+  hpBefore: Record<Seat, number>,
+): CombatDisplay {
   const defense = new Map<string, number>();
   const ko = new Set<string>();
-  let pendingPlayerDamage = 0;
+  const appliedEffects: EffectLog[] = [];
 
   for (let i = 0; i < applied; i++) {
     const step = steps[i];
@@ -50,14 +63,16 @@ export function combatDisplay(steps: CombatStep[], applied: number): CombatDispl
       defense.set(step.target.uid, step.remaining);
       if (step.remaining === 0) ko.add(step.target.uid);
     }
+    defense.set(step.attackerUid, step.attackerRemaining);
+    if (step.attackerRemaining === 0) ko.add(step.attackerUid);
+    appliedEffects.push(...step.effects);
   }
 
-  // Les dégâts aux PV pas encore appliqués sont ceux des coups restants ciblant le joueur :
-  // les PV affichés = PV finaux + ce qui n'est pas encore "arrivé" (§7.1).
-  for (let i = applied; i < steps.length; i++) {
-    const step = steps[i];
-    if (step.target.kind === 'player') pendingPlayerDamage += step.damage;
-  }
+  const currentIndex = Math.min(applied, steps.length - 1);
+  const currentStep = steps[currentIndex];
+  const hp = applied === 0 ? hpBefore : steps[applied - 1].hp;
+  const cycle = currentStep?.cycle ?? 1;
+  const phase: CombatDisplay['phase'] = currentStep?.target.kind === 'player' ? 'breakthrough' : 'melee';
 
-  return { defense, ko, pendingPlayerDamage };
+  return { defense, ko, hp, appliedEffects, cycle, phase, complete: applied >= steps.length };
 }

@@ -15,14 +15,16 @@ export function computeMonsterFaceStats(
 ): { stats: MonsterFaceStats; ko: boolean } {
   const { uid, cardId, golden } = card;
   // Référence des couleurs de stats : la base du monstre (doublée s'il est doré), pour que
-  // seul un vrai bonus d'enchantement s'affiche en vert.
+  // seul un vrai bonus d'enchantement OU un buff permanent (E9) s'affiche en vert.
   const base = getBaseMonsterStats(cardId, golden);
-  const effective = getMonsterStats(ownerPlayer, cardId, zone, golden);
+  const effective = getMonsterStats(ownerPlayer, card, zone);
   let defenseValue = effective.defense;
   let defenseTone: MonsterFaceStats['defenseTone'] = effective.defense > base.defense ? 'buffed' : 'base';
   let ko = false;
 
-  if (zone === 'defense' && combatView) {
+  // §6.2 : un attaquant peut désormais aussi encaisser (riposte, E13) et être mis KO, donc
+  // les surcharges de combat s'appliquent dans LES DEUX zones (avant : seulement 'defense').
+  if (combatView) {
     const overridden = combatView.defense.get(uid);
     if (overridden !== undefined) {
       defenseValue = overridden;

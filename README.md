@@ -61,12 +61,40 @@ le détail des décisions. Résumé :
   cumulent) → **marché** : 3 cartes du dessus du deck, achetables, à la main ; les invendus
   retournent au fond du deck → **phase principale** : poser gratuitement autant de cartes que
   voulu → **combat automatique**.
-- **Combat** : les monstres de la zone d'attaque du joueur actif frappent, de gauche à droite,
-  le monstre de la zone de défense adverse le plus à gauche encore debout (même « gauche »
-  des deux côtés de l'écran, pas de miroir) ; sans défenseur, l'attaque touche directement les
-  PV (20 PV de départ, 0 PV = défaite).
+- **Combat** (voir `PLAN-effets-triggers.md` §1bis pour le détail des décisions E13-E17) : les
+  monstres de la zone d'attaque du joueur actif frappent, de gauche à droite, le monstre de la
+  zone de défense adverse le plus à gauche encore debout (même « gauche » des deux côtés de
+  l'écran, pas de miroir) — le défenseur ciblé **riposte** aussitôt sur l'attaquant, à hauteur
+  de sa propre attaque effective ; les deux dégâts sont simultanés (un défenseur mis KO par le
+  coup riposte quand même). Tant qu'il reste un attaquant **et** un défenseur debout, un
+  nouveau **cycle** démarre : chaque attaquant encore debout refrappe le défenseur debout le
+  plus à gauche. Un monstre mis KO par un coup ou une riposte reste sur le board (aucun dégât
+  ne persiste d'un combat à l'autre, H1) mais n'attaque/n'est plus ciblé jusqu'à la fin du
+  combat. Quand tous les défenseurs adverses sont tombés (ou qu'il n'y en avait aucun), chaque
+  attaquant encore debout **perce** jusqu'au héros adverse, une fois chacun (y compris ceux qui
+  avaient déjà frappé dans le cycle en cours) — 20 PV de départ, 0 PV = défaite immédiate, plus
+  aucun effet ni coup n'est résolu ensuite. L'attaque effective d'un monstre vaut toujours au
+  moins 1 ; un cycle qui n'inflige aucun dégât à personne (des deux côtés) termine le combat
+  sur un **combat nul** (pas de percée, PV inchangés) — un filet de sécurité
+  (`MAX_COMBAT_CYCLES`) fait de même si un combat s'éternisait.
 - Les enchantements posés appliquent un effet permanent à **tout le board de leur
   propriétaire** (`getMonsterStats` dans `rules.ts`) tant qu'ils restent en jeu.
+- **Capacités** (voir `PLAN-effets-triggers.md` pour le détail des décisions E1-E12) : certaines
+  cartes ont une ou plusieurs capacités = un déclencheur (`Trigger` dans `types.ts`) → un effet
+  (`AbilityEffect`), résolu immédiatement et sans chaîne (aucun effet de la v1 ne pose, ne vend
+  ni ne met KO une carte). Déclencheurs : `summon` (la carte rejoint le board, action `place`),
+  `attack` (elle attaque, à chaque coup porté), `defend` (elle est ciblée par une attaque, à
+  chaque coup reçu), `ko` (sa défense tombe à 0 pendant un combat, une seule fois par combat),
+  `sold` (elle est vendue, action `sell`). Dans un même échange, l'ordre est : Attaque de
+  l'attaquant → Défend du défenseur ciblé → dégâts simultanés → KO du défenseur puis KO de
+  l'attaquant s'ils viennent de tomber. Effets disponibles : gain de pièces, dégâts ou soin
+  (plafonné à 20 PV) sur un héros, pioche, buff permanent (sur soi ou sur les autres monstres du
+  même propriétaire, cumulable, perdu si la carte quitte le board), bonus de dégâts (Attaque
+  seulement) et bouclier (Défend seulement, peut absorber un coup entièrement). Pour ajouter une
+  capacité à une carte, éditer son `abilities` dans `CARD_CATALOG` (`src/game/cards.ts`) ;
+  `isAbilityAllowed` vérifie qu'elle respecte les règles (bonus/bouclier sur le bon
+  déclencheur, pas de déclencheur de combat sur un enchantement, valeurs ≥ 1). Un joueur voit un
+  petit toast pour chaque capacité déclenchée (les siennes et celles de l'adversaire).
 - **Poser une carte** : glisser-déposer une carte de sa main sur un emplacement libre de la
   bonne zone (les emplacements légaux s'allument pendant le glisser).
 - **Fusion dorée** : quand on fait glisser une carte monstre alors que 2 exemplaires
@@ -84,16 +112,20 @@ le détail des décisions. Résumé :
   définitivement du board vers une pile de défausse (jamais remélangée au deck) et rapporte
   1 pièce (action `sell` dans `rules.ts`).
 
-Plusieurs points sont des **hypothèses par défaut**, marquées `// Hn` dans le code (H1 à H10 —
-voir le plan) : entre autres, aucun dégât ne persiste sur un monstre d'un combat à l'autre
-(défense pleinement régénérée), les dégâts excédentaires sont perdus, le défenseur ne riposte
-jamais. Un risque connu : deux défenses assez solides peuvent bloquer la partie indéfiniment
-(backlog, non traité).
+Plusieurs points sont des **hypothèses par défaut**, marquées `// Hn` (H1 à H12,
+`PLAN-tcg-proto-regles-v1.md`) puis `// En` (E1 à E17, `PLAN-effets-triggers.md`) dans le code :
+entre autres, aucun dégât ne persiste sur un monstre d'un combat à l'autre (défense pleinement
+régénérée), les dégâts excédentaires sont perdus. H8 (« le défenseur ne riposte jamais ») a été
+remplacée par E13 (riposte systématique). Un risque connu : deux camps qui ne peuvent plus
+s'infliger de dégâts (combat nul répété) peuvent bloquer la partie indéfiniment (backlog, non
+traité).
 
-- `src/game/rules.ts` : logique de jeu (`createInitialState`, `applyAction`, `resolveCombat`).
-  Module pur, sans dépendance réseau ni React — modifiable et testable indépendamment du reste.
-- `src/game/cards.ts` : catalogue des cartes (`CARD_CATALOG`) et composition du deck de départ
-  (`STARTER_COUNTS`) — c'est le seul endroit à modifier pour changer une carte ou un deck.
+- `src/game/rules.ts` : logique de jeu (`createInitialState`, `applyAction`, `resolveCombat`,
+  moteur des capacités déclenchées `fireTrigger`). Module pur, sans dépendance réseau ni React —
+  modifiable et testable indépendamment du reste.
+- `src/game/cards.ts` : catalogue des cartes (`CARD_CATALOG`, avec leurs `abilities`) et
+  composition du deck de départ (`STARTER_COUNTS`) — c'est le seul endroit à modifier pour
+  changer une carte, sa capacité ou un deck.
 
 Les tests correspondants sont dans `src/game/rules.test.ts` et
 `src/scene/combatPlayback.test.ts` (`npm run test`).

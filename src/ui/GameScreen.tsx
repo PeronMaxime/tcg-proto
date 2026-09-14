@@ -1,8 +1,8 @@
 import { Canvas } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getCardDef, isMonster } from '../game/cards';
+import { describeAbility, getCardDef, isMonster } from '../game/cards';
 import { isActionLegal } from '../game/rules';
-import type { CardInstance, GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
+import type { CardInstance, EffectLog, GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
 import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, rematch, sendAction } from '../net/rooms';
 import Board, { type DragState } from '../scene/Board';
 import { computeMonsterFaceStats } from '../scene/cardFaceStats';
@@ -72,6 +72,18 @@ function PlayerPlate({
   );
 }
 
+interface EffectToast {
+  key: number;
+  text: string;
+  mine: boolean;
+}
+
+function combatBannerText(cycle: number, phase: 'melee' | 'breakthrough', stalemate: boolean, complete: boolean): string {
+  if (stalemate && complete) return 'Combat nul';
+  if (phase === 'breakthrough') return 'Percée !';
+  return cycle > 1 ? `Combat · cycle ${cycle}` : 'Combat !';
+}
+
 function phaseLabel(isMyTurn: boolean, playing: boolean, phase: string, turnNumber: number): string {
   if (playing) return 'Combat…';
   if (isMyTurn) {
@@ -125,10 +137,62 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const [zoomedUid, setZoomedUid] = useState<string | null>(null);
   const [turnBanner, setTurnBanner] = useState<{ seat: Seat; coinsGained: number; key: number } | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
+  const [effectToasts, setEffectToasts] = useState<EffectToast[]>([]);
   const lastHandledTurnEventId = useRef<number | undefined>(undefined);
   const lastAutoBeginTurnEventSeq = useRef<number | null>(null);
+  const lastHandledEffectsEventId = useRef<number | undefined>(undefined);
+  const combatEffectsSeenRef = useRef(0);
+  const toastIdRef = useRef(0);
 
   const { playing, combatView, activeStep, displayedHp } = useCombatPlayback(state);
+
+  // Fil d'effets (§6.3) : un toast par effet de capacité résolu, ~2,5 s. Sources : les
+  // `effects` d'un nouvel évènement `place`/`sell`, et les `appliedEffects` du combat au fil
+  // de la lecture (`combatView` se recalcule à chaque frame pendant la lecture).
+  function pushEffectToasts(effects: EffectLog[]) {
+    if (effects.length === 0) return;
+    const toasts: EffectToast[] = effects.map((effect) => ({
+      key: toastIdRef.current++,
+      text: `${getCardDef(effect.cardId).name} — ${describeAbility({ trigger: effect.trigger, effect: effect.effect })}`,
+      mine: effect.seat === seat,
+    }));
+    setEffectToasts((prev) => [...prev, ...toasts]);
+    for (const toast of toasts) {
+      setTimeout(() => setEffectToasts((prev) => prev.filter((t) => t.key !== toast.key)), 2500);
+    }
+  }
+
+  // Effets de `place`/`sell`, sur un nouvel évènement (même garde que la bannière de tour :
+  // au premier rendu, on mémorise sans rejouer, sinon un rafraîchissement rejouerait tout).
+  useEffect(() => {
+    const event = state.lastEvent;
+    const currentId = event?.id ?? 0;
+    if (lastHandledEffectsEventId.current === undefined) {
+      lastHandledEffectsEventId.current = currentId;
+      return;
+    }
+    if (currentId === lastHandledEffectsEventId.current) return;
+    lastHandledEffectsEventId.current = currentId;
+
+    if ((event?.type === 'place' || event?.type === 'sell') && event.effects.length > 0) {
+      pushEffectToasts(event.effects);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.lastEvent]);
+
+  // Effets appliqués au fil du combat : `combatView` grandit à chaque frame de lecture.
+  useEffect(() => {
+    if (!combatView) {
+      combatEffectsSeenRef.current = 0;
+      return;
+    }
+    const seen = combatEffectsSeenRef.current;
+    if (combatView.appliedEffects.length > seen) {
+      pushEffectToasts(combatView.appliedEffects.slice(seen));
+      combatEffectsSeenRef.current = combatView.appliedEffects.length;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [combatView]);
 
   const isMyTurn = state.turn === seat;
   const interactive = isMyTurn && !playing && !state.winner;
@@ -392,7 +456,21 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             </div>
           )}
 
-          {playing && <div className="combat-banner">Combat !</div>}
+          {playing && combatView && (
+            <div className="combat-banner">
+              {combatBannerText(combatView.cycle, combatView.phase, combatView.stalemate, combatView.complete)}
+            </div>
+          )}
+
+          {effectToasts.length > 0 && (
+            <div className="effect-toasts">
+              {effectToasts.map((toast) => (
+                <div key={toast.key} className={`effect-toast ${toast.mine ? 'mine' : 'theirs'}`}>
+                  {toast.text}
+                </div>
+              ))}
+            </div>
+          )}
 
           {turnBanner && (
             <div className={`turn-banner ${turnBanner.seat === seat ? 'mine' : 'theirs'}`}>

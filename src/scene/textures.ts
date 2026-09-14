@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { describeEffect } from '../game/cards';
+import { describeAbility, describeEffect } from '../game/cards';
 import type { CardDef } from '../game/types';
 import { theme } from './theme';
 
@@ -92,6 +92,34 @@ function wrapText(
   lines.forEach((line, i) => ctx.fillText(line, centerX, startY + i * lineHeight));
 }
 
+// Pavé semi-transparent listant les capacités d'une carte (§6.1), une ligne par capacité.
+// Rien n'est dessiné si `texts` est vide : les cartes sans capacité gardent exactement leur
+// rendu d'avant PLAN-effets-triggers.md.
+function drawAbilitiesBox(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  texts: string[],
+  top: number,
+  bottom: number,
+): void {
+  if (texts.length === 0) return;
+  const lineHeight = 22;
+  const boxPadding = 10;
+  const boxHeight = Math.min(bottom - top, texts.length * lineHeight + boxPadding * 2);
+
+  roundedRectPath(ctx, 16, top, w - 32, boxHeight, 10);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.fill();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '18px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const startY = top + boxHeight / 2 - ((texts.length - 1) * lineHeight) / 2;
+  texts.forEach((text, i) => ctx.fillText(text, w / 2, startY + i * lineHeight, w - 56));
+  ctx.textBaseline = 'alphabetic';
+}
+
 function makeTexture(draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = TEXTURE_WIDTH;
@@ -162,6 +190,9 @@ export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null)
 
       ctx.font = '20px system-ui, sans-serif';
       wrapText(ctx, describeEffect(def.effect), w / 2, h / 2 + 30, w - 60, 26);
+
+      // Capacités (déclencheur → effet) sous le texte de l'effet permanent (§6.1).
+      drawAbilitiesBox(ctx, w, (def.abilities ?? []).map(describeAbility), 300, h - 16);
       return;
     }
 
@@ -187,6 +218,9 @@ export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null)
     }
 
     drawBadge(ctx, 38, 38, def.cost, theme.colors.coinBadge, '#000000');
+
+    // Capacités (déclencheur → effet), entre le bandeau du nom et les badges de stats (§6.1).
+    drawAbilitiesBox(ctx, w, (def.abilities ?? []).map(describeAbility), 145, 335);
 
     const attack = stats?.attack ?? def.attack;
     const defense = stats?.defense ?? def.defense;
