@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react';
+import type * as THREE from 'three';
 import { getCardDef, isMonster } from '../game/cards';
-import { isActionLegal, opponentOf, ZONE_SIZES } from '../game/rules';
-import type { GameState, MonsterZone, Seat, Zone } from '../game/types';
+import { getBaseMonsterStats, isActionLegal, opponentOf, ZONE_SIZES } from '../game/rules';
+import type { CardInstance, GameState, MonsterZone, Seat, Zone } from '../game/types';
 import type { ActiveCombatStep, CombatView } from '../ui/useCombatPlayback';
 import { computeMonsterFaceStats } from './cardFaceStats';
 import type { AttackTrigger, HaloKind } from './Card';
 import Card from './Card';
+import DragController, { type DropTarget } from './DragController';
 import Hero from './Hero';
 import {
   deckPose,
@@ -24,19 +26,26 @@ import type { MonsterFaceStats } from './textures';
 // zone garde son identité React (key = uid) et vole vers sa nouvelle pose au lieu de se
 // démonter/remonter.
 
+export interface DragState {
+  uid: string;
+  start: { x: number; y: number };
+}
+
 interface BoardProps {
   state: GameState;
   seat: Seat;
   interactive: boolean; // mon tour, aucun combat en lecture, pas de gagnant
-  selectedHandUid: string | null;
+  drag: DragState | null; // carte de ma main en cours de glisser-déposer
+  dropTarget: DropTarget | null;
   combatView: CombatView | null; // surcharges d'affichage pendant la lecture (§7)
   activeStep: ActiveCombatStep | null; // coup en cours de fente (§7)
   displayedHp: Record<Seat, number>; // PV affichés pendant la lecture (§7.3)
   onBuy: (uid: string) => void;
-  onSelectHandCard: (uid: string | null) => void;
-  onPlace: (zone: Zone, slot: number) => void;
+  onDragStart: (uid: string, clientX: number, clientY: number) => void;
+  onDragHover: (target: DropTarget | null) => void;
+  onDrop: (target: DropTarget | null) => void;
+  isOverFusionZone: (clientX: number, clientY: number) => boolean;
   onZoomCard: (uid: string) => void;
-  onDeselect: () => void;
 }
 
 interface RenderEntry {
@@ -51,6 +60,16 @@ interface RenderEntry {
   hoverable: boolean;
   clickable: boolean;
   onSelect?: () => void;
+  onDragStart?: (clientX: number, clientY: number) => void;
+}
+
+// Stats affichées d'une carte hors du board (main, marché, animations) : base du monstre,
+// doublée s'il est doré, sans enchantements.
+function unplacedStats(card: CardInstance): MonsterFaceStats | null {
+  if (!isMonster(getCardDef(card.cardId))) return null;
+  const golden = card.golden === true;
+  const base = getBaseMonsterStats(card.cardId, golden);
+  return { ...base, attackTone: 'base', defenseTone: 'base', golden };
 }
 
 function DeckPile({ pose, count, color }: { pose: Pose; count: number; color: string }) {
@@ -71,47 +90,49 @@ function Board({
   state,
   seat,
   interactive,
-  selectedHandUid,
+  drag,
+  dropTarget,
   combatView,
   activeStep,
   displayedHp,
   onBuy,
-  onSelectHandCard,
-  onPlace,
+  onDragStart,
+  onDragHover,
+  onDrop,
+  isOverFusionZone,
   onZoomCard,
-  onDeselect,
 }: BoardProps) {
   const opponentSeat: Seat = opponentOf(seat);
   const me = state.players[seat];
   const opponent = state.players[opponentSeat];
 
   const seenUidsRef = useRef<Set<string> | null>(null);
+  const dragWorldRef = useRef<THREE.Vector3 | null>(null);
   const entries: RenderEntry[] = [];
   const zonePositionByUid = new Map<string, [number, number, number]>();
 
   // --- Ma main ---
+  const canDrag = interactive && state.phase === 'main';
   for (const [index, card] of me.hand.entries()) {
     const def = getCardDef(card.cardId);
-    const stats: MonsterFaceStats | null = isMonster(def)
-      ? { attack: def.attack, defense: def.defense, attackTone: 'base', defenseTone: 'base', golden: false }
-      : null;
     const hasLegalSlot = isMonster(def)
       ? me.zones.attack.some((s) => s === null) || me.zones.defense.some((s) => s === null)
       : me.zones.enchant.some((s) => s === null);
-    const playable = interactive && state.phase === 'main' && hasLegalSlot;
-    const selected = card.uid === selectedHandUid;
+    const fusable = isActionLegal(state, seat, { type: 'fuse', uid: card.uid });
+    const playable = canDrag && (hasLegalSlot || fusable);
+    const dragged = card.uid === drag?.uid;
     entries.push({
       uid: card.uid,
       cardId: card.cardId,
-      stats,
+      stats: unplacedStats(card),
       ko: false,
       pose: handCardPose(index, me.hand.length, true),
       hidden: false,
       mine: true,
-      halo: selected ? 'selected' : playable ? 'playable' : 'none',
-      hoverable: true,
-      clickable: interactive && state.phase === 'main',
-      onSelect: () => onSelectHandCard(selected ? null : card.uid),
+      halo: dragged ? 'selected' : playable ? 'playable' : 'none',
+      hoverable: !drag,
+      clickable: false,
+      onDragStart: canDrag ? (x, y) => onDragStart(card.uid, x, y) : undefined,
     });
   }
 
@@ -131,23 +152,20 @@ function Board({
     });
   }
 
-  // --- Marché du joueur actif, visible des deux côtés (H4) ---
+  // --- Marché du joueur actif : face visible pour lui seul, face cachée chez l'adversaire
+  // (demande utilisateur, remplace H4 qui le montrait aux deux joueurs) ---
   const activePlayer = state.players[state.turn];
   for (const [index, card] of activePlayer.market.entries()) {
-    const def = getCardDef(card.cardId);
-    const stats: MonsterFaceStats | null = isMonster(def)
-      ? { attack: def.attack, defense: def.defense, attackTone: 'base', defenseTone: 'base', golden: false }
-      : null;
     const mine = state.turn === seat;
     const buyable =
       interactive && mine && state.phase === 'market' && isActionLegal(state, seat, { type: 'buy', uid: card.uid });
     entries.push({
       uid: card.uid,
       cardId: card.cardId,
-      stats,
+      stats: mine ? unplacedStats(card) : null,
       ko: false,
       pose: marketCardPose(index, activePlayer.market.length, mine),
-      hidden: false,
+      hidden: !mine,
       mine,
       halo: buyable ? 'playable' : 'none',
       hoverable: false,
@@ -249,35 +267,31 @@ function Board({
     }
   }
 
-  // --- Fusion dorée : les 2 exemplaires absorbés volent vers le monstre doré et
-  // rétrécissent sous lui (ils sont déjà en défausse dans l'état) ---
-  if (state.lastEvent?.type === 'place' && state.lastEvent.fusedUids?.length) {
-    const { seat: owner, zone, slot } = state.lastEvent;
+  // --- Fusion dorée : les 2 exemplaires absorbés quittent le board et se fondent dans la
+  // carte devenue dorée, dans la main (ils sont déjà en défausse dans l'état) ---
+  if (state.lastEvent?.type === 'fuse') {
+    const { seat: owner, uid: goldenUid, fusedUids } = state.lastEvent;
     const ownerPlayer = state.players[owner];
     const mine = owner === seat;
-    const goldenPose = slotPose(zone, slot, mine);
-    for (const uid of state.lastEvent.fusedUids) {
-      const card = ownerPlayer.discard.find((c) => c.uid === uid);
-      if (!card) continue;
-      const def = getCardDef(card.cardId);
-      entries.push({
-        uid: card.uid,
-        cardId: card.cardId,
-        stats: isMonster(def)
-          ? { attack: def.attack, defense: def.defense, attackTone: 'base', defenseTone: 'base', golden: false }
-          : null,
-        ko: false,
-        pose: {
-          ...goldenPose,
-          position: [goldenPose.position[0], goldenPose.position[1] - 0.02, goldenPose.position[2]],
-          scale: goldenPose.scale * 0.3,
-        },
-        hidden: false,
-        mine,
-        halo: 'none',
-        hoverable: false,
-        clickable: false,
-      });
+    const handIndex = ownerPlayer.hand.findIndex((c) => c.uid === goldenUid);
+    if (handIndex !== -1) {
+      const goldenPose = handCardPose(handIndex, ownerPlayer.hand.length, mine);
+      for (const uid of fusedUids) {
+        const card = ownerPlayer.discard.find((c) => c.uid === uid);
+        if (!card) continue;
+        entries.push({
+          uid: card.uid,
+          cardId: card.cardId,
+          stats: unplacedStats(card),
+          ko: false,
+          pose: { ...goldenPose, scale: goldenPose.scale * 0.05 },
+          hidden: false,
+          mine,
+          halo: 'none',
+          hoverable: false,
+          clickable: false,
+        });
+      }
     }
   }
 
@@ -310,20 +324,15 @@ function Board({
     };
   }
 
+  const isLegalSlot = (zone: Zone, slot: number) =>
+    drag !== null && isActionLegal(state, seat, { type: 'place', uid: drag.uid, zone, slot });
+
   return (
     <>
       <ambientLight intensity={0.7} />
       <directionalLight position={[3, 8, 4]} intensity={1.1} castShadow />
 
-      <mesh
-        position={[0, -0.06, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        receiveShadow
-        onClick={(e) => {
-          e.stopPropagation();
-          onDeselect();
-        }}
-      >
+      <mesh position={[0, -0.06, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[14, 12]} />
         <meshStandardMaterial color={theme.colors.tableTop} />
       </mesh>
@@ -332,20 +341,16 @@ function Board({
         const mine = owner === seat;
         const size = ZONE_SIZES[zone];
         return Array.from({ length: size }, (_, index) => {
-          const occupied = state.players[owner].zones[zone][index] !== null;
-          const legal =
-            mine &&
-            interactive &&
-            selectedHandUid !== null &&
-            isActionLegal(state, seat, { type: 'place', uid: selectedHandUid, zone, slot: index });
+          const legal = mine && interactive && isLegalSlot(zone, index);
+          const hovered =
+            legal && dropTarget?.kind === 'slot' && dropTarget.zone === zone && dropTarget.slot === index;
           return (
             <Slot
               key={`${owner}-${zone}-${index}`}
               pose={slotPose(zone, index, mine)}
               zone={zone}
               highlighted={legal}
-              clickable={legal && !occupied}
-              onSelect={() => onPlace(zone, index)}
+              hovered={hovered}
             />
           );
         });
@@ -384,9 +389,23 @@ function Board({
           hoverable={entry.hoverable}
           clickable={entry.clickable}
           attackTrigger={attackTrigger?.attackerUid === entry.uid ? attackTrigger.trigger : null}
+          dragWorldRef={entry.uid === drag?.uid ? dragWorldRef : undefined}
           onSelect={entry.onSelect}
+          onDragStart={entry.onDragStart}
         />
       ))}
+
+      {drag && (
+        <DragController
+          key={drag.uid}
+          start={drag.start}
+          dragWorldRef={dragWorldRef}
+          isLegalSlot={isLegalSlot}
+          isOverFusionZone={isOverFusionZone}
+          onHover={onDragHover}
+          onDrop={onDrop}
+        />
+      )}
     </>
   );
 }

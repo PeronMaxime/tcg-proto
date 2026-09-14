@@ -16,13 +16,14 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 3;
+export const RULES_VERSION = 4;
 export const STARTING_HP = 20;
 export const MARKET_SIZE = 3;
 export const ZONE_SIZES: Record<Zone, number> = { attack: 5, defense: 5, enchant: 3 };
-// Fusion dorée (ajoutée à la demande de l'utilisateur) : poser le FUSION_COUNT-ième
-// exemplaire normal d'un même monstre sur son board fusionne les trois en un monstre doré,
-// dont les stats de base sont multipliées par GOLDEN_MULTIPLIER.
+// Fusion dorée (ajoutée à la demande de l'utilisateur) : une carte en main fusionne avec
+// FUSION_COUNT - 1 exemplaires normaux du même monstre posés sur le board de son
+// propriétaire (action `fuse`) ; elle devient un monstre doré, dont les stats de base sont
+// multipliées par GOLDEN_MULTIPLIER.
 export const FUSION_COUNT = 3;
 export const GOLDEN_MULTIPLIER = 2;
 
@@ -109,6 +110,18 @@ export function getMonsterStats(
   return { attack, defense };
 }
 
+// Exemplaires posés (attaque puis défense, de gauche à droite) avec lesquels `card` peut
+// fusionner : même monstre, non dorés, sur le board de `player`.
+function fusionPartners(player: PlayerState, card: CardInstance): { zone: MonsterZone; slot: number }[] {
+  const partners: { zone: MonsterZone; slot: number }[] = [];
+  for (const zone of ['attack', 'defense'] as MonsterZone[]) {
+    player.zones[zone].forEach((s, slot) => {
+      if (s && s.cardId === card.cardId && !s.golden) partners.push({ zone, slot });
+    });
+  }
+  return partners;
+}
+
 function coinsPerTurnBonus(player: PlayerState): number {
   let bonus = 0;
   for (const slot of player.zones.enchant) {
@@ -154,6 +167,15 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
       const def = getCardDef(card.cardId);
       if (action.zone === 'enchant') return def.kind === 'enchantment';
       return def.kind === 'monster';
+    }
+
+    case 'fuse': {
+      // Ne demande pas d'emplacement libre : la carte dorée reste en main, à reposer ensuite
+      // (on peut donc fusionner même avec un board plein).
+      if (state.phase !== 'main') return false;
+      const card = player.hand.find((c) => c.uid === action.uid);
+      if (!card || card.golden || !isMonster(getCardDef(card.cardId))) return false;
+      return fusionPartners(player, card).length >= FUSION_COUNT - 1;
     }
 
     case 'sell':
@@ -213,35 +235,24 @@ function applyPlace(next: GameState, seat: Seat, uid: string, zone: Zone, slot: 
   // tour — `place` ne fait qu'écrire dans `zones`, et `resolveCombat` (plus bas) lit l'état
   // des zones tel qu'il est au moment de l'appel, donc juste après la phase principale.
   player.zones[zone][slot] = card;
-  const fusedUids = applyFusion(player, card);
-  next.lastEvent = { id: next.eventSeq, type: 'place', seat, uid, zone, slot, fusedUids };
+  next.lastEvent = { id: next.eventSeq, type: 'place', seat, uid, zone, slot };
 }
 
-// Fusion dorée : si la carte qui vient d'être posée est le 3e exemplaire normal (non doré)
-// du même monstre sur le board de son propriétaire (attaque + défense confondues), elle
-// devient dorée à son emplacement et absorbe les deux autres, qui partent en défausse (le
-// total de 50 cartes par joueur reste donc intact). Un monstre doré ne fusionne plus.
-// Renvoie les uids absorbés (vide si pas de fusion).
-function applyFusion(player: PlayerState, placed: CardInstance): string[] {
-  if (placed.golden || !isMonster(getCardDef(placed.cardId))) return [];
-
-  const others: { zone: MonsterZone; slot: number }[] = [];
-  for (const zone of ['attack', 'defense'] as MonsterZone[]) {
-    player.zones[zone].forEach((s, slot) => {
-      if (s && s.uid !== placed.uid && s.cardId === placed.cardId && !s.golden) others.push({ zone, slot });
-    });
-  }
-  if (others.length < FUSION_COUNT - 1) return [];
-
+// Fusion dorée : la carte en main devient dorée (elle reste en main) et absorbe les
+// FUSION_COUNT - 1 premiers exemplaires posés, qui partent en défausse (le total de 50
+// cartes par joueur reste donc intact). Un monstre doré ne fusionne plus.
+function applyFuse(next: GameState, seat: Seat, uid: string): void {
+  const player = next.players[seat];
+  const card = player.hand.find((c) => c.uid === uid)!;
   const fusedUids: string[] = [];
-  for (const { zone, slot } of others.slice(0, FUSION_COUNT - 1)) {
+  for (const { zone, slot } of fusionPartners(player, card).slice(0, FUSION_COUNT - 1)) {
     const absorbed = player.zones[zone][slot]!;
     player.zones[zone][slot] = null;
     player.discard.push(absorbed);
     fusedUids.push(absorbed.uid);
   }
-  placed.golden = true;
-  return fusedUids;
+  card.golden = true;
+  next.lastEvent = { id: next.eventSeq, type: 'fuse', seat, uid, fusedUids };
 }
 
 // Vente d'une carte posée : elle quitte son emplacement, rejoint la défausse (jamais
@@ -345,6 +356,9 @@ export function applyAction(state: GameState, seat: Seat, action: Action): GameS
       break;
     case 'place':
       applyPlace(next, seat, action.uid, action.zone, action.slot);
+      break;
+    case 'fuse':
+      applyFuse(next, seat, action.uid);
       break;
     case 'sell':
       applySell(next, seat, action.uid);

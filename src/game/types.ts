@@ -30,8 +30,8 @@ export type CardDef = MonsterDef | EnchantmentDef;
 export interface CardInstance {
   uid: string; // unique dans la partie, stable : c'est la key React de la carte
   cardId: string;
-  // Monstre doré, issu de la fusion de 3 exemplaires posés (voir `applyPlace`). Absent (et
-  // jamais `false`/`undefined` explicite) sur une carte normale.
+  // Monstre doré, issu de la fusion d'une carte en main avec 2 exemplaires posés (action
+  // `fuse`). Absent (et jamais `false`/`undefined` explicite) sur une carte normale.
   golden?: true;
 }
 
@@ -53,6 +53,7 @@ export type Action =
   | { type: 'buy'; uid: string }
   | { type: 'endMarket' }
   | { type: 'place'; uid: string; zone: Zone; slot: number }
+  | { type: 'fuse'; uid: string } // uid : la carte en main qui devient dorée
   | { type: 'sell'; uid: string }
   | { type: 'endTurn' };
 
@@ -70,9 +71,9 @@ export type GameEvent =
   | { id: number; type: 'turnStart'; seat: Seat; coinsGained: number }
   | { id: number; type: 'buy'; seat: Seat; uid: string }
   | { id: number; type: 'marketEnd'; seat: Seat; returnedUids: string[] }
-  // `fusedUids` : les 2 exemplaires absorbés si la pose a déclenché une fusion dorée
-  // (la carte posée devient alors le monstre doré), sinon tableau vide.
-  | { id: number; type: 'place'; seat: Seat; uid: string; zone: Zone; slot: number; fusedUids: string[] }
+  | { id: number; type: 'place'; seat: Seat; uid: string; zone: Zone; slot: number }
+  // `uid` : la carte en main devenue dorée ; `fusedUids` : les 2 exemplaires absorbés.
+  | { id: number; type: 'fuse'; seat: Seat; uid: string; fusedUids: string[] }
   | { id: number; type: 'sell'; seat: Seat; uid: string; zone: Zone; slot: number }
   | { id: number; type: 'combat'; seat: Seat; steps: CombatStep[] };
 

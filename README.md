@@ -67,11 +67,17 @@ le détail des décisions. Résumé :
   PV (20 PV de départ, 0 PV = défaite).
 - Les enchantements posés appliquent un effet permanent à **tout le board de leur
   propriétaire** (`getMonsterStats` dans `rules.ts`) tant qu'ils restent en jeu.
-- **Fusion dorée** : poser un 3e exemplaire (non doré) d'un même monstre sur son board
-  (attaque + défense confondues) fusionne les trois : la carte posée devient un **monstre
-  doré** à son emplacement, avec attaque et défense de base doublées (les bonus
-  d'enchantement s'ajoutent ensuite, sans être doublés) ; les deux autres partent en
-  défausse. Un monstre doré ne fusionne plus (`applyFusion` dans `rules.ts`).
+- **Poser une carte** : glisser-déposer une carte de sa main sur un emplacement libre de la
+  bonne zone (les emplacements légaux s'allument pendant le glisser).
+- **Fusion dorée** : quand on fait glisser une carte monstre alors que 2 exemplaires
+  normaux (non dorés) du même monstre sont posés sur son board (attaque + défense
+  confondues), une zone de fusion apparaît au milieu de l'écran. Relâcher la carte dedans
+  envoie les 2 exemplaires posés en défausse et transforme la carte en **monstre doré**, qui
+  reste en main et se repose ensuite comme une autre carte — la fusion marche donc même
+  avec un board plein. Un monstre doré a son attaque et sa défense de base doublées (les
+  bonus d'enchantement s'ajoutent ensuite, sans être doublés) et ne fusionne plus (action
+  `fuse` dans `rules.ts`).
+- **Marché** : seul le joueur actif voit ses cartes ; l'adversaire les voit face cachée.
 - **Vendre une carte posée** (clic sur la carte → zoom → bouton « Vendre ») la retire
   définitivement du board vers une pile de défausse (jamais remélangée au deck) et rapporte
   1 pièce (action `sell` dans `rules.ts`).
@@ -95,8 +101,8 @@ Les tests correspondants sont dans `src/game/rules.test.ts` et
 Ce prototype privilégie la vitesse de développement, pas la robustesse :
 - les règles Firestore sont **ouvertes** (`allow read, write: if true`) : n'importe qui
   connaissant un code de room peut lire ou écrire son document ;
-- le marché est volontairement visible des deux joueurs (H4) ; la main adverse et le marché
-  restent de toute façon **techniquement lisibles** par quiconque inspecte le trafic réseau ou
+- le marché adverse et la main adverse sont affichés face cachée, mais restent
+  **techniquement lisibles** par quiconque inspecte le trafic réseau ou
   le `localStorage` (pas de dissimulation côté serveur) ;
 - il n'y a **pas d'autorité serveur** : le client dont c'est le tour calcule et écrit l'état,
   donc pas de protection anti-triche ;

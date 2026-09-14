@@ -47,7 +47,7 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
 
 function baseState(overrides: Partial<GameState> = {}): GameState {
   return {
-    rulesVersion: 3,
+    rulesVersion: 4,
     turn: 'p1',
     phase: 'main',
     turnNumber: 1,
@@ -97,7 +97,7 @@ describe('createInitialState', () => {
     expect(state.phase).toBe('start');
     expect(state.turn).toBe('p1');
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(3);
+    expect(state.rulesVersion).toBe(4);
   });
 
   it('est déterministe pour une même graine', () => {
@@ -298,55 +298,95 @@ describe('applyAction - place', () => {
 });
 
 describe('fusion dorée', () => {
-  it('le 3e exemplaire posé devient doré à son emplacement, les 2 autres partent en défausse', () => {
+  it('la carte en main devient dorée et reste en main, les 2 exemplaires posés partent en défausse', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
     state.players.p1.zones.defense[3] = makeCard('wolf', 'w2');
+    state.players.p1.hand = [makeCard('squire', 's1'), makeCard('wolf', 'w3')];
+
+    const next = applyAction(state, 'p1', { type: 'fuse', uid: 'w3' })!;
+
+    const p1 = next.players.p1;
+    expect(p1.hand).toEqual([makeCard('squire', 's1'), { uid: 'w3', cardId: 'wolf', golden: true }]);
+    expect(p1.zones.attack[0]).toBeNull();
+    expect(p1.zones.defense[3]).toBeNull();
+    expect(p1.discard.map((c) => c.uid)).toEqual(['w1', 'w2']);
+    expect(next.lastEvent).toEqual({ id: 1, type: 'fuse', seat: 'p1', uid: 'w3', fusedUids: ['w1', 'w2'] });
+  });
+
+  it('fonctionne même avec un board plein, puis la carte dorée se repose normalement', () => {
+    const state = baseState({ phase: 'main' });
+    const p1 = state.players.p1;
+    p1.zones.attack = ['wolf', 'wolf', 'squire', 'squire', 'guard'].map((id, i) => makeCard(id, `a${i}`));
+    p1.zones.defense = ['guard', 'guard', 'archer', 'archer', 'knight'].map((id, i) => makeCard(id, `d${i}`));
+    p1.hand = [makeCard('wolf', 'w3')];
+    expect(applyAction(state, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 0 })).toBeNull();
+
+    const fused = applyAction(state, 'p1', { type: 'fuse', uid: 'w3' })!;
+    expect(fused.players.p1.zones.attack[0]).toBeNull();
+    expect(fused.players.p1.zones.attack[1]).toBeNull();
+
+    const placed = applyAction(fused, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 1 })!;
+    expect(placed.players.p1.zones.attack[1]).toEqual({ uid: 'w3', cardId: 'wolf', golden: true });
+    expect(placed.players.p1.hand).toEqual([]);
+  });
+
+  it('absorbe les 2 premiers exemplaires (attaque puis défense, de gauche à droite) s’il y en a plus', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.defense[0] = makeCard('wolf', 'w1');
+    state.players.p1.zones.attack[4] = makeCard('wolf', 'w2');
+    state.players.p1.zones.attack[1] = makeCard('wolf', 'w3');
+    state.players.p1.hand = [makeCard('wolf', 'w4')];
+
+    const next = applyAction(state, 'p1', { type: 'fuse', uid: 'w4' })!;
+
+    expect(next.players.p1.discard.map((c) => c.uid)).toEqual(['w3', 'w2']);
+    expect(next.players.p1.zones.defense[0]?.uid).toBe('w1');
+  });
+
+  it("refuse avec 1 seul exemplaire posé ; ne compte ni les dorés ni ceux de l'adversaire", () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = { uid: 'g1', cardId: 'wolf', golden: true };
+    state.players.p1.zones.attack[1] = makeCard('wolf', 'w1');
+    state.players.p1.zones.attack[2] = makeCard('squire', 's1');
+    state.players.p2.zones.attack[0] = makeCard('wolf', 'x1');
+    state.players.p1.hand = [makeCard('wolf', 'w2')];
+
+    expect(applyAction(state, 'p1', { type: 'fuse', uid: 'w2' })).toBeNull();
+  });
+
+  it('refuse une carte dorée, un enchantement, une carte hors main ou hors phase main', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
+    state.players.p1.zones.attack[1] = makeCard('wolf', 'w2');
+    state.players.p1.zones.enchant[0] = makeCard('banner', 'b1');
+    state.players.p1.zones.enchant[1] = makeCard('banner', 'b2');
+    state.players.p1.hand = [{ uid: 'g1', cardId: 'wolf', golden: true }, makeCard('banner', 'b3')];
+
+    expect(applyAction(state, 'p1', { type: 'fuse', uid: 'g1' })).toBeNull();
+    expect(applyAction(state, 'p1', { type: 'fuse', uid: 'b3' })).toBeNull();
+    expect(applyAction(state, 'p1', { type: 'fuse', uid: 'w1' })).toBeNull();
+
+    const market = baseState({ phase: 'market' });
+    market.players.p1 = structuredClone(state.players.p1);
+    market.players.p1.hand = [makeCard('wolf', 'w3')];
+    expect(applyAction(market, 'p1', { type: 'fuse', uid: 'w3' })).toBeNull();
+  });
+
+  it('poser un 3e exemplaire sur un emplacement ne fusionne pas', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
+    state.players.p1.zones.attack[1] = makeCard('wolf', 'w2');
     state.players.p1.hand = [makeCard('wolf', 'w3')];
 
     const next = applyAction(state, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 2 })!;
 
-    const p1 = next.players.p1;
-    expect(p1.zones.attack[2]).toEqual({ uid: 'w3', cardId: 'wolf', golden: true });
-    expect(p1.zones.attack[0]).toBeNull();
-    expect(p1.zones.defense[3]).toBeNull();
-    expect(p1.discard.map((c) => c.uid)).toEqual(['w1', 'w2']);
-    expect(next.lastEvent).toEqual({
-      id: 1,
-      type: 'place',
-      seat: 'p1',
-      uid: 'w3',
-      zone: 'attack',
-      slot: 2,
-      fusedUids: ['w1', 'w2'],
-    });
-  });
-
-  it('pas de fusion avec seulement 2 exemplaires ni entre monstres différents', () => {
-    const state = baseState({ phase: 'main' });
-    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
-    state.players.p1.zones.attack[1] = makeCard('squire', 's1');
-    state.players.p1.hand = [makeCard('wolf', 'w2')];
-
-    const next = applyAction(state, 'p1', { type: 'place', uid: 'w2', zone: 'attack', slot: 2 })!;
-
-    expect(next.players.p1.zones.attack[2]).toEqual({ uid: 'w2', cardId: 'wolf' });
+    expect(next.players.p1.zones.attack.slice(0, 3)).toEqual([
+      makeCard('wolf', 'w1'),
+      makeCard('wolf', 'w2'),
+      makeCard('wolf', 'w3'),
+    ]);
     expect(next.players.p1.discard).toEqual([]);
-    expect(next.lastEvent).toMatchObject({ type: 'place', fusedUids: [] });
-  });
-
-  it("ne compte ni les monstres dorés ni ceux de l'adversaire", () => {
-    const state = baseState({ phase: 'main' });
-    state.players.p1.zones.attack[0] = { uid: 'g1', cardId: 'wolf', golden: true };
-    state.players.p1.zones.attack[1] = makeCard('wolf', 'w1');
-    state.players.p2.zones.attack[0] = makeCard('wolf', 'x1');
-    state.players.p1.hand = [makeCard('wolf', 'w2')];
-
-    const next = applyAction(state, 'p1', { type: 'place', uid: 'w2', zone: 'attack', slot: 2 })!;
-
-    expect(next.players.p1.zones.attack[2]?.golden).toBeUndefined();
-    expect(next.players.p1.zones.attack[0]?.uid).toBe('g1');
-    expect(next.players.p1.zones.attack[1]?.uid).toBe('w1');
   });
 
   it('un monstre doré a ses stats de base doublées, enchantements ajoutés ensuite', () => {

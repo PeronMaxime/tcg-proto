@@ -1,5 +1,5 @@
 import { useFrame } from '@react-three/fiber';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
 import { getCardDef } from '../game/cards';
 import { handHoverPose, type Pose } from './layout';
@@ -24,10 +24,16 @@ interface CardProps {
   hoverable: boolean;
   clickable: boolean;
   attackTrigger: AttackTrigger | null;
+  // Présent uniquement pour la carte tenue en glisser-déposer : position monde du pointeur
+  // (voir DragController), `null` quand la carte n'est plus tenue.
+  dragWorldRef?: RefObject<THREE.Vector3 | null>;
   onSelect?: () => void;
+  onDragStart?: (clientX: number, clientY: number) => void;
 }
 
 const DAMP_LAMBDA = 10;
+const DRAG_DAMP_LAMBDA = 28; // la carte tenue suit le pointeur de près
+const DRAG_SCALE = 0.8;
 const LUNGE_DURATION = 0.45; // s
 
 function haloColor(kind: HaloKind): string {
@@ -54,7 +60,9 @@ function Card({
   hoverable,
   clickable,
   attackTrigger,
+  dragWorldRef,
   onSelect,
+  onDragStart,
 }: CardProps) {
   const def = getCardDef(cardId);
   const faceTexture = useMemo(() => getCardFaceTexture(def, stats), [def, stats]);
@@ -133,15 +141,21 @@ function Card({
     koAmount.current = THREE.MathUtils.damp(koAmount.current, ko ? 1 : 0, DAMP_LAMBDA, delta);
 
     if (!lunge.current) {
-      const effectivePose = hovered && hoverable ? handHoverPose(pose) : pose;
-      group.position.x = THREE.MathUtils.damp(group.position.x, effectivePose.position[0], DAMP_LAMBDA, delta);
+      const dragPoint = dragWorldRef?.current ?? null;
+      const effectivePose: Pose = dragPoint
+        ? { position: [dragPoint.x, dragPoint.y, dragPoint.z], rotation: [-Math.PI / 2, 0, 0], scale: DRAG_SCALE }
+        : hovered && hoverable
+          ? handHoverPose(pose)
+          : pose;
+      const moveLambda = dragPoint ? DRAG_DAMP_LAMBDA : DAMP_LAMBDA;
+      group.position.x = THREE.MathUtils.damp(group.position.x, effectivePose.position[0], moveLambda, delta);
       group.position.y = THREE.MathUtils.damp(
         group.position.y,
         effectivePose.position[1] - koAmount.current * 0.02,
-        DAMP_LAMBDA,
+        moveLambda,
         delta,
       );
-      group.position.z = THREE.MathUtils.damp(group.position.z, effectivePose.position[2], DAMP_LAMBDA, delta);
+      group.position.z = THREE.MathUtils.damp(group.position.z, effectivePose.position[2], moveLambda, delta);
       group.rotation.x = THREE.MathUtils.damp(group.rotation.x, effectivePose.rotation[0], DAMP_LAMBDA, delta);
       group.rotation.y = THREE.MathUtils.damp(group.rotation.y, effectivePose.rotation[1], DAMP_LAMBDA, delta);
       // KO : la carte pivote d'un quart de tour à plat sur la table (portrait → paysage,
@@ -218,12 +232,22 @@ function Card({
         e.stopPropagation();
         onSelect?.();
       }}
+      onPointerDown={(e) => {
+        if (!onDragStart || e.nativeEvent.button !== 0) return;
+        e.stopPropagation();
+        setHovered(false);
+        onDragStart(e.nativeEvent.clientX, e.nativeEvent.clientY);
+      }}
       onPointerOver={(e) => {
         if (!hoverable) return;
         e.stopPropagation();
         setHovered(true);
+        if (onDragStart) document.body.style.cursor = 'grab';
       }}
-      onPointerOut={() => setHovered(false)}
+      onPointerOut={() => {
+        setHovered(false);
+        if (onDragStart && document.body.style.cursor === 'grab') document.body.style.cursor = '';
+      }}
     >
       <mesh position={[0, 0, -0.01]}>
         <planeGeometry args={[width + 0.12, height + 0.12]} />

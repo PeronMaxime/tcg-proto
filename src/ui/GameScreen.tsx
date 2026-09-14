@@ -4,9 +4,10 @@ import { getCardDef, isMonster } from '../game/cards';
 import { isActionLegal } from '../game/rules';
 import type { CardInstance, GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
 import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, rematch, sendAction } from '../net/rooms';
-import Board from '../scene/Board';
+import Board, { type DragState } from '../scene/Board';
 import { computeMonsterFaceStats } from '../scene/cardFaceStats';
 import CameraRig from '../scene/CameraRig';
+import type { DropTarget } from '../scene/DragController';
 import { CAMERA } from '../scene/layout';
 import { getCardFaceDataUrl } from '../scene/textures';
 import { useCombatPlayback } from './useCombatPlayback';
@@ -83,11 +84,12 @@ function phaseLabel(isMyTurn: boolean, playing: boolean, phase: string, turnNumb
   return "Tour de l'adversaire";
 }
 
-function hintText(isMyTurn: boolean, playing: boolean, phase: string): string {
+function hintText(isMyTurn: boolean, playing: boolean, phase: string, fusable: boolean): string {
   if (playing) return '';
   if (!isMyTurn) return "En attente de l'adversaire…";
   if (phase === 'market') return 'Clique une carte du marché pour l’acheter';
-  if (phase === 'main') return 'Clique une carte de ta main puis un emplacement libre';
+  if (fusable) return 'Relâche la carte dans la zone de fusion pour créer un monstre doré';
+  if (phase === 'main') return 'Fais glisser une carte de ta main sur un emplacement libre';
   return '';
 }
 
@@ -117,7 +119,9 @@ function findZoneCard(state: GameState, uid: string): ZoomedCard | null {
 
 function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const state = room.state!;
-  const [selectedHandUid, setSelectedHandUid] = useState<string | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  const fusionZoneRef = useRef<HTMLDivElement>(null);
   const [zoomedUid, setZoomedUid] = useState<string | null>(null);
   const [turnBanner, setTurnBanner] = useState<{ seat: Seat; coinsGained: number; key: number } | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -205,7 +209,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        setSelectedHandUid(null);
+        cancelDrag();
         setZoomedUid(null);
       }
     }
@@ -213,9 +217,9 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // La sélection de carte ne survit pas à un changement de phase ou de tour (§6.6).
+  // Un glisser-déposer ne survit pas à un changement de phase ou de tour (§6.6).
   useEffect(() => {
-    setSelectedHandUid(null);
+    cancelDrag();
   }, [state.phase, state.turn]);
 
   // `beginTurn` automatique (T3) : le client du nouveau joueur actif l'envoie dès que la
@@ -237,14 +241,42 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     await sendAction(room, seat, { type: 'endMarket' });
   }
 
-  async function place(zone: Zone, slot: number) {
-    if (!selectedHandUid) return;
-    await sendAction(room, seat, { type: 'place', uid: selectedHandUid, zone, slot });
-    setSelectedHandUid(null);
+  function cancelDrag() {
+    setDrag(null);
+    setDropTarget(null);
+  }
+
+  // Dépôt d'une carte glissée : sur un emplacement légal -> `place`, sur la zone de fusion
+  // -> `fuse`, ailleurs -> la carte retourne dans la main. Le drag reste actif jusqu'à
+  // l'envoi de l'action, pour que la carte ne revienne pas en main entre-temps.
+  async function handleDrop(target: DropTarget | null) {
+    setDropTarget(null);
+    if (!drag || !target) {
+      setDrag(null);
+      return;
+    }
+    try {
+      if (target.kind === 'fusion') {
+        await sendAction(room, seat, { type: 'fuse', uid: drag.uid });
+      } else {
+        await sendAction(room, seat, { type: 'place', uid: drag.uid, zone: target.zone, slot: target.slot });
+      }
+    } finally {
+      setDrag(null);
+    }
+  }
+
+  // Test de la zone de fusion (surcouche HTML) sous le pointeur : un disque, pas son carré.
+  function isOverFusionZone(clientX: number, clientY: number): boolean {
+    const el = fusionZoneRef.current;
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    const radius = rect.width / 2;
+    return Math.hypot(clientX - (rect.left + radius), clientY - (rect.top + rect.height / 2)) <= radius;
   }
 
   async function endTurn() {
-    setSelectedHandUid(null);
+    cancelDrag();
     await sendAction(room, seat, { type: 'endTurn' });
   }
 
@@ -287,6 +319,8 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     return getCardFaceDataUrl(def, stats);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, zoomedUid]);
+  // Zone de fusion affichée seulement quand la carte tenue peut fusionner.
+  const fusable = drag !== null && interactive && isActionLegal(state, seat, { type: 'fuse', uid: drag.uid });
   const canSell = Boolean(
     zoomed && zoomed.owner === seat && interactive && isActionLegal(state, seat, { type: 'sell', uid: zoomed.uid }),
   );
@@ -294,10 +328,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   return (
     <div
       className="game-screen"
-      onContextMenu={(e) => {
-        e.preventDefault();
-        setSelectedHandUid(null);
-      }}
+      onContextMenu={(e) => e.preventDefault()}
     >
       <Canvas
         shadows
@@ -310,17 +341,31 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           state={state}
           seat={seat}
           interactive={interactive}
-          selectedHandUid={selectedHandUid}
+          drag={drag}
+          dropTarget={dropTarget}
           combatView={combatView}
           activeStep={activeStep}
           displayedHp={displayedHp}
           onBuy={buy}
-          onSelectHandCard={setSelectedHandUid}
-          onPlace={place}
+          onDragStart={(uid, x, y) => {
+            setZoomedUid(null);
+            setDrag({ uid, start: { x, y } });
+          }}
+          onDragHover={setDropTarget}
+          onDrop={handleDrop}
+          isOverFusionZone={(x, y) => fusable && isOverFusionZone(x, y)}
           onZoomCard={setZoomedUid}
-          onDeselect={() => setSelectedHandUid(null)}
         />
       </Canvas>
+
+      {fusable && (
+        <div ref={fusionZoneRef} className={`fusion-zone ${dropTarget?.kind === 'fusion' ? 'is-hovered' : ''}`}>
+          <span className="fusion-zone-icon" aria-hidden="true">
+            ★
+          </span>
+          <span className="fusion-zone-label">Fusion</span>
+        </div>
+      )}
 
       {!showVictory && (
         <div className="hud-layer">
@@ -385,7 +430,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             <span>{mainButtonLabel}</span>
           </button>
 
-          <p className="hint">{hintText(isMyTurn, playing, state.phase)}</p>
+          <p className="hint">{hintText(isMyTurn, playing, state.phase, fusable)}</p>
         </div>
       )}
 

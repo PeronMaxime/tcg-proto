@@ -189,6 +189,72 @@ button {
 
 .game-canvas {
   display: block;
+  touch-action: none; /* glisser-déposer au doigt sans faire défiler la page */
+}
+
+/* -- Zone de fusion (visible pendant le glisser-déposer d'une carte fusionnable) --
+   Centrée à l'écran, légèrement remontée pour se poser entre les deux rangées d'attaque
+   (en vh : la caméra a un champ vertical fixe, la table suit donc la hauteur d'écran). */
+
+.fusion-zone {
+  position: absolute;
+  left: 50%;
+  top: calc(50% - 9.5vh); /* bord bas ≈ bord haut de ma rangée d'attaque (-2.5vh) */
+  width: clamp(96px, 14vh, 170px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px dashed var(--hud-gold);
+  background: radial-gradient(circle, rgba(240, 207, 107, 0.35), rgba(201, 164, 65, 0.12) 60%, rgba(20, 21, 27, 0.55));
+  box-shadow:
+    0 0 24px rgba(201, 164, 65, 0.45),
+    inset 0 0 18px rgba(240, 207, 107, 0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  color: var(--hud-gold-bright);
+  font-family: var(--font-display);
+  pointer-events: none;
+  animation: fusion-zone-pulse 1.2s ease-in-out infinite;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fusion-zone.is-hovered {
+  border-style: solid;
+  transform: translate(-50%, -50%) scale(1.12);
+  box-shadow:
+    0 0 44px rgba(240, 207, 107, 0.8),
+    inset 0 0 26px rgba(255, 241, 168, 0.5);
+  animation: none;
+}
+
+.fusion-zone-icon {
+  font-size: clamp(1.4rem, 4vh, 2.2rem);
+  line-height: 1;
+  text-shadow: 0 0 12px rgba(240, 207, 107, 0.8);
+}
+
+.fusion-zone-label {
+  font-size: clamp(0.7rem, 1.8vh, 0.95rem);
+  font-weight: 600;
+  letter-spacing: 0.1rem;
+  text-transform: uppercase;
+}
+
+@keyframes fusion-zone-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 18px rgba(201, 164, 65, 0.35),
+      inset 0 0 14px rgba(240, 207, 107, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 32px rgba(201, 164, 65, 0.6),
+      inset 0 0 22px rgba(240, 207, 107, 0.35);
+  }
 }
 
 .hud-layer {
@@ -721,6 +787,10 @@ button {
   }
 
   .hud-turn-dot {
+    animation: none;
+  }
+
+  .fusion-zone {
     animation: none;
   }
 }

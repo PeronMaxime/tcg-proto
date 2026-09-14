@@ -7,14 +7,14 @@ import { theme } from './theme';
 
 // Emplacement d'une zone : toujours affiché (même vide), pas une carte — ne fait pas partie
 // de la liste plate D6. Un plan fin juste au-dessus de la table (§6.2), avec un halo pulsé
-// quand il est une cible légale pour la carte sélectionnée.
+// quand il est une cible légale pour la carte en cours de glisser-déposer, plein quand
+// c'est l'emplacement survolé.
 
 interface SlotProps {
   pose: Pose;
   zone: Zone;
   highlighted: boolean;
-  clickable: boolean;
-  onSelect?: () => void;
+  hovered: boolean;
 }
 
 const ZONE_COLOR: Record<Zone, string> = {
@@ -42,7 +42,7 @@ function getOutlineTexture(): THREE.CanvasTexture {
   return cachedOutline;
 }
 
-function Slot({ pose, zone, highlighted, clickable, onSelect }: SlotProps) {
+function Slot({ pose, zone, highlighted, hovered }: SlotProps) {
   const { width, height } = theme.card;
   const outlineMap = useMemo(() => getOutlineTexture(), []);
   const haloRef = useRef<THREE.MeshBasicMaterial>(null!);
@@ -50,18 +50,12 @@ function Slot({ pose, zone, highlighted, clickable, onSelect }: SlotProps) {
   useFrame(() => {
     if (!haloRef.current) return;
     const pulse = 0.35 + Math.sin(performance.now() / 200) * 0.15;
-    haloRef.current.opacity = highlighted ? pulse : 0;
+    haloRef.current.opacity = hovered ? 0.9 : highlighted ? pulse : 0;
   });
 
   return (
     <group position={[pose.position[0], 0.005, pose.position[2]]} rotation={[-Math.PI / 2, 0, 0]}>
-      <mesh
-        onClick={(e) => {
-          if (!clickable) return;
-          e.stopPropagation();
-          onSelect?.();
-        }}
-      >
+      <mesh>
         <planeGeometry args={[width * 0.72 + 0.08, height * 0.72 + 0.08]} />
         <meshBasicMaterial color={ZONE_COLOR[zone]} map={outlineMap} transparent opacity={0.55} />
       </mesh>
