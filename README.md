@@ -67,6 +67,11 @@ le détail des décisions. Résumé :
   PV (20 PV de départ, 0 PV = défaite).
 - Les enchantements posés appliquent un effet permanent à **tout le board de leur
   propriétaire** (`getMonsterStats` dans `rules.ts`) tant qu'ils restent en jeu.
+- **Fusion dorée** : poser un 3e exemplaire (non doré) d'un même monstre sur son board
+  (attaque + défense confondues) fusionne les trois : la carte posée devient un **monstre
+  doré** à son emplacement, avec attaque et défense de base doublées (les bonus
+  d'enchantement s'ajoutent ensuite, sans être doublés) ; les deux autres partent en
+  défausse. Un monstre doré ne fusionne plus (`applyFusion` dans `rules.ts`).
 - **Vendre une carte posée** (clic sur la carte → zoom → bouton « Vendre ») la retire
   définitivement du board vers une pile de défausse (jamais remélangée au deck) et rapporte
   1 pièce (action `sell` dans `rules.ts`).

@@ -2,7 +2,7 @@ import { Canvas } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getCardDef, isMonster } from '../game/cards';
 import { isActionLegal } from '../game/rules';
-import type { GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
+import type { CardInstance, GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
 import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, rematch, sendAction } from '../net/rooms';
 import Board from '../scene/Board';
 import { computeMonsterFaceStats } from '../scene/cardFaceStats';
@@ -95,6 +95,7 @@ interface ZoomedCard {
   owner: Seat;
   zone: Zone;
   slot: number;
+  card: CardInstance;
   cardId: string;
   uid: string;
 }
@@ -106,7 +107,8 @@ function findZoneCard(state: GameState, uid: string): ZoomedCard | null {
     for (const zone of ['attack', 'defense', 'enchant'] as Zone[]) {
       const slot = state.players[owner].zones[zone].findIndex((s) => s?.uid === uid);
       if (slot !== -1) {
-        return { owner, zone, slot, cardId: state.players[owner].zones[zone][slot]!.cardId, uid };
+        const card = state.players[owner].zones[zone][slot]!;
+        return { owner, zone, slot, card, cardId: card.cardId, uid };
       }
     }
   }
@@ -280,8 +282,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     if (!zoomed) return null;
     const def = getCardDef(zoomed.cardId);
     const stats = isMonster(def)
-      ? computeMonsterFaceStats(state.players[zoomed.owner], zoomed.cardId, zoomed.zone as MonsterZone, zoomed.uid, null)
-          .stats
+      ? computeMonsterFaceStats(state.players[zoomed.owner], zoomed.card, zoomed.zone as MonsterZone, null).stats
       : null;
     return getCardFaceDataUrl(def, stats);
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -93,7 +93,7 @@ function Board({
   for (const [index, card] of me.hand.entries()) {
     const def = getCardDef(card.cardId);
     const stats: MonsterFaceStats | null = isMonster(def)
-      ? { attack: def.attack, defense: def.defense, attackTone: 'base', defenseTone: 'base' }
+      ? { attack: def.attack, defense: def.defense, attackTone: 'base', defenseTone: 'base', golden: false }
       : null;
     const hasLegalSlot = isMonster(def)
       ? me.zones.attack.some((s) => s === null) || me.zones.defense.some((s) => s === null)
@@ -136,7 +136,7 @@ function Board({
   for (const [index, card] of activePlayer.market.entries()) {
     const def = getCardDef(card.cardId);
     const stats: MonsterFaceStats | null = isMonster(def)
-      ? { attack: def.attack, defense: def.defense, attackTone: 'base', defenseTone: 'base' }
+      ? { attack: def.attack, defense: def.defense, attackTone: 'base', defenseTone: 'base', golden: false }
       : null;
     const mine = state.turn === seat;
     const buyable =
@@ -180,7 +180,7 @@ function Board({
       if (isMonster(def)) {
         // `zone` est forcément 'attack' ou 'defense' ici : les règles n'autorisent un
         // monstre que sur ces deux zones (`isActionLegal`).
-        const computed = computeMonsterFaceStats(ownerPlayer, slot.cardId, zone as MonsterZone, slot.uid, combatView);
+        const computed = computeMonsterFaceStats(ownerPlayer, slot, zone as MonsterZone, combatView);
         stats = computed.stats;
         ko = computed.ko;
       }
@@ -241,6 +241,38 @@ function Board({
         ko: false,
         pose: discardPose(mine),
         hidden: true,
+        mine,
+        halo: 'none',
+        hoverable: false,
+        clickable: false,
+      });
+    }
+  }
+
+  // --- Fusion dorée : les 2 exemplaires absorbés volent vers le monstre doré et
+  // rétrécissent sous lui (ils sont déjà en défausse dans l'état) ---
+  if (state.lastEvent?.type === 'place' && state.lastEvent.fusedUids?.length) {
+    const { seat: owner, zone, slot } = state.lastEvent;
+    const ownerPlayer = state.players[owner];
+    const mine = owner === seat;
+    const goldenPose = slotPose(zone, slot, mine);
+    for (const uid of state.lastEvent.fusedUids) {
+      const card = ownerPlayer.discard.find((c) => c.uid === uid);
+      if (!card) continue;
+      const def = getCardDef(card.cardId);
+      entries.push({
+        uid: card.uid,
+        cardId: card.cardId,
+        stats: isMonster(def)
+          ? { attack: def.attack, defense: def.defense, attackTone: 'base', defenseTone: 'base', golden: false }
+          : null,
+        ko: false,
+        pose: {
+          ...goldenPose,
+          position: [goldenPose.position[0], goldenPose.position[1] - 0.02, goldenPose.position[2]],
+          scale: goldenPose.scale * 0.3,
+        },
+        hidden: false,
         mine,
         halo: 'none',
         hoverable: false,

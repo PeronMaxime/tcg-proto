@@ -5,6 +5,7 @@
 import { buildStarterDeck, getCardDef, isMonster } from './cards';
 import type {
   Action,
+  CardInstance,
   CombatStep,
   CombatTarget,
   GameState,
@@ -15,10 +16,15 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 2;
+export const RULES_VERSION = 3;
 export const STARTING_HP = 20;
 export const MARKET_SIZE = 3;
 export const ZONE_SIZES: Record<Zone, number> = { attack: 5, defense: 5, enchant: 3 };
+// Fusion dorée (ajoutée à la demande de l'utilisateur) : poser le FUSION_COUNT-ième
+// exemplaire normal d'un même monstre sur son board fusionne les trois en un monstre doré,
+// dont les stats de base sont multipliées par GOLDEN_MULTIPLIER.
+export const FUSION_COUNT = 3;
+export const GOLDEN_MULTIPLIER = 2;
 
 function shuffle<T>(items: T[], random: () => number): T[] {
   const copy = [...items];
@@ -72,19 +78,24 @@ export function createInitialState(random: () => number = Math.random): GameStat
   };
 }
 
-// Stats effectives d'un monstre : base + somme des `monsterBuff` des enchantements posés
-// par SON propriétaire (R3 : les effets se cumulent et ne touchent que le board de leur
-// propriétaire).
+// Stats de base d'un monstre, avant enchantements : doublées pour un monstre doré.
+export function getBaseMonsterStats(cardId: string, golden = false): { attack: number; defense: number } {
+  const def = getCardDef(cardId);
+  if (!isMonster(def)) throw new Error(`Carte non-monstre: ${cardId}`);
+  const multiplier = golden ? GOLDEN_MULTIPLIER : 1;
+  return { attack: def.attack * multiplier, defense: def.defense * multiplier };
+}
+
+// Stats effectives d'un monstre : base (doublée s'il est doré) + somme des `monsterBuff`
+// des enchantements posés par SON propriétaire (R3 : les effets se cumulent et ne touchent
+// que le board de leur propriétaire). Les bonus d'enchantement ne sont pas doublés.
 export function getMonsterStats(
   player: PlayerState,
   cardId: string,
   zone: MonsterZone,
+  golden = false,
 ): { attack: number; defense: number } {
-  const def = getCardDef(cardId);
-  if (!isMonster(def)) throw new Error(`Carte non-monstre: ${cardId}`);
-
-  let attack = def.attack;
-  let defense = def.defense;
+  let { attack, defense } = getBaseMonsterStats(cardId, golden);
   for (const slot of player.zones.enchant) {
     if (!slot) continue;
     const enchantDef = getCardDef(slot.cardId);
@@ -202,7 +213,35 @@ function applyPlace(next: GameState, seat: Seat, uid: string, zone: Zone, slot: 
   // tour — `place` ne fait qu'écrire dans `zones`, et `resolveCombat` (plus bas) lit l'état
   // des zones tel qu'il est au moment de l'appel, donc juste après la phase principale.
   player.zones[zone][slot] = card;
-  next.lastEvent = { id: next.eventSeq, type: 'place', seat, uid, zone, slot };
+  const fusedUids = applyFusion(player, card);
+  next.lastEvent = { id: next.eventSeq, type: 'place', seat, uid, zone, slot, fusedUids };
+}
+
+// Fusion dorée : si la carte qui vient d'être posée est le 3e exemplaire normal (non doré)
+// du même monstre sur le board de son propriétaire (attaque + défense confondues), elle
+// devient dorée à son emplacement et absorbe les deux autres, qui partent en défausse (le
+// total de 50 cartes par joueur reste donc intact). Un monstre doré ne fusionne plus.
+// Renvoie les uids absorbés (vide si pas de fusion).
+function applyFusion(player: PlayerState, placed: CardInstance): string[] {
+  if (placed.golden || !isMonster(getCardDef(placed.cardId))) return [];
+
+  const others: { zone: MonsterZone; slot: number }[] = [];
+  for (const zone of ['attack', 'defense'] as MonsterZone[]) {
+    player.zones[zone].forEach((s, slot) => {
+      if (s && s.uid !== placed.uid && s.cardId === placed.cardId && !s.golden) others.push({ zone, slot });
+    });
+  }
+  if (others.length < FUSION_COUNT - 1) return [];
+
+  const fusedUids: string[] = [];
+  for (const { zone, slot } of others.slice(0, FUSION_COUNT - 1)) {
+    const absorbed = player.zones[zone][slot]!;
+    player.zones[zone][slot] = null;
+    player.discard.push(absorbed);
+    fusedUids.push(absorbed.uid);
+  }
+  placed.golden = true;
+  return fusedUids;
 }
 
 // Vente d'une carte posée : elle quitte son emplacement, rejoint la défausse (jamais
@@ -236,13 +275,17 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
   const attackerPlayer = state.players[attackerSeat];
   const defenderPlayer = state.players[defenderSeat];
 
-  const attackers = attackerPlayer.zones.attack
-    .map((slot, index) => (slot ? { uid: slot.uid, cardId: slot.cardId, index } : null))
-    .filter((a): a is { uid: string; cardId: string; index: number } => a !== null);
+  const attackers = attackerPlayer.zones.attack.filter((slot): slot is CardInstance => slot !== null);
 
   const defenders = defenderPlayer.zones.defense
     .map((slot, index) =>
-      slot ? { uid: slot.uid, current: getMonsterStats(defenderPlayer, slot.cardId, 'defense').defense, index } : null,
+      slot
+        ? {
+            uid: slot.uid,
+            current: getMonsterStats(defenderPlayer, slot.cardId, 'defense', slot.golden).defense,
+            index,
+          }
+        : null,
     )
     .filter((d): d is { uid: string; current: number; index: number } => d !== null && d.current > 0);
 
@@ -250,7 +293,7 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
   let pv = defenderPlayer.hp;
 
   for (const attacker of attackers) {
-    const atk = Math.max(0, getMonsterStats(attackerPlayer, attacker.cardId, 'attack').attack);
+    const atk = Math.max(0, getMonsterStats(attackerPlayer, attacker.cardId, 'attack', attacker.golden).attack);
     const target = defenders.find((d) => d.current > 0);
 
     if (target) {

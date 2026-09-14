@@ -68,6 +68,9 @@ function Card({
   const initialized = useRef(false);
   const prevDefense = useRef(stats?.defense ?? null);
   const flashIntensity = useRef(0);
+  const prevGolden = useRef(stats?.golden ?? false);
+  const goldFlash = useRef(0); // éclat doré au moment d'une fusion, amorti
+  const goldGlowMaterialRef = useRef<THREE.MeshBasicMaterial>(null!);
   const lunge = useRef<{ start: number; base: THREE.Vector3; target: THREE.Vector3 } | null>(null);
   const lastAttackId = useRef<number | null>(null);
   const koAmount = useRef(0); // 0 = debout, 1 = KO complet (amorti)
@@ -92,6 +95,13 @@ function Card({
     }
     prevDefense.current = defense;
   }, [stats?.defense]);
+
+  // Fusion : la carte posée devient dorée (même uid, donc même composant) — éclat + grossissement.
+  useEffect(() => {
+    const golden = stats?.golden ?? false;
+    if (golden && !prevGolden.current) goldFlash.current = 1;
+    prevGolden.current = golden;
+  }, [stats?.golden]);
 
   useEffect(() => {
     if (attackTrigger && attackTrigger.id !== lastAttackId.current && groupRef.current) {
@@ -143,8 +153,26 @@ function Card({
         DAMP_LAMBDA,
         delta,
       );
-      const scale = THREE.MathUtils.damp(group.scale.x, effectivePose.scale, DAMP_LAMBDA, delta);
+      const scale = THREE.MathUtils.damp(
+        group.scale.x,
+        effectivePose.scale * (1 + goldFlash.current * 0.35),
+        DAMP_LAMBDA,
+        delta,
+      );
       group.scale.setScalar(scale);
+    }
+
+    goldFlash.current = THREE.MathUtils.damp(goldFlash.current, 0, 2.5, delta);
+    if (goldGlowMaterialRef.current) {
+      // Liseré doré permanent qui scintille doucement, renforcé pendant l'éclat de fusion.
+      const shimmer = 0.45 + Math.sin(performance.now() / 350) * 0.15;
+      const target = stats?.golden && !hidden ? Math.min(1, shimmer + goldFlash.current) : 0;
+      goldGlowMaterialRef.current.opacity = THREE.MathUtils.damp(
+        goldGlowMaterialRef.current.opacity,
+        target,
+        DAMP_LAMBDA,
+        delta,
+      );
     }
 
     if (flipRef.current) {
@@ -166,7 +194,12 @@ function Card({
 
     if (faceMaterialRef.current) {
       flashIntensity.current = THREE.MathUtils.damp(flashIntensity.current, 0, 6, delta);
-      faceMaterialRef.current.emissive.setRGB(flashIntensity.current, 0, 0);
+      const gold = goldFlash.current;
+      faceMaterialRef.current.emissive.setRGB(
+        Math.min(1, flashIntensity.current + gold * 0.9),
+        gold * 0.7,
+        gold * 0.15,
+      );
       // Face assombrie pendant le KO (§6.4).
       const darken = 1 - koAmount.current * 0.65;
       faceMaterialRef.current.color.setRGB(darken, darken, darken);
@@ -195,6 +228,11 @@ function Card({
       <mesh position={[0, 0, -0.01]}>
         <planeGeometry args={[width + 0.12, height + 0.12]} />
         <meshBasicMaterial ref={haloMaterialRef} color="#000000" transparent opacity={0} />
+      </mesh>
+
+      <mesh position={[0, 0, -0.015]}>
+        <planeGeometry args={[width + 0.26, height + 0.26]} />
+        <meshBasicMaterial ref={goldGlowMaterialRef} color={theme.colors.gold} transparent opacity={0} />
       </mesh>
 
       <group ref={flipRef}>

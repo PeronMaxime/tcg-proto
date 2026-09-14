@@ -16,6 +16,7 @@ export interface MonsterFaceStats {
   defense: number;
   attackTone: StatTone;
   defenseTone: StatTone;
+  golden: boolean; // monstre doré (fusion) : cadre et bandeau dorés
 }
 
 const faceCache = new Map<string, THREE.CanvasTexture>();
@@ -111,12 +112,30 @@ function makeTexture(draw: (ctx: CanvasRenderingContext2D, w: number, h: number)
   return texture;
 }
 
-// `stats` est `null` pour un enchantement (§6.3/§6.4). Clé de cache : `id:att:déf:tonAtt:tonDéf`
-// pour un monstre, `id` pour un enchantement.
+// Cadre doré épais + reflets, pour un monstre issu d'une fusion.
+function drawGoldenFrame(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const gradient = ctx.createLinearGradient(0, 0, w, h);
+  gradient.addColorStop(0, theme.colors.goldLight);
+  gradient.addColorStop(0.35, theme.colors.gold);
+  gradient.addColorStop(0.5, theme.colors.goldLight);
+  gradient.addColorStop(0.65, theme.colors.gold);
+  gradient.addColorStop(1, theme.colors.goldDark);
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 22;
+  roundedRectPath(ctx, 6, 6, w - 12, h - 12, 20);
+  ctx.stroke();
+
+  // Léger voile doré sur la face pour la distinguer même de loin.
+  ctx.fillStyle = 'rgba(255, 215, 90, 0.18)';
+  ctx.fillRect(0, 0, w, h);
+}
+
+// `stats` est `null` pour un enchantement (§6.3/§6.4). Clé de cache :
+// `id:att:déf:tonAtt:tonDéf:doré` pour un monstre, `id` pour un enchantement.
 export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null): THREE.CanvasTexture {
   const key =
     def.kind === 'monster' && stats
-      ? `${def.id}:${stats.attack}:${stats.defense}:${stats.attackTone}:${stats.defenseTone}`
+      ? `${def.id}:${stats.attack}:${stats.defense}:${stats.attackTone}:${stats.defenseTone}:${stats.golden}`
       : def.id;
   const cached = faceCache.get(key);
   if (cached) return cached;
@@ -149,10 +168,23 @@ export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null)
     ctx.fillStyle = def.color;
     ctx.fillRect(0, 0, w, h);
 
+    const golden = stats?.golden ?? false;
+    if (golden) drawGoldenFrame(ctx, w, h);
+
     ctx.fillStyle = theme.colors.textOnCard;
     ctx.font = 'bold 26px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(def.name, w / 2, 64, w - 40);
+
+    if (golden) {
+      ctx.fillStyle = theme.colors.goldDark;
+      ctx.fillRect(40, 90, w - 80, 34);
+      ctx.fillStyle = theme.colors.goldLight;
+      ctx.font = 'bold 20px system-ui, sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('★ DORÉ ★', w / 2, 108);
+      ctx.textBaseline = 'alphabetic';
+    }
 
     drawBadge(ctx, 38, 38, def.cost, theme.colors.coinBadge, '#000000');
 

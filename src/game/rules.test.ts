@@ -47,7 +47,7 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
 
 function baseState(overrides: Partial<GameState> = {}): GameState {
   return {
-    rulesVersion: 2,
+    rulesVersion: 3,
     turn: 'p1',
     phase: 'main',
     turnNumber: 1,
@@ -97,7 +97,7 @@ describe('createInitialState', () => {
     expect(state.phase).toBe('start');
     expect(state.turn).toBe('p1');
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(2);
+    expect(state.rulesVersion).toBe(3);
   });
 
   it('est déterministe pour une même graine', () => {
@@ -294,6 +294,75 @@ describe('applyAction - place', () => {
     const marketState = baseState({ phase: 'market' });
     marketState.players.p1.hand = [makeCard('squire', 'h1')];
     expect(applyAction(marketState, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 0 })).toBeNull();
+  });
+});
+
+describe('fusion dorée', () => {
+  it('le 3e exemplaire posé devient doré à son emplacement, les 2 autres partent en défausse', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
+    state.players.p1.zones.defense[3] = makeCard('wolf', 'w2');
+    state.players.p1.hand = [makeCard('wolf', 'w3')];
+
+    const next = applyAction(state, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 2 })!;
+
+    const p1 = next.players.p1;
+    expect(p1.zones.attack[2]).toEqual({ uid: 'w3', cardId: 'wolf', golden: true });
+    expect(p1.zones.attack[0]).toBeNull();
+    expect(p1.zones.defense[3]).toBeNull();
+    expect(p1.discard.map((c) => c.uid)).toEqual(['w1', 'w2']);
+    expect(next.lastEvent).toEqual({
+      id: 1,
+      type: 'place',
+      seat: 'p1',
+      uid: 'w3',
+      zone: 'attack',
+      slot: 2,
+      fusedUids: ['w1', 'w2'],
+    });
+  });
+
+  it('pas de fusion avec seulement 2 exemplaires ni entre monstres différents', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
+    state.players.p1.zones.attack[1] = makeCard('squire', 's1');
+    state.players.p1.hand = [makeCard('wolf', 'w2')];
+
+    const next = applyAction(state, 'p1', { type: 'place', uid: 'w2', zone: 'attack', slot: 2 })!;
+
+    expect(next.players.p1.zones.attack[2]).toEqual({ uid: 'w2', cardId: 'wolf' });
+    expect(next.players.p1.discard).toEqual([]);
+    expect(next.lastEvent).toMatchObject({ type: 'place', fusedUids: [] });
+  });
+
+  it("ne compte ni les monstres dorés ni ceux de l'adversaire", () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = { uid: 'g1', cardId: 'wolf', golden: true };
+    state.players.p1.zones.attack[1] = makeCard('wolf', 'w1');
+    state.players.p2.zones.attack[0] = makeCard('wolf', 'x1');
+    state.players.p1.hand = [makeCard('wolf', 'w2')];
+
+    const next = applyAction(state, 'p1', { type: 'place', uid: 'w2', zone: 'attack', slot: 2 })!;
+
+    expect(next.players.p1.zones.attack[2]?.golden).toBeUndefined();
+    expect(next.players.p1.zones.attack[0]?.uid).toBe('g1');
+    expect(next.players.p1.zones.attack[1]?.uid).toBe('w1');
+  });
+
+  it('un monstre doré a ses stats de base doublées, enchantements ajoutés ensuite', () => {
+    const player = freshPlayer();
+    player.zones.enchant[0] = makeCard('banner', 'b1'); // +1 atq en attaque
+    expect(getMonsterStats(player, 'wolf', 'attack', true)).toEqual({ attack: 3 * 2 + 1, defense: 1 * 2 });
+    expect(getMonsterStats(player, 'wolf', 'defense', true)).toEqual({ attack: 6, defense: 2 });
+  });
+
+  it('en combat, un attaquant doré frappe deux fois plus fort et un défenseur doré encaisse le double', () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = { uid: 'a1', cardId: 'wolf', golden: true }; // 6 atq
+    state.players.p2.zones.defense[0] = { uid: 'd1', cardId: 'guard', golden: true }; // 8 déf
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ damage: 6, target: { kind: 'monster', uid: 'd1' }, remaining: 2 });
   });
 });
 
