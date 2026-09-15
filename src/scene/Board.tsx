@@ -260,6 +260,11 @@ function Board({
     });
   }
 
+  // Tant que mon marché est affiché, les cartes posées ne réagissent plus au clic ni au
+  // glisser (demande utilisateur) : sinon un clic sur une carte du marché atteignait la
+  // carte du board située derrière et l'ouvrait en zoom.
+  const myMarketOpen = state.turn === seat && marketVisible && me.market.length > 0;
+
   // --- Cartes posées, deux joueurs, trois zones ---
   const zonesToRender: { owner: Seat; zone: Zone }[] = [
     { owner: seat, zone: 'attack' },
@@ -293,7 +298,7 @@ function Board({
       // Une carte déjà posée peut être déplacée à la souris vers un autre emplacement libre
       // de SA zone pendant la phase principale (demande utilisateur) : uniquement la mienne,
       // uniquement en attaque/défense (pas les enchantements).
-      const movable = mine && canDrag && (zone === 'attack' || zone === 'defense');
+      const movable = mine && canDrag && !myMarketOpen && (zone === 'attack' || zone === 'defense');
       const dragged = slot.uid === drag?.uid;
 
       entries.push({
@@ -308,7 +313,7 @@ function Board({
         hoverable: false,
         // Une carte posée (la mienne ou celle de l'adversaire) s'ouvre en grand au clic ; le
         // bouton Vendre n'apparaît que pour la mienne (géré dans GameScreen).
-        clickable: true,
+        clickable: !myMarketOpen,
         onSelect: () => onZoomCard(slot.uid),
         onDragStart: movable
           ? (x, y) => onDragStart(slot.uid, x, y, { zone: zone as MonsterZone, slot: index })
