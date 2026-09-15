@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { buildStarterDeck, CARD_CATALOG, getCardDef, isAbilityAllowed, isMonster, STARTER_COUNTS } from './cards';
+import {
+  buildStarterDeck,
+  CARD_CATALOG,
+  ELEMENT_BEATS,
+  getCardDef,
+  isAbilityAllowed,
+  isElementEffective,
+  isMonster,
+  STARTER_COUNTS,
+} from './cards';
 import {
   applyAction,
   createInitialState,
+  ELEMENT_ADVANTAGE_BONUS,
   getMonsterStats,
   MIN_ATTACK,
   opponentOf,
@@ -10,7 +20,7 @@ import {
   STARTING_HP,
   ZONE_SIZES,
 } from './rules';
-import type { CardInstance, GameState, PlayerState, Seat, Zone } from './types';
+import type { CardElement, CardInstance, GameState, PlayerState, Seat, Zone } from './types';
 
 // PRNG déterministe pour des tests reproductibles (mélange du deck).
 function seededRandom(seed: number): () => number {
@@ -49,7 +59,7 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
 
 function baseState(overrides: Partial<GameState> = {}): GameState {
   return {
-    rulesVersion: 5,
+    rulesVersion: 6,
     turn: 'p1',
     phase: 'main',
     turnNumber: 1,
@@ -105,7 +115,7 @@ describe('createInitialState', () => {
     expect(state.phase).toBe('start');
     expect(state.turn).toBe('p1');
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(5);
+    expect(state.rulesVersion).toBe(6);
   });
 
   it('est déterministe pour une même graine', () => {
@@ -639,10 +649,11 @@ describe('combat : riposte et cycles', () => {
     const { steps } = resolveCombat(state, 'p1');
     // Cycle 1 : les deux attaquants frappent (le défenseur survit aux deux coups) ;
     // l'archère (2 déf) meurt à la riposte du titan (7 atq), le golem (8 déf) survit.
+    // Golem (terre) contre Titan (eau) : +1 dégât élémentaire, soit 2 par coup.
     expect(steps[0]).toMatchObject({ cycle: 1, attackerUid: 'attack0', damage: 3, remaining: 4, attackerRemaining: 0 });
-    expect(steps[1]).toMatchObject({ cycle: 1, attackerUid: 'attack1', damage: 1, remaining: 3, attackerRemaining: 1 });
+    expect(steps[1]).toMatchObject({ cycle: 1, attackerUid: 'attack1', damage: 2, remaining: 2, attackerRemaining: 1 });
     // Cycle 2 : seul le golem attaque encore (l'archère est KO, absente des coups suivants).
-    expect(steps[2]).toMatchObject({ cycle: 2, attackerUid: 'attack1', damage: 1, remaining: 2, attackerRemaining: 0 });
+    expect(steps[2]).toMatchObject({ cycle: 2, attackerUid: 'attack1', damage: 2, remaining: 0, attackerRemaining: 0 });
     expect(steps.filter((s) => s.cycle === 2).every((s) => s.attackerUid !== 'attack0')).toBe(true);
   });
 
@@ -775,6 +786,77 @@ describe('combat : riposte et cycles', () => {
 });
 
 // ---------------------------------------------------------------------------------------
+// Éléments (demande utilisateur) : eau > feu > air > terre > eau, +1 dégât en mêlée.
+// Titan (eau), Archère (air) et Chevalier (feu, Attaque seulement) ne déclenchent aucune
+// capacité dans les échanges ci-dessous.
+// ---------------------------------------------------------------------------------------
+
+describe('éléments', () => {
+  it("roue : chaque élément domine le suivant, jamais l'inverse, ni lui-même, ni l'opposé", () => {
+    const wheel: CardElement[] = ['water', 'fire', 'air', 'earth'];
+    wheel.forEach((element, i) => {
+      const next = wheel[(i + 1) % wheel.length];
+      const opposite = wheel[(i + 2) % wheel.length];
+      expect(isElementEffective(element, next)).toBe(true);
+      expect(isElementEffective(next, element)).toBe(false);
+      expect(isElementEffective(element, element)).toBe(false);
+      expect(isElementEffective(element, opposite)).toBe(false);
+    });
+  });
+
+  it('chaque carte du catalogue a un élément de la roue', () => {
+    for (const def of CARD_CATALOG) {
+      expect(Object.keys(ELEMENT_BEATS)).toContain(def.element);
+    }
+  });
+
+  it('attaquant avantagé : +1 dégât sur son coup, riposte inchangée', () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('golem', 'g1'); // terre, 1 atq / 8 déf
+    state.players.p2.zones.defense[0] = makeCard('titan', 't1'); // eau, 7 atq / 7 déf
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ damage: 1 + ELEMENT_ADVANTAGE_BONUS, retaliation: 7 });
+  });
+
+  it('défenseur avantagé : +1 dégât sur sa riposte, coup inchangé', () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('archer', 'a1'); // air, 3 atq / 2 déf
+    state.players.p2.zones.defense[0] = makeCard('knight', 'k1'); // feu, 3 atq / 4 déf
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ damage: 3, remaining: 1, retaliation: 3 + ELEMENT_ADVANTAGE_BONUS });
+  });
+
+  it('éléments neutres (opposés sur la roue) : aucun bonus', () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('archer', 'a1'); // air
+    state.players.p2.zones.defense[0] = makeCard('titan', 't1'); // eau
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ damage: 3, retaliation: 7 });
+  });
+
+  it('le bouclier peut absorber le bonus élémentaire', () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('golem', 'g1'); // terre, 1 atq
+    state.players.p2.zones.defense[0] = makeCard('guard', 'd1'); // eau, Défend : shield 1
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0].damage).toBe(1 + ELEMENT_ADVANTAGE_BONUS - 1);
+  });
+
+  it("pas de bonus en percée : le héros n'a pas d'élément", () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('golem', 'g1'); // terre, 1 atq
+    state.players.p2 = freshPlayer({ hp: 20 });
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ target: { kind: 'player' }, damage: 1 });
+  });
+});
+
+// ---------------------------------------------------------------------------------------
 // Effets déclenchés (§7.2)
 // ---------------------------------------------------------------------------------------
 
@@ -845,14 +927,15 @@ describe('effets déclenchés', () => {
     expect(next.players.p1.discard[0].buff).toBeUndefined();
   });
 
-  it('Attaque : Loup (3 atq) contre le héros -> 5 dégâts ; contre un monstre -> 5 dégâts sans changer la riposte', () => {
+  it('Attaque : Loup (3 atq) contre un monstre -> +2 dégâts (bonusDamage) sans changer la riposte', () => {
     const state = baseState();
     state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
     state.players.p1.zones.attack[1] = makeCard('wolf', 'w2');
     state.players.p2.zones.defense[0] = makeCard('titan', 't1'); // 7 atq / 7 déf, pas de capacité de combat
 
     const { steps } = resolveCombat(state, 'p1');
-    expect(steps[0]).toMatchObject({ damage: 5, retaliation: 7 }); // 3 + 2 (bonusDamage), riposte inchangée
+    // 3 + 2 (bonusDamage) + 1 (élément : Loup terre > Titan eau), riposte inchangée.
+    expect(steps[0]).toMatchObject({ damage: 6, retaliation: 7 });
   });
 
   it('Attaque : le Chevalier gagne +1 attaque à chaque cycle, buff conservé au combat suivant', () => {

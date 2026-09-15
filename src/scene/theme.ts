@@ -31,6 +31,14 @@ export const theme = {
     zoneEnchantBright: '#5c3f96',
     zoneOutlineBright: 'rgba(255, 255, 255, 0.4)',
   },
+  // Couleurs des faces selon l'élément de la carte : `light`→`base` en dégradé de fond,
+  // `badge`/`icon` pour la pastille du logo d'élément.
+  elements: {
+    fire: { light: '#f29a6b', base: '#d2553a', badge: '#7d2412', icon: '#ffd27a' },
+    water: { light: '#8cc4f0', base: '#3f86cc', badge: '#163f73', icon: '#dff1ff' },
+    air: { light: '#dff2ea', base: '#9ccbbd', badge: '#2f6c61', icon: '#f2fffb' },
+    earth: { light: '#c9a877', base: '#96723f', badge: '#4a3416', icon: '#f0dcb0' },
+  },
   card: {
     width: 1.2,
     height: 1.68, // ratio 5:7

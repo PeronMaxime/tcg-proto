@@ -4,7 +4,7 @@
 // Module pur : pas d'accès réseau, pas de React, pas de Date.now(). Le seul hasard
 // (mélange des decks) passe par le paramètre `random` pour rester testable.
 
-import { buildStarterDeck, getCardDef, isMonster } from './cards';
+import { buildStarterDeck, getCardDef, isElementEffective, isMonster } from './cards';
 import type {
   Action,
   AbilityEffect,
@@ -20,7 +20,7 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 5;
+export const RULES_VERSION = 6;
 export const STARTING_HP = 20;
 export const MARKET_SIZE = 3;
 export const ZONE_SIZES: Record<Zone, number> = { attack: 5, defense: 5, enchant: 3 };
@@ -37,6 +37,10 @@ export const MIN_ATTACK = 1;
 // (aucun effet actuel ne peut réduire la riposte sous 1, donc ce cas n'est pas atteignable
 // avec les règles actuelles ; il le sera peut-être avec de futures capacités).
 export const MAX_COMBAT_CYCLES = 20;
+// Éléments (demande utilisateur) : un monstre dont l'élément est efficace contre celui du
+// monstre qu'il touche lui inflige ce bonus, sur le coup comme sur la riposte (mêlée
+// seulement : le héros n'a pas d'élément, la percée n'en profite donc jamais).
+export const ELEMENT_ADVANTAGE_BONUS = 1;
 
 function shuffle<T>(items: T[], random: () => number): T[] {
   const copy = [...items];
@@ -470,6 +474,13 @@ function buildFighters(state: GameState, seat: Seat, zone: MonsterZone): Fighter
   return fighters;
 }
 
+// Bonus de dégât élémentaire de `from` quand il touche `against` (coup ou riposte).
+export function elementBonus(from: CardInstance, against: CardInstance): number {
+  const fromElement = getCardDef(from.cardId).element;
+  const againstElement = getCardDef(against.cardId).element;
+  return isElementEffective(fromElement, againstElement) ? ELEMENT_ADVANTAGE_BONUS : 0;
+}
+
 function snapshotHp(state: GameState): Record<Seat, number> {
   return { p1: state.players.p1.hp, p2: state.players.p2.hp };
 }
@@ -528,8 +539,11 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
       if (state.winner === null) {
         const attackerStats = getMonsterStats(state.players[attackerSeat], attacker.card, 'attack');
         const targetStats = getMonsterStats(state.players[defenderSeat], target.card, 'defense');
-        damage = Math.max(0, attackerStats.attack + hit.bonusDamage - hit.damageReduction);
-        retaliation = targetStats.attack; // E13 : attaque effective du défenseur, plancher ≥ 1 (E16)
+        // Le bonus élémentaire s'ajoute avant le bouclier, qui peut donc aussi l'absorber.
+        const attackBonus = hit.bonusDamage + elementBonus(attacker.card, target.card);
+        damage = Math.max(0, attackerStats.attack + attackBonus - hit.damageReduction);
+        // E13 : attaque effective du défenseur, plancher ≥ 1 (E16), + son bonus élémentaire.
+        retaliation = targetStats.attack + elementBonus(target.card, attacker.card);
       }
 
       // Dégâts simultanés (E5, E13) : un défenseur mis KO par la riposte quand même.

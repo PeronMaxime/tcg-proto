@@ -1,4 +1,13 @@
-import type { AbilityEffect, CardAbility, CardDef, CardInstance, EnchantmentEffect, MonsterDef, Trigger } from './types';
+import type {
+  AbilityEffect,
+  CardAbility,
+  CardDef,
+  CardElement,
+  CardInstance,
+  EnchantmentEffect,
+  MonsterDef,
+  Trigger,
+} from './types';
 
 // Catalogue des règles v1 — voir PLAN-tcg-proto-regles-v1.md §4. Valeurs de départ, à
 // équilibrer en jouant : ce fichier reste le seul endroit à modifier pour changer une carte
@@ -16,7 +25,7 @@ export const CARD_CATALOG: CardDef[] = [
     cost: 1,
     attack: 1,
     defense: 2,
-    color: '#8fae6b',
+    element: 'air',
     abilities: [
       { trigger: 'summon', effect: { type: 'gainCoins', amount: 1 } },
       { trigger: 'ko', effect: { type: 'drawCard', count: 1 } },
@@ -29,7 +38,7 @@ export const CARD_CATALOG: CardDef[] = [
     cost: 2,
     attack: 3,
     defense: 1,
-    color: '#7c7c8a',
+    element: 'earth',
     abilities: [
       { trigger: 'attack', effect: { type: 'bonusDamage', amount: 2 } },
       { trigger: 'sold', effect: { type: 'healSelf', amount: 2 } },
@@ -42,7 +51,7 @@ export const CARD_CATALOG: CardDef[] = [
     cost: 2,
     attack: 1,
     defense: 4,
-    color: '#6b8fae',
+    element: 'water',
     abilities: [{ trigger: 'defend', effect: { type: 'shield', amount: 1 } }],
   },
   {
@@ -52,7 +61,7 @@ export const CARD_CATALOG: CardDef[] = [
     cost: 3,
     attack: 3,
     defense: 2,
-    color: '#ae8f6b',
+    element: 'air',
     abilities: [{ trigger: 'summon', effect: { type: 'damageOpponent', amount: 1 } }],
   },
   {
@@ -62,7 +71,7 @@ export const CARD_CATALOG: CardDef[] = [
     cost: 4,
     attack: 3,
     defense: 4,
-    color: '#ae6b8f',
+    element: 'fire',
     abilities: [{ trigger: 'attack', effect: { type: 'buff', target: 'self', attack: 1, defense: 0 } }],
   },
   {
@@ -72,7 +81,7 @@ export const CARD_CATALOG: CardDef[] = [
     cost: 5,
     attack: 1,
     defense: 8,
-    color: '#8a7c7c',
+    element: 'earth',
     abilities: [{ trigger: 'defend', effect: { type: 'damageOpponent', amount: 1 } }],
   },
   {
@@ -82,7 +91,7 @@ export const CARD_CATALOG: CardDef[] = [
     cost: 6,
     attack: 5,
     defense: 4,
-    color: '#b0453f',
+    element: 'fire',
     abilities: [{ trigger: 'ko', effect: { type: 'healSelf', amount: 3 } }],
   },
   {
@@ -92,7 +101,7 @@ export const CARD_CATALOG: CardDef[] = [
     cost: 8,
     attack: 7,
     defense: 7,
-    color: '#c9a441',
+    element: 'water',
     abilities: [{ trigger: 'summon', effect: { type: 'buff', target: 'otherAllies', attack: 1, defense: 1 } }],
   },
 
@@ -101,7 +110,7 @@ export const CARD_CATALOG: CardDef[] = [
     id: 'banner',
     name: 'Étendard de guerre',
     cost: 3,
-    color: '#8f3ee8',
+    element: 'fire',
     effect: { type: 'monsterBuff', zone: 'attack', attack: 1, defense: 0 },
   },
   {
@@ -109,7 +118,7 @@ export const CARD_CATALOG: CardDef[] = [
     id: 'rampart',
     name: 'Rempart',
     cost: 3,
-    color: '#3e6be8',
+    element: 'earth',
     effect: { type: 'monsterBuff', zone: 'defense', attack: 0, defense: 1 },
   },
   {
@@ -117,7 +126,7 @@ export const CARD_CATALOG: CardDef[] = [
     id: 'treasury',
     name: 'Trésorerie',
     cost: 3,
-    color: '#c9a441',
+    element: 'water',
     effect: { type: 'coinsPerTurn', amount: 1 },
     abilities: [{ trigger: 'sold', effect: { type: 'gainCoins', amount: 2 } }],
   },
@@ -126,7 +135,7 @@ export const CARD_CATALOG: CardDef[] = [
     id: 'blessing',
     name: 'Bénédiction',
     cost: 6,
-    color: '#e83e8f',
+    element: 'water',
     effect: { type: 'monsterBuff', zone: 'all', attack: 1, defense: 1 },
   },
 ];
@@ -139,6 +148,27 @@ export function getCardDef(cardId: string): CardDef {
 
 export function isMonster(def: CardDef): def is MonsterDef {
   return def.kind === 'monster';
+}
+
+// Roue des éléments (demande utilisateur) : chaque élément est efficace contre celui qu'il
+// pointe — eau > feu > air > terre > eau. Deux éléments non adjacents (eau/air, feu/terre)
+// ou identiques sont neutres l'un pour l'autre.
+export const ELEMENT_BEATS: Record<CardElement, CardElement> = {
+  water: 'fire',
+  fire: 'air',
+  air: 'earth',
+  earth: 'water',
+};
+
+export const ELEMENT_LABELS: Record<CardElement, string> = {
+  fire: 'Feu',
+  water: 'Eau',
+  air: 'Air',
+  earth: 'Terre',
+};
+
+export function isElementEffective(from: CardElement, against: CardElement): boolean {
+  return ELEMENT_BEATS[from] === against;
 }
 
 // Nombre d'exemplaires de chaque carte dans le deck de départ (50 cartes au total :

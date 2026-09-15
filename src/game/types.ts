@@ -27,11 +27,15 @@ export interface CardAbility {
   effect: AbilityEffect;
 }
 
+// Élément d'une carte (demande utilisateur) : fixe la couleur de sa face et, en combat, un
+// bonus de dégât contre l'élément qu'il domine (roue `ELEMENT_BEATS` dans cards.ts).
+export type CardElement = 'fire' | 'water' | 'air' | 'earth';
+
 interface CardDefBase {
   id: string;
   name: string;
   cost: number;
-  color: string; // couleur de fond de la face
+  element: CardElement; // détermine aussi la couleur de fond de la face (theme.elements)
   abilities?: CardAbility[]; // absent = pas de capacité (E1-E17)
 }
 
@@ -99,9 +103,9 @@ export interface CombatStep {
   cycle: number; // 1, 2, … pour la mêlée (E14) ; cycle de la percée = dernier cycle + 1 (E15)
   attackerUid: string;
   target: CombatTarget;
-  damage: number; // dégâts réellement infligés par l'attaquant (bonus/bouclier inclus)
+  damage: number; // dégâts réellement infligés par l'attaquant (bonus/bouclier/élément inclus)
   remaining: number; // défense restante du monstre ciblé (0 = KO) ou PV restants du joueur
-  retaliation: number; // riposte reçue par l'attaquant (0 en percée) (E13)
+  retaliation: number; // riposte reçue par l'attaquant (0 en percée) (E13), élément inclus
   attackerRemaining: number; // défense restante de l'attaquant après l'échange (0 = KO)
   effects: EffectLog[]; // effets résolus pendant l'échange, dans l'ordre (E5)
   hp: Record<Seat, number>; // PV des deux joueurs après l'échange, effets compris

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describeAbility, describeEffect } from '../game/cards';
-import type { CardDef } from '../game/types';
+import type { CardDef, CardElement } from '../game/types';
 import { theme } from './theme';
 
 // Dessin Canvas 2D des faces et du dos des cartes, mis en cache (§6.3) : aucune police ni
@@ -120,6 +120,115 @@ function drawAbilitiesBox(
   ctx.textBaseline = 'alphabetic';
 }
 
+// Fond de face : dégradé vertical aux couleurs de l'élément de la carte.
+function drawElementBackground(ctx: CanvasRenderingContext2D, element: CardElement, w: number, h: number): void {
+  const palette = theme.elements[element];
+  const gradient = ctx.createLinearGradient(0, 0, 0, h);
+  gradient.addColorStop(0, palette.light);
+  gradient.addColorStop(0.55, palette.base);
+  gradient.addColorStop(1, palette.base);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
+}
+
+// Petit logo vectoriel de l'élément (tracés Canvas, aucune police ni image : D5), centré sur
+// (cx, cy) dans un carré d'environ 36 px de côté.
+function drawElementIcon(ctx: CanvasRenderingContext2D, element: CardElement, cx: number, cy: number): void {
+  const { icon, badge } = theme.elements[element];
+  ctx.fillStyle = icon;
+  ctx.strokeStyle = icon;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  switch (element) {
+    case 'fire': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 18);
+      ctx.bezierCurveTo(cx + 4, cy - 8, cx + 14, cy - 4, cx + 12, cy + 6);
+      ctx.bezierCurveTo(cx + 11, cy + 14, cx + 5, cy + 17, cx, cy + 17);
+      ctx.bezierCurveTo(cx - 5, cy + 17, cx - 11, cy + 14, cx - 12, cy + 6);
+      ctx.bezierCurveTo(cx - 13, cy - 2, cx - 6, cy - 4, cx - 5, cy - 11);
+      ctx.bezierCurveTo(cx - 1, cy - 7, cx - 1, cy - 12, cx, cy - 18);
+      ctx.fill();
+      // Cœur de la flamme, dans la couleur de la pastille.
+      ctx.fillStyle = badge;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.bezierCurveTo(cx + 3, cy + 5, cx + 6, cy + 7, cx + 5, cy + 11);
+      ctx.bezierCurveTo(cx + 4, cy + 14, cx - 4, cy + 14, cx - 5, cy + 11);
+      ctx.bezierCurveTo(cx - 6, cy + 7, cx - 2, cy + 5, cx, cy);
+      ctx.fill();
+      break;
+    }
+    case 'water': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 18);
+      ctx.bezierCurveTo(cx + 6, cy - 8, cx + 13, cy - 1, cx + 13, cy + 5);
+      ctx.bezierCurveTo(cx + 13, cy + 13, cx + 7, cy + 17, cx, cy + 17);
+      ctx.bezierCurveTo(cx - 7, cy + 17, cx - 13, cy + 13, cx - 13, cy + 5);
+      ctx.bezierCurveTo(cx - 13, cy - 1, cx - 6, cy - 8, cx, cy - 18);
+      ctx.fill();
+      // Reflet.
+      ctx.strokeStyle = badge;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy + 5, 7, Math.PI * 0.6, Math.PI * 0.95);
+      ctx.stroke();
+      break;
+    }
+    case 'air': {
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - 15, cy - 7);
+      ctx.lineTo(cx + 5, cy - 7);
+      ctx.arc(cx + 5, cy - 12, 5, Math.PI / 2, Math.PI * 1.1, true);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - 17, cy + 1);
+      ctx.lineTo(cx + 14, cy + 1);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - 12, cy + 9);
+      ctx.lineTo(cx + 2, cy + 9);
+      ctx.arc(cx + 2, cy + 13, 4, -Math.PI / 2, Math.PI * 0.9);
+      ctx.stroke();
+      break;
+    }
+    case 'earth': {
+      ctx.beginPath();
+      ctx.moveTo(cx - 17, cy + 13);
+      ctx.lineTo(cx - 4, cy - 12);
+      ctx.lineTo(cx + 3, cy + 1);
+      ctx.lineTo(cx + 8, cy - 5);
+      ctx.lineTo(cx + 17, cy + 13);
+      ctx.closePath();
+      ctx.fill();
+      // Neige du grand sommet.
+      ctx.fillStyle = badge;
+      ctx.beginPath();
+      ctx.moveTo(cx - 4, cy - 12);
+      ctx.lineTo(cx - 8, cy - 4);
+      ctx.lineTo(cx - 4, cy - 6);
+      ctx.lineTo(cx - 1, cy - 4);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+  }
+}
+
+// Pastille ronde portant le logo de l'élément.
+function drawElementBadge(ctx: CanvasRenderingContext2D, element: CardElement, x: number, y: number): void {
+  ctx.beginPath();
+  ctx.arc(x, y, 27, 0, Math.PI * 2);
+  ctx.fillStyle = theme.elements[element].badge;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+  ctx.stroke();
+  drawElementIcon(ctx, element, x, y);
+}
+
 function makeTexture(draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = TEXTURE_WIDTH;
@@ -170,8 +279,7 @@ export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null)
 
   const texture = makeTexture((ctx, w, h) => {
     if (def.kind === 'enchantment') {
-      ctx.fillStyle = def.color;
-      ctx.fillRect(0, 0, w, h);
+      drawElementBackground(ctx, def.element, w, h);
 
       // Bandeau « Enchantement » distinctif.
       ctx.fillStyle = theme.colors.enchantBand;
@@ -182,6 +290,7 @@ export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null)
       ctx.fillText('ENCHANTEMENT', w / 2, 26);
 
       drawBadge(ctx, 38, 76, def.cost, theme.colors.coinBadge, '#000000');
+      drawElementBadge(ctx, def.element, w - 38, 76);
 
       ctx.fillStyle = theme.colors.textOnCard;
       ctx.font = 'bold 24px system-ui, sans-serif';
@@ -196,8 +305,7 @@ export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null)
       return;
     }
 
-    ctx.fillStyle = def.color;
-    ctx.fillRect(0, 0, w, h);
+    drawElementBackground(ctx, def.element, w, h);
 
     const golden = stats?.golden ?? false;
     if (golden) drawGoldenFrame(ctx, w, h);
@@ -218,6 +326,7 @@ export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null)
     }
 
     drawBadge(ctx, 38, 38, def.cost, theme.colors.coinBadge, '#000000');
+    drawElementBadge(ctx, def.element, w - 38, 38);
 
     // Capacités (déclencheur → effet), entre le bandeau du nom et les badges de stats (§6.1).
     drawAbilitiesBox(ctx, w, (def.abilities ?? []).map(describeAbility), 145, 335);
