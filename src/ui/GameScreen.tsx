@@ -1,7 +1,7 @@
 import { Canvas } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { describeAbility, getCardDef, isMonster } from '../game/cards';
-import { isActionLegal } from '../game/rules';
+import { isActionLegal, isFirstTurnOfGame } from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
 import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, requestRematch, sendAction } from '../net/rooms';
 import Board, { type DragState, type ScreenRect } from '../scene/Board';
@@ -406,7 +406,8 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const rematchReady = room.rematchReady ?? { p1: false, p2: false };
   const iAmReadyForRematch = rematchReady[seat];
   const opponentReadyForRematch = rematchReady[opponentSeat];
-  const mainButtonLabel = 'Combat !';
+  // Pas de combat au premier tour de la partie : le bouton ne fait que passer la main.
+  const mainButtonLabel = isFirstTurnOfGame(state) ? 'Fin du tour' : 'Combat !';
   const mainButtonAction = endTurn;
   const mainButtonEnabled = interactive && state.phase === 'main';
 

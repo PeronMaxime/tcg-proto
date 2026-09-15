@@ -20,8 +20,13 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 6;
-export const STARTING_HP = 20;
+export const RULES_VERSION = 7;
+export const STARTING_HP = 10;
+// Pièces en stock au début de la partie (demande utilisateur), avant le gain du 1er tour.
+export const STARTING_COINS = 2;
+// Dégâts infligés au héros par chaque attaquant qui perce (demande utilisateur) : fixes,
+// quelle que soit son attaque effective.
+export const BREAKTHROUGH_DAMAGE = 1;
 export const MARKET_SIZE = 3;
 export const ZONE_SIZES: Record<Zone, number> = { attack: 5, defense: 5, enchant: 3 };
 // Fusion dorée (ajoutée à la demande de l'utilisateur) : une carte en main fusionne avec
@@ -70,7 +75,7 @@ export function createInitialState(random: () => number = Math.random): GameStat
   function freshPlayer(): PlayerState {
     return {
       hp: STARTING_HP,
-      coins: 0,
+      coins: STARTING_COINS,
       turnsPlayed: 0,
       deck: shuffle(buildStarterDeck(makeUid), random),
       market: [],
@@ -599,15 +604,11 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
       if (attacker.ko || currentDefense(state, attacker, 'attack') <= 0) continue;
       if (state.winner !== null) break; // E7
 
-      const hit: HitModifiers = { bonusDamage: 0, damageReduction: 0 };
-      const effects = fireTrigger(state, attackerSeat, attacker.card, 'attack', hit);
-
-      let damage = 0;
-      if (state.winner === null) {
-        const attackerStats = getMonsterStats(state.players[attackerSeat], attacker.card, 'attack');
-        damage = Math.max(0, attackerStats.attack + hit.bonusDamage); // ≥ 1 (E16), pas de riposte en percée
-        damageHero(state, defenderSeat, damage);
-      }
+      // La percée n'est pas une attaque (demande utilisateur) : à la fin du combat, le héros
+      // adverse perd BREAKTHROUGH_DAMAGE PV par attaquant encore debout. Aucune capacité ne se
+      // déclenche, l'attaque du monstre ne compte pas, pas de riposte.
+      const damage = BREAKTHROUGH_DAMAGE;
+      damageHero(state, defenderSeat, damage);
 
       steps.push({
         cycle: cycle + 1,
@@ -619,13 +620,18 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
         attackerRemaining: currentDefense(state, attacker, 'attack'),
         effective: false, // le héros n'a pas d'élément
         retaliationEffective: false,
-        effects,
+        effects: [],
         hp: snapshotHp(state),
       });
     }
   }
 
   return { steps, stalemate };
+}
+
+// Premier tour de la partie (celui de p1) : pas de phase de combat.
+export function isFirstTurnOfGame(state: GameState): boolean {
+  return state.turnNumber === 1;
 }
 
 function applyEndTurn(next: GameState, seat: Seat): void {
@@ -639,7 +645,11 @@ function applyEndTurn(next: GameState, seat: Seat): void {
 
   const defenderSeat = opponentOf(seat);
   const hpBefore = snapshotHp(next);
-  const { steps, stalemate } = resolveCombat(next, seat); // mute `next` (dégâts, buffs, pièces...)
+  // Le premier joueur n'attaque pas à son premier tour (demande utilisateur, contre
+  // l'avantage du premier joueur) : combat vide, aucun coup ni aucune capacité de combat.
+  const { steps, stalemate } = isFirstTurnOfGame(next)
+    ? { steps: [], stalemate: false }
+    : resolveCombat(next, seat); // mute `next` (dégâts, buffs, pièces...)
   next.lastEvent = { id: next.eventSeq, type: 'combat', seat, steps, hpBefore, stalemate };
 
   if (next.winner !== null) return; // H9 : ni changement de tour ni de phase

@@ -57,10 +57,12 @@ le détail des décisions. Résumé :
 - Chaque joueur a un deck de 50 cartes (monstres + enchantements). Le plateau a 3 zones par
   joueur : **attaque** (5 emplacements), **défense** (5), **enchantements** (3). Une carte
   posée ne bouge plus.
+- Chaque joueur commence la partie avec **2 pièces** en stock (`STARTING_COINS`).
 - **Tour** : le joueur gagne `N` pièces (`N` = le n-ième tour **de ce joueur**, les pièces se
   cumulent) → **marché** : 3 cartes du dessus du deck, achetables, à la main ; les invendus
   retournent au fond du deck → **phase principale** : poser gratuitement autant de cartes que
-  voulu → **combat automatique**.
+  voulu → **combat automatique**. Exception : le premier joueur ne combat pas à son premier
+  tour (`isFirstTurnOfGame` dans `rules.ts`), pour compenser l'avantage de jouer en premier.
 - **Combat** (voir `PLAN-effets-triggers.md` §1bis pour le détail des décisions E13-E17) : les
   monstres de la zone d'attaque du joueur actif frappent, de gauche à droite, le monstre de la
   zone de défense adverse le plus à gauche encore debout (même « gauche » des deux côtés de
@@ -70,9 +72,10 @@ le détail des décisions. Résumé :
   nouveau **cycle** démarre : chaque attaquant encore debout refrappe le défenseur debout le
   plus à gauche. Un monstre mis KO par un coup ou une riposte reste sur le board (aucun dégât
   ne persiste d'un combat à l'autre, H1) mais n'attaque/n'est plus ciblé jusqu'à la fin du
-  combat. Quand tous les défenseurs adverses sont tombés (ou qu'il n'y en avait aucun), chaque
-  attaquant encore debout **perce** jusqu'au héros adverse, une fois chacun (y compris ceux qui
-  avaient déjà frappé dans le cycle en cours) — 20 PV de départ, 0 PV = défaite immédiate, plus
+  combat. Quand tous les défenseurs adverses sont tombés (ou qu'il n'y en avait aucun), c'est
+  la **percée** : le héros adverse perd **1 PV par attaquant encore debout**
+  (`BREAKTHROUGH_DAMAGE`), quelle que soit leur attaque. Ce n'est pas une attaque : aucune
+  capacité ne se déclenche — 10 PV de départ, 0 PV = défaite immédiate, plus
   aucun effet ni coup n'est résolu ensuite. L'attaque effective d'un monstre vaut toujours au
   moins 1 ; un cycle qui n'inflige aucun dégât à personne (des deux côtés) termine le combat
   sur un **combat nul** (pas de percée, PV inchangés) — un filet de sécurité
@@ -92,12 +95,12 @@ le détail des décisions. Résumé :
   cartes ont une ou plusieurs capacités = un déclencheur (`Trigger` dans `types.ts`) → un effet
   (`AbilityEffect`), résolu immédiatement et sans chaîne (aucun effet de la v1 ne pose, ne vend
   ni ne met KO une carte). Déclencheurs : `summon` (la carte rejoint le board, action `place`),
-  `attack` (elle attaque, à chaque coup porté), `defend` (elle est ciblée par une attaque, à
+  `attack` (elle attaque, à chaque coup porté en mêlée — pas en percée), `defend` (elle est ciblée par une attaque, à
   chaque coup reçu), `ko` (sa défense tombe à 0 pendant un combat, une seule fois par combat),
   `sold` (elle est vendue, action `sell`). Dans un même échange, l'ordre est : Attaque de
   l'attaquant → Défend du défenseur ciblé → dégâts simultanés → KO du défenseur puis KO de
   l'attaquant s'ils viennent de tomber. Effets disponibles : gain de pièces, dégâts ou soin
-  (plafonné à 20 PV) sur un héros, pioche, buff permanent (sur soi ou sur les autres monstres du
+  (plafonné à 10 PV) sur un héros, pioche, buff permanent (sur soi ou sur les autres monstres du
   même propriétaire, cumulable, perdu si la carte quitte le board), bonus de dégâts (Attaque
   seulement) et bouclier (Défend seulement, peut absorber un coup entièrement). Pour ajouter une
   capacité à une carte, éditer son `abilities` dans `CARD_CATALOG` (`src/game/cards.ts`) ;

@@ -16,13 +16,18 @@ import type {
 // PLAN-effets-triggers.md §5 : batch de cartes de test des capacités (déclencheur → effet),
 // un par carte au minimum, chaque déclencheur au moins deux fois et chaque effet au moins
 // une fois. Les valeurs sont volontairement simples ; l'équilibrage n'est pas l'objet.
+//
+// Équilibrage v7 (10 PV, 2 pièces de départ, percée à 1 dégât par attaquant survivant) :
+// ajusté avec une simulation IA gloutonne contre IA gloutonne. Principes : aucune carte ne doit
+// rapporter plus qu'elle ne coûte une fois vendue (la vente rend 1 pièce) ; les effets
+// répétés à chaque combat (Défend, KO) restent petits, les PV étant rares.
 
 export const CARD_CATALOG: CardDef[] = [
   {
     kind: 'monster',
     id: 'squire',
     name: 'Écuyer',
-    cost: 1,
+    cost: 2, // à 1, achat + Invoqué + vente rapportait une pièce nette
     attack: 1,
     defense: 2,
     element: 'air',
@@ -41,7 +46,7 @@ export const CARD_CATALOG: CardDef[] = [
     element: 'earth',
     abilities: [
       { trigger: 'attack', effect: { type: 'bonusDamage', amount: 2 } },
-      { trigger: 'sold', effect: { type: 'healSelf', amount: 2 } },
+      { trigger: 'sold', effect: { type: 'healSelf', amount: 1 } },
     ],
   },
   {
@@ -69,7 +74,7 @@ export const CARD_CATALOG: CardDef[] = [
     id: 'knight',
     name: 'Chevalier',
     cost: 4,
-    attack: 3,
+    attack: 4,
     defense: 4,
     element: 'fire',
     abilities: [{ trigger: 'attack', effect: { type: 'buff', target: 'self', attack: 1, defense: 0 } }],
@@ -78,7 +83,7 @@ export const CARD_CATALOG: CardDef[] = [
     kind: 'monster',
     id: 'golem',
     name: 'Golem de pierre',
-    cost: 5,
+    cost: 6,
     attack: 1,
     defense: 8,
     element: 'earth',
@@ -92,7 +97,7 @@ export const CARD_CATALOG: CardDef[] = [
     attack: 5,
     defense: 4,
     element: 'fire',
-    abilities: [{ trigger: 'ko', effect: { type: 'healSelf', amount: 3 } }],
+    abilities: [{ trigger: 'ko', effect: { type: 'healSelf', amount: 2 } }],
   },
   {
     kind: 'monster',
@@ -109,7 +114,7 @@ export const CARD_CATALOG: CardDef[] = [
     kind: 'enchantment',
     id: 'banner',
     name: 'Étendard de guerre',
-    cost: 3,
+    cost: 2,
     element: 'fire',
     effect: { type: 'monsterBuff', zone: 'attack', attack: 1, defense: 0 },
   },
@@ -117,7 +122,7 @@ export const CARD_CATALOG: CardDef[] = [
     kind: 'enchantment',
     id: 'rampart',
     name: 'Rempart',
-    cost: 3,
+    cost: 2,
     element: 'earth',
     effect: { type: 'monsterBuff', zone: 'defense', attack: 0, defense: 1 },
   },
@@ -128,13 +133,14 @@ export const CARD_CATALOG: CardDef[] = [
     cost: 3,
     element: 'water',
     effect: { type: 'coinsPerTurn', amount: 1 },
-    abilities: [{ trigger: 'sold', effect: { type: 'gainCoins', amount: 2 } }],
+    // Vendu +1 (+ la pièce de vente) : rend 2 des 3 pièces, plus remboursée intégralement.
+    abilities: [{ trigger: 'sold', effect: { type: 'gainCoins', amount: 1 } }],
   },
   {
     kind: 'enchantment',
     id: 'blessing',
     name: 'Bénédiction',
-    cost: 6,
+    cost: 5,
     element: 'water',
     effect: { type: 'monsterBuff', zone: 'all', attack: 1, defense: 1 },
   },

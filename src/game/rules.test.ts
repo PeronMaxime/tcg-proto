@@ -11,12 +11,15 @@ import {
 } from './cards';
 import {
   applyAction,
+  BREAKTHROUGH_DAMAGE,
   createInitialState,
   ELEMENT_ADVANTAGE_BONUS,
   getMonsterStats,
+  isFirstTurnOfGame,
   MIN_ATTACK,
   opponentOf,
   resolveCombat,
+  STARTING_COINS,
   STARTING_HP,
   ZONE_SIZES,
 } from './rules';
@@ -45,7 +48,7 @@ function emptyZones(): PlayerState['zones'] {
 
 function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
   return {
-    hp: 20,
+    hp: STARTING_HP,
     coins: 5,
     turnsPlayed: 0,
     deck: [],
@@ -59,10 +62,11 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
 
 function baseState(overrides: Partial<GameState> = {}): GameState {
   return {
-    rulesVersion: 6,
+    rulesVersion: 7,
     turn: 'p1',
     phase: 'main',
-    turnNumber: 1,
+    turnNumber: 2, // pas 1 : le tout premier tour de la partie n'a pas de combat
+
     players: { p1: freshPlayer(), p2: freshPlayer() },
     winner: null,
     eventSeq: 0,
@@ -106,16 +110,17 @@ describe('createInitialState', () => {
       expect(player.zones.attack).toEqual(new Array(5).fill(null));
       expect(player.zones.defense).toEqual(new Array(5).fill(null));
       expect(player.zones.enchant).toEqual(new Array(3).fill(null));
-      expect(player.coins).toBe(0);
+      expect(player.coins).toBe(STARTING_COINS);
+      expect(STARTING_COINS).toBe(2);
       expect(player.hand).toEqual([]);
       expect(player.market).toEqual([]);
       expect(player.discard).toEqual([]);
-      expect(player.hp).toBe(20);
+      expect(player.hp).toBe(10);
     }
     expect(state.phase).toBe('start');
     expect(state.turn).toBe('p1');
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(6);
+    expect(state.rulesVersion).toBe(7);
   });
 
   it('est déterministe pour une même graine', () => {
@@ -258,11 +263,13 @@ describe('applyAction - buy', () => {
   it("permet de vendre une carte posée puis de racheter avec la pièce obtenue", () => {
     let state = baseState({ phase: 'main' });
     state.players.p1.coins = 0;
-    state.players.p1.market = [makeCard('squire', 'm1')]; // coût 1
+    state.players.p1.coins = 1;
+    state.players.p1.market = [makeCard('squire', 'm1')]; // coût 2
     state.players.p1.zones.attack[0] = makeCard('guard', 'g1');
 
+    expect(applyAction(state, 'p1', { type: 'buy', uid: 'm1' })).toBeNull();
     state = applyAction(state, 'p1', { type: 'sell', uid: 'g1' })!;
-    expect(state.players.p1.coins).toBe(1);
+    expect(state.players.p1.coins).toBe(2);
 
     const next = applyAction(state, 'p1', { type: 'buy', uid: 'm1' });
     expect(next).not.toBeNull();
@@ -506,10 +513,10 @@ describe('fusion dorée', () => {
 });
 
 describe('applyAction - sell', () => {
-  it('retire une carte posée, la met en défausse, donne 1 pièce et déclenche Vendu (Loup : +2 PV)', () => {
+  it('retire une carte posée, la met en défausse, donne 1 pièce et déclenche Vendu (Loup : +1 PV)', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.coins = 2;
-    state.players.p1.hp = 10;
+    state.players.p1.hp = 5;
     state.players.p1.zones.attack[3] = makeCard('wolf', 'w1');
 
     const next = applyAction(state, 'p1', { type: 'sell', uid: 'w1' });
@@ -518,7 +525,7 @@ describe('applyAction - sell', () => {
     expect(next!.players.p1.zones.attack[3]).toBeNull();
     expect(next!.players.p1.discard.map((c) => c.uid)).toEqual(['w1']);
     expect(next!.players.p1.coins).toBe(3);
-    expect(next!.players.p1.hp).toBe(12); // E8 : Loup - Vendu : +2 PV
+    expect(next!.players.p1.hp).toBe(6); // E8 : Loup - Vendu : +1 PV
     expect(next!.lastEvent).toEqual({
       id: 1,
       type: 'sell',
@@ -526,17 +533,18 @@ describe('applyAction - sell', () => {
       uid: 'w1',
       zone: 'attack',
       slot: 3,
-      effects: [{ seat: 'p1', sourceUid: 'w1', cardId: 'wolf', trigger: 'sold', effect: { type: 'healSelf', amount: 2 } }],
+      effects: [{ seat: 'p1', sourceUid: 'w1', cardId: 'wolf', trigger: 'sold', effect: { type: 'healSelf', amount: 1 } }],
     });
   });
 
-  it('Trésorerie : 1 (vente) + 2 (Vendu) pièces', () => {
+  it('Trésorerie : 1 (vente) + 1 (Vendu) pièces, moins que son coût', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.coins = 0;
     state.players.p1.zones.enchant[0] = makeCard('treasury', 't1');
 
     const next = applyAction(state, 'p1', { type: 'sell', uid: 't1' })!;
-    expect(next.players.p1.coins).toBe(3);
+    expect(next.players.p1.coins).toBe(2);
+    expect(next.players.p1.coins).toBeLessThan(getCardDef('treasury').cost);
   });
 
   it('efface le buff de la carte vendue (E9)', () => {
@@ -594,7 +602,7 @@ describe('applyAction - sell', () => {
 // ---------------------------------------------------------------------------------------
 
 describe('combat : riposte et cycles', () => {
-  function playerWith(zoneCards: Partial<Record<Zone, (string | null)[]>>, hp = 20): PlayerState {
+  function playerWith(zoneCards: Partial<Record<Zone, (string | null)[]>>, hp = STARTING_HP): PlayerState {
     const p = freshPlayer({ hp });
     for (const [zone, cards] of Object.entries(zoneCards) as [Zone, (string | null)[]][]) {
       p.zones[zone] = p.zones[zone].map((_, i) => (cards[i] ? makeCard(cards[i]!, `${zone}${i}`) : null));
@@ -671,7 +679,7 @@ describe('combat : riposte et cycles', () => {
     const breakthrough = steps.filter((s) => s.target.kind === 'player');
     expect(breakthrough.map((s) => s.attackerUid)).toEqual(['attack0', 'attack1']);
     expect(breakthrough.every((s) => s.cycle === 2)).toBe(true);
-    expect(state.players.p2.hp).toBe(20 - 7 - 3);
+    expect(state.players.p2.hp).toBe(20 - 2 * BREAKTHROUGH_DAMAGE);
   });
 
   it('aucun défenseur au départ -> chaque attaquant frappe le héros une fois (comportement conservé)', () => {
@@ -682,7 +690,30 @@ describe('combat : riposte et cycles', () => {
     const { steps } = resolveCombat(state, 'p1');
     expect(steps).toHaveLength(2);
     expect(steps.every((s) => s.target.kind === 'player' && s.cycle === 1)).toBe(true);
-    expect(state.players.p2.hp).toBe(20 - 3 - 7);
+    expect(state.players.p2.hp).toBe(STARTING_HP - 2 * BREAKTHROUGH_DAMAGE);
+  });
+
+  it("percée : chaque attaquant inflige toujours 1 dégât au héros, quelle que soit son attaque", () => {
+    const state = baseState();
+    state.players.p1 = playerWith({ attack: ['titan', 'squire'] }); // 7 atq puis 1 atq
+    state.players.p2 = playerWith({});
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(BREAKTHROUGH_DAMAGE).toBe(1);
+    expect(steps.map((s) => s.damage)).toEqual([1, 1]);
+    expect(state.players.p2.hp).toBe(STARTING_HP - 2);
+  });
+
+  it("percée : ce n'est pas une attaque, aucune capacité Attaque ne se déclenche", () => {
+    const state = baseState();
+    state.players.p1 = playerWith({ attack: ['knight'] }); // Attaque : +1 atq permanent
+    state.players.p2 = playerWith({});
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps).toHaveLength(1);
+    expect(steps[0].effects).toEqual([]);
+    expect(state.players.p1.zones.attack[0]!.buff).toBeUndefined();
+    expect(state.players.p2.hp).toBe(STARTING_HP - 1);
   });
 
   it('attaque minimum 1 (E16) : un buff négatif ne fait jamais descendre en dessous de MIN_ATTACK', () => {
@@ -732,10 +763,10 @@ describe('combat : riposte et cycles', () => {
   it("victoire en percée : le combat s'arrête au 0 PV, les coups suivants ne sont pas résolus (H9)", () => {
     const state = baseState();
     state.players.p1 = playerWith({ attack: ['titan', 'titan', 'titan'] }); // 7 atq chacun
-    state.players.p2 = playerWith({}, 10);
+    state.players.p2 = playerWith({}, 2);
 
     const { steps } = resolveCombat(state, 'p1');
-    // 10 - 7 = 3, puis 3 - 7 -> 0 (tue, H9) : le 3e titan ne frappe pas.
+    // 2 - 1 = 1, puis 1 - 1 -> 0 (tue, H9) : le 3e titan ne frappe pas.
     expect(steps).toHaveLength(2);
     expect(state.players.p2.hp).toBe(0);
     expect(state.winner).toBe('p1');
@@ -827,13 +858,13 @@ describe('éléments', () => {
   it('défenseur avantagé : +1 dégât sur sa riposte, coup inchangé', () => {
     const state = baseState();
     state.players.p1.zones.attack[0] = makeCard('archer', 'a1'); // air, 3 atq / 2 déf
-    state.players.p2.zones.defense[0] = makeCard('knight', 'k1'); // feu, 3 atq / 4 déf
+    state.players.p2.zones.defense[0] = makeCard('knight', 'k1'); // feu, 4 atq / 4 déf
 
     const { steps } = resolveCombat(state, 'p1');
     expect(steps[0]).toMatchObject({
       damage: 3,
       remaining: 1,
-      retaliation: 3 + ELEMENT_ADVANTAGE_BONUS,
+      retaliation: 4 + ELEMENT_ADVANTAGE_BONUS,
       effective: false,
       retaliationEffective: true,
     });
@@ -922,7 +953,7 @@ describe('effets déclenchés', () => {
     expect(getMonsterStats(next.players.p1, squire, 'attack')).toEqual({ attack: 2, defense: 3 });
   });
 
-  it('Vendu : Loup -> +2 PV (E8, plafonné à STARTING_HP)', () => {
+  it('Vendu : Loup -> +1 PV (E8, plafonné à STARTING_HP)', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.hp = STARTING_HP - 1;
     state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
@@ -952,7 +983,7 @@ describe('effets déclenchés', () => {
 
   it('Attaque : le Chevalier gagne +1 attaque à chaque cycle, buff conservé au combat suivant', () => {
     const state = baseState();
-    state.players.p1.zones.attack[0] = makeCard('knight', 'k1'); // 3 atq / 4 déf
+    state.players.p1.zones.attack[0] = makeCard('knight', 'k1'); // 4 atq / 4 déf
     state.players.p2.zones.defense[0] = makeCard('titan', 't1'); // 7 atq / 7 déf : encaisse plusieurs cycles
 
     resolveCombat(state, 'p1');
@@ -1033,7 +1064,7 @@ describe('effets déclenchés', () => {
     expect(state.players.p2.hand).toHaveLength(1);
   });
 
-  it('KO : Drake -> +3 PV (plafond STARTING_HP)', () => {
+  it('KO : Drake -> +2 PV (plafond STARTING_HP)', () => {
     const state = baseState();
     state.players.p1.hp = STARTING_HP - 1;
     state.players.p1.zones.attack[0] = makeCard('drake', 'd1'); // 5 atq / 4 déf
@@ -1059,7 +1090,7 @@ describe('effets déclenchés', () => {
 
     const next = applyAction(state, 'p1', { type: 'endTurn' })!;
     const combatEvent = next.lastEvent as Extract<typeof next.lastEvent, { type: 'combat' }>;
-    expect(combatEvent.hpBefore).toEqual({ p1: 20, p2: 20 });
+    expect(combatEvent.hpBefore).toEqual({ p1: STARTING_HP, p2: 20 });
     expect(combatEvent.steps.at(-1)!.hp).toEqual({ p1: next.players.p1.hp, p2: next.players.p2.hp });
   });
 
@@ -1089,7 +1120,7 @@ describe('applyAction - endTurn', () => {
   it('PV à 0 -> winner, PV = 0, le tour ne passe pas', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.attack[0] = makeCard('titan', 'atk');
-    state.players.p2.hp = 5;
+    state.players.p2.hp = 1;
 
     const next = applyAction(state, 'p1', { type: 'endTurn' });
 
@@ -1108,6 +1139,24 @@ describe('applyAction - endTurn', () => {
     expect(next!.phase).toBe('start');
     expect(next!.turnNumber).toBe(5);
     expect(next!.lastEvent).toMatchObject({ type: 'combat', seat: 'p1', steps: [], stalemate: false });
+  });
+
+  it("premier tour de la partie : pas de combat, même avec des attaquants et aucun défenseur", () => {
+    const state = baseState({ phase: 'main', turnNumber: 1 });
+    state.players.p1.zones.attack[0] = makeCard('titan', 'atk');
+    state.players.p1.zones.attack[1] = makeCard('knight', 'k1'); // Attaque : buff self
+    expect(isFirstTurnOfGame(state)).toBe(true);
+
+    const next = applyAction(state, 'p1', { type: 'endTurn' })!;
+
+    expect(next.players.p2.hp).toBe(STARTING_HP);
+    expect(next.players.p1.zones.attack[1]!.buff).toBeUndefined();
+    expect(next.lastEvent).toMatchObject({ type: 'combat', seat: 'p1', steps: [], stalemate: false });
+    expect(next.turn).toBe('p2');
+    expect(next.turnNumber).toBe(2);
+
+    // Le second joueur, lui, combat dès son premier tour.
+    expect(isFirstTurnOfGame(next)).toBe(false);
   });
 
   it('applyAction renvoie null une fois winner défini', () => {
