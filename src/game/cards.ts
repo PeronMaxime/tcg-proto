@@ -21,6 +21,9 @@ import type {
 // ajusté avec une simulation IA gloutonne contre IA gloutonne. Principes : aucune carte ne doit
 // rapporter plus qu'elle ne coûte une fois vendue (la vente rend 1 pièce) ; les effets
 // répétés à chaque combat (Défend, KO) restent petits, les PV étant rares.
+//
+// v8 : le buff Attaque du Chevalier et les dégâts Défend du Golem ne se déclenchent plus
+// qu'une fois par combat (`oncePerCombat`), plus à chaque cycle (demande utilisateur).
 
 export const CARD_CATALOG: CardDef[] = [
   {
@@ -77,7 +80,9 @@ export const CARD_CATALOG: CardDef[] = [
     attack: 4,
     defense: 4,
     element: 'fire',
-    abilities: [{ trigger: 'attack', effect: { type: 'buff', target: 'self', attack: 1, defense: 0 } }],
+    abilities: [
+      { trigger: 'attack', effect: { type: 'buff', target: 'self', attack: 1, defense: 0 }, oncePerCombat: true },
+    ],
   },
   {
     kind: 'monster',
@@ -87,7 +92,7 @@ export const CARD_CATALOG: CardDef[] = [
     attack: 1,
     defense: 8,
     element: 'earth',
-    abilities: [{ trigger: 'defend', effect: { type: 'damageOpponent', amount: 1 } }],
+    abilities: [{ trigger: 'defend', effect: { type: 'damageOpponent', amount: 1 }, oncePerCombat: true }],
   },
   {
     kind: 'monster',
@@ -275,7 +280,8 @@ function describeAbilityEffect(effect: AbilityEffect): string {
 
 // Texte complet d'une capacité affiché sur la face de la carte, ex. « Invoqué : +1 pièce ».
 export function describeAbility(ability: CardAbility): string {
-  return `${TRIGGER_LABELS[ability.trigger]} : ${describeAbilityEffect(ability.effect)}`;
+  const trigger = TRIGGER_LABELS[ability.trigger] + (ability.oncePerCombat ? ' (1×/combat)' : '');
+  return `${trigger} : ${describeAbilityEffect(ability.effect)}`;
 }
 
 // E12 (+ combat réservé aux monstres) : `bonusDamage` seulement sur Attaque, `shield`

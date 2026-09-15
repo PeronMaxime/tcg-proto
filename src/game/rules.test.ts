@@ -63,7 +63,7 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
 
 function baseState(overrides: Partial<GameState> = {}): GameState {
   return {
-    rulesVersion: 7,
+    rulesVersion: 8,
     turn: 'p1',
     phase: 'main',
     turnNumber: 2, // pas 1 : le tout premier tour de la partie n'a pas de combat
@@ -122,7 +122,7 @@ describe('createInitialState', () => {
     expect(state.phase).toBe('start');
     expect(state.turn).toBe('p1');
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(7);
+    expect(state.rulesVersion).toBe(8);
   });
 
   it('est déterministe pour une même graine', () => {
@@ -354,16 +354,38 @@ describe('applyAction - move', () => {
     expect(next).not.toBeNull();
     expect(next!.players.p1.zones.attack[0]).toBeNull();
     expect(next!.players.p1.zones.attack[3]?.uid).toBe('w1');
-    expect(next!.lastEvent).toEqual({ id: 1, type: 'move', seat: 'p1', uid: 'w1', zone: 'attack', from: 0, to: 3 });
+    expect(next!.lastEvent).toEqual({
+      id: 1,
+      type: 'move',
+      seat: 'p1',
+      uid: 'w1',
+      zone: 'attack',
+      from: 0,
+      to: 3,
+      swappedUid: null,
+    });
   });
 
-  it('refuse un emplacement occupé, un slot identique, ou hors phase main', () => {
+  it("échange deux cartes de la même zone quand l'emplacement visé est occupé, même zone pleine", () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.defense = ['wolf', 'guard', 'archer', 'squire', 'golem'].map((id, i) =>
+      makeCard(id, `d${i}`),
+    );
+
+    const next = applyAction(state, 'p1', { type: 'move', uid: 'd0', slot: 3 });
+
+    expect(next).not.toBeNull();
+    expect(next!.players.p1.zones.defense.map((c) => c?.uid)).toEqual(['d3', 'd1', 'd2', 'd0', 'd4']);
+    expect(next!.lastEvent).toMatchObject({ type: 'move', uid: 'd0', zone: 'defense', from: 0, to: 3, swappedUid: 'd3' });
+  });
+
+  it("refuse un slot identique, un slot hors zone, ou hors phase main", () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.defense[0] = makeCard('wolf', 'w1');
-    state.players.p1.zones.defense[1] = makeCard('guard', 'g1');
 
-    expect(applyAction(state, 'p1', { type: 'move', uid: 'w1', slot: 1 })).toBeNull(); // occupé
     expect(applyAction(state, 'p1', { type: 'move', uid: 'w1', slot: 0 })).toBeNull(); // no-op
+    expect(applyAction(state, 'p1', { type: 'move', uid: 'w1', slot: 5 })).toBeNull(); // hors zone
+    expect(applyAction(state, 'p1', { type: 'move', uid: 'w1', slot: -1 })).toBeNull();
 
     const startState = baseState({ phase: 'start' });
     startState.players.p1.zones.defense[0] = makeCard('wolf', 'w1');
@@ -983,21 +1005,23 @@ describe('effets déclenchés', () => {
     expect(steps[0]).toMatchObject({ damage: 6, retaliation: 7 });
   });
 
-  it('Attaque : le Chevalier gagne +1 attaque à chaque cycle, buff conservé au combat suivant', () => {
+  it('Attaque : le Chevalier gagne +1 attaque une seule fois par combat, buff conservé au combat suivant', () => {
     const state = baseState();
-    state.players.p1.zones.attack[0] = makeCard('knight', 'k1'); // 4 atq / 4 déf
-    state.players.p2.zones.defense[0] = makeCard('titan', 't1'); // 7 atq / 7 déf : encaisse plusieurs cycles
+    state.players.p1.zones.attack[0] = makeCard('knight', 'k1'); // feu, 4 atq / 4 déf
+    state.players.p2.zones.defense[0] = makeCard('golem', 'g1'); // terre, 1 atq / 8 déf : tient 2 cycles
 
-    resolveCombat(state, 'p1');
+    const { steps } = resolveCombat(state, 'p1');
+    // 5 (4 + buff) puis 5 : le golem tombe au 2e coup, puis percée (pas une attaque).
+    expect(steps.map((s) => s.target.kind)).toEqual(['monster', 'monster', 'player']);
+    expect(steps[0].effects.filter((e) => e.trigger === 'attack')).toHaveLength(1);
+    expect(steps[1].effects.filter((e) => e.trigger === 'attack')).toHaveLength(0);
     const knight = state.players.p1.zones.attack[0]!;
-    expect(knight.buff?.attack).toBeGreaterThanOrEqual(1);
-    const attacksLanded = knight.buff!.attack;
+    expect(knight.buff).toEqual({ attack: 1, defense: 0 });
 
-    // Combat suivant : le buff est toujours là et continue de grandir.
-    state.players.p1.zones.attack[0] = knight; // même instance, buff conservé (E9)
-    state.players.p2.zones.defense[0] = makeCard('titan', 't2');
+    // Combat suivant : le buff est toujours là et regagne +1.
+    state.players.p2.zones.defense[0] = makeCard('golem', 'g2');
     resolveCombat(state, 'p1');
-    expect(knight.buff!.attack).toBeGreaterThan(attacksLanded);
+    expect(knight.buff).toEqual({ attack: 2, defense: 0 });
   });
 
   it('Défend : le Garde absorbe une partie du coup à chaque cycle, sa riposte est inchangée', () => {
@@ -1024,6 +1048,18 @@ describe('effets déclenchés', () => {
     expect(next.phase).toBe('main');
     const step = next.lastEvent as Extract<typeof next.lastEvent, { type: 'combat' }>;
     expect(step.steps[0]).toMatchObject({ damage: 0, retaliation: 0 });
+  });
+
+  it('Défend : les dégâts du Golem au héros adverse ne se déclenchent qu’une fois par combat', () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('squire', 's1'); // air, 1 atq / 2 déf
+    state.players.p1.zones.attack[1] = makeCard('squire', 's2');
+    state.players.p2.zones.defense[0] = makeCard('golem', 'g1'); // terre, 8 déf : frappé 4 fois (2 dégâts)
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps).toHaveLength(4); // 2 cycles, 2 attaquants
+    expect(steps.map((s) => s.effects.filter((e) => e.trigger === 'defend').length)).toEqual([1, 0, 0, 0]);
+    expect(state.players.p1.hp).toBe(STARTING_HP - 1);
   });
 
   it("KO : l'Écuyer défenseur mis KO pioche la carte du dessus de son deck ; deck vide -> rien", () => {

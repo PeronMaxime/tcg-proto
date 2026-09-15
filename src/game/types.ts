@@ -25,6 +25,9 @@ export type AbilityEffect =
 export interface CardAbility {
   trigger: Trigger;
   effect: AbilityEffect;
+  // Ne se déclenche qu'au premier coup éligible de chaque combat, pas à chaque cycle
+  // (demande utilisateur, équilibrage). Absent = à chaque déclenchement.
+  oncePerCombat?: true;
 }
 
 // Élément d'une carte (demande utilisateur) : fixe la couleur de sa face et, en combat, un
@@ -80,8 +83,9 @@ export type Action =
   | { type: 'beginTurn' }
   | { type: 'buy'; uid: string }
   | { type: 'place'; uid: string; zone: Zone; slot: number }
-  // Déplace une carte déjà posée vers un autre emplacement LIBRE de la même zone (attaque ou
-  // défense) : on ne peut pas changer de zone en la déplaçant (demande utilisateur).
+  // Déplace une carte déjà posée vers un autre emplacement de la même zone (attaque ou
+  // défense) : on ne peut pas changer de zone en la déplaçant (demande utilisateur). Si
+  // l'emplacement est occupé, les deux cartes échangent leur place.
   | { type: 'move'; uid: string; slot: number }
   | { type: 'fuse'; uid: string } // uid : la carte en main qui devient dorée
   | { type: 'sell'; uid: string }
@@ -120,7 +124,17 @@ export type GameEvent =
   | { id: number; type: 'turnStart'; seat: Seat; coinsGained: number }
   | { id: number; type: 'buy'; seat: Seat; uid: string }
   | { id: number; type: 'place'; seat: Seat; uid: string; zone: Zone; slot: number; effects: EffectLog[] }
-  | { id: number; type: 'move'; seat: Seat; uid: string; zone: MonsterZone; from: number; to: number }
+  // `swappedUid` : la carte qui occupait `to` et part en `from` (échange), null si `to` était libre.
+  | {
+      id: number;
+      type: 'move';
+      seat: Seat;
+      uid: string;
+      zone: MonsterZone;
+      from: number;
+      to: number;
+      swappedUid: string | null;
+    }
   // `uid` : la carte en main devenue dorée ; `fusedUids` : les 2 exemplaires absorbés.
   | { id: number; type: 'fuse'; seat: Seat; uid: string; fusedUids: string[] }
   | { id: number; type: 'sell'; seat: Seat; uid: string; zone: Zone; slot: number; effects: EffectLog[] }

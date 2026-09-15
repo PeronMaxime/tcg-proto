@@ -20,7 +20,7 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 7;
+export const RULES_VERSION = 8;
 export const STARTING_HP = 10;
 // Pièces en stock au début de la partie (demande utilisateur), avant le gain du 1er tour.
 export const STARTING_COINS = 2;
@@ -205,15 +205,15 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
 
     case 'move': {
       // Repositionne une carte déjà posée à l'intérieur de SA zone (attaque ou défense)
-      // uniquement : pas de changement de zone (demande utilisateur).
+      // uniquement : pas de changement de zone (demande utilisateur). Emplacement occupé =
+      // échange des deux cartes, pour pouvoir réorganiser même une zone pleine.
       if (state.phase !== 'main') return false;
       if (!Number.isInteger(action.slot)) return false;
       for (const zone of ['attack', 'defense'] as MonsterZone[]) {
         const from = player.zones[zone].findIndex((s) => s?.uid === action.uid);
         if (from === -1) continue;
         if (action.slot === from) return false; // pas de no-op
-        if (action.slot < 0 || action.slot >= ZONE_SIZES[zone]) return false;
-        return player.zones[zone][action.slot] === null;
+        return action.slot >= 0 && action.slot < ZONE_SIZES[zone];
       }
       return false;
     }
@@ -277,18 +277,29 @@ function applyPlace(next: GameState, seat: Seat, uid: string, zone: Zone, slot: 
   next.lastEvent = { id: next.eventSeq, type: 'place', seat, uid, zone, slot, effects };
 }
 
-// Repositionne une carte déjà posée dans un autre emplacement libre de SA zone (attaque ou
-// défense) : pas de déclenchement de capacité (la carte ne quitte pas le board, E3/E4 ne
-// s'appliquent qu'à la pose/vente), pas de changement de zone (`isActionLegal` l'impose déjà).
+// Repositionne une carte déjà posée dans un autre emplacement de SA zone (attaque ou
+// défense), en l'échangeant avec la carte qui l'occupait le cas échéant : pas de
+// déclenchement de capacité (les cartes ne quittent pas le board, E3/E4 ne s'appliquent qu'à
+// la pose/vente), pas de changement de zone (`isActionLegal` l'impose déjà).
 function applyMove(next: GameState, seat: Seat, uid: string, slot: number): void {
   const player = next.players[seat];
   for (const zone of ['attack', 'defense'] as MonsterZone[]) {
     const from = player.zones[zone].findIndex((s) => s?.uid === uid);
     if (from === -1) continue;
     const card = player.zones[zone][from]!;
-    player.zones[zone][from] = null;
+    const swapped = player.zones[zone][slot];
+    player.zones[zone][from] = swapped;
     player.zones[zone][slot] = card;
-    next.lastEvent = { id: next.eventSeq, type: 'move', seat, uid, zone, from, to: slot };
+    next.lastEvent = {
+      id: next.eventSeq,
+      type: 'move',
+      seat,
+      uid,
+      zone,
+      from,
+      to: slot,
+      swappedUid: swapped?.uid ?? null,
+    };
     return;
   }
 }
@@ -427,19 +438,26 @@ function applyAbilityEffect(
 // Résout toutes les capacités `trigger` de `card` (propriétaire `seat`), dans l'ordre du
 // tableau `abilities` (E2), en mutant `state`. S'arrête dès que `state.winner` est fixé
 // (E7). `hit` n'est fourni que pour Attaque / Défend ; `bonusDamage` / `shield` l'alimentent
-// (E12).
+// (E12). `firedThisCombat` (fourni par `resolveCombat`) mémorise les capacités
+// `oncePerCombat` déjà déclenchées pendant le combat en cours, pour ne pas les rejouer.
 function fireTrigger(
   state: GameState,
   seat: Seat,
   card: CardInstance,
   trigger: Trigger,
   hit?: HitModifiers,
+  firedThisCombat?: Set<string>,
 ): EffectLog[] {
   const def = getCardDef(card.cardId);
   const logs: EffectLog[] = [];
-  for (const ability of def.abilities ?? []) {
+  for (const [index, ability] of (def.abilities ?? []).entries()) {
     if (ability.trigger !== trigger) continue;
     if (state.winner !== null) break; // E7
+    if (ability.oncePerCombat && firedThisCombat) {
+      const key = `${card.uid}:${index}`;
+      if (firedThisCombat.has(key)) continue;
+      firedThisCombat.add(key);
+    }
     applyAbilityEffect(state, seat, card, ability.effect, hit);
     logs.push({ seat, sourceUid: card.uid, cardId: card.cardId, trigger, effect: ability.effect });
     if (state.winner !== null) break; // E7
@@ -510,6 +528,7 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
   const defenders = buildFighters(state, defenderSeat, 'defense');
 
   const steps: CombatStep[] = [];
+  const firedThisCombat = new Set<string>(); // capacités `oncePerCombat` déjà déclenchées
   let cycle = 0;
   let stalemate = false;
 
@@ -536,9 +555,9 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
       const target = remainingDefenders[0];
 
       const hit: HitModifiers = { bonusDamage: 0, damageReduction: 0 };
-      let effects = fireTrigger(state, attackerSeat, attacker.card, 'attack', hit);
+      let effects = fireTrigger(state, attackerSeat, attacker.card, 'attack', hit, firedThisCombat);
       if (state.winner === null) {
-        effects = effects.concat(fireTrigger(state, defenderSeat, target.card, 'defend', hit));
+        effects = effects.concat(fireTrigger(state, defenderSeat, target.card, 'defend', hit, firedThisCombat));
       }
 
       let damage = 0;

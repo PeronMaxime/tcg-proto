@@ -393,6 +393,11 @@ noter : avec les cycles, Attaque se déclenche à chaque attaque, donc le Cheval
 gagner plusieurs +1 par combat — c'est voulu pour tester le cumul, mais c'est la première
 carte à ajuster si elle s'emballe.
 
+> **Mise à jour (règles v8)** : c'est arrivé. Le buff Attaque du Chevalier et les dégâts
+> Défend du Golem portent désormais `oncePerCombat: true` (champ de `CardAbility`) : ils ne se
+> déclenchent qu'au premier coup éligible de chaque combat, plus à chaque cycle. Les
+> modificateurs de coup (`bonusDamage`, `shield`) restent, eux, appliqués à chaque coup.
+
 ## 6. Affichage
 
 ### 6.1 Texte sur la face (`src/scene/textures.ts`)

@@ -100,7 +100,9 @@ le détail des décisions. Résumé :
   chaque coup reçu), `ko` (sa défense tombe à 0 pendant un combat, une seule fois par combat),
   `sold` (elle est vendue, action `sell`). Dans un même échange, l'ordre est : Attaque de
   l'attaquant → Défend du défenseur ciblé → dégâts simultanés → KO du défenseur puis KO de
-  l'attaquant s'ils viennent de tomber. Effets disponibles : gain de pièces, dégâts ou soin
+  l'attaquant s'ils viennent de tomber. Une capacité marquée `oncePerCombat` (affichée
+  « (1×/combat) » sur la carte) ne se déclenche qu'au premier coup éligible de chaque combat :
+  c'est le cas du buff Attaque du Chevalier et des dégâts Défend du Golem. Effets disponibles : gain de pièces, dégâts ou soin
   (plafonné à 10 PV) sur un héros, pioche, buff permanent (sur soi ou sur les autres monstres du
   même propriétaire, cumulable, perdu si la carte quitte le board), bonus de dégâts (Attaque
   seulement) et bouclier (Défend seulement, peut absorber un coup entièrement). Pour ajouter une
@@ -110,6 +112,9 @@ le détail des décisions. Résumé :
   petit toast pour chaque capacité déclenchée (les siennes et celles de l'adversaire).
 - **Poser une carte** : glisser-déposer une carte de sa main sur un emplacement libre de la
   bonne zone (les emplacements légaux s'allument pendant le glisser).
+- **Déplacer une carte posée** : la glisser vers un autre emplacement de sa zone (attaque ou
+  défense, jamais de changement de zone) ; si l'emplacement est occupé, les deux cartes
+  échangent leur place — on peut donc réorganiser une zone pleine.
 - **Fusion dorée** : quand on fait glisser une carte monstre alors que 2 exemplaires
   normaux (non dorés) du même monstre sont posés sur son board (attaque + défense
   confondues), une zone de fusion apparaît au milieu de l'écran. Relâcher la carte dedans
