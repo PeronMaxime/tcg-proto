@@ -57,7 +57,8 @@ le détail des décisions. Résumé :
 - Chaque joueur a un deck de 50 cartes (monstres + enchantements). Le plateau a 3 zones par
   joueur : **attaque** (5 emplacements), **défense** (5), **enchantements** (3). Une carte
   posée ne bouge plus.
-- Chaque joueur commence la partie avec **2 pièces** en stock (`STARTING_COINS`).
+- Chaque joueur commence la partie avec **2 pièces** en stock (`STARTING_COINS`), le second
+  joueur avec **1 pièce de plus** (`SECOND_PLAYER_BONUS_COINS`).
 - **Tour** : le joueur gagne `N` pièces (`N` = le n-ième tour **de ce joueur**, les pièces se
   cumulent) → **marché** : 3 cartes du dessus du deck, achetables, à la main ; les invendus
   retournent au fond du deck → **phase principale** : poser gratuitement autant de cartes que

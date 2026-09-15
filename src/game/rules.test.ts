@@ -19,6 +19,7 @@ import {
   MIN_ATTACK,
   opponentOf,
   resolveCombat,
+  SECOND_PLAYER_BONUS_COINS,
   STARTING_COINS,
   STARTING_HP,
   ZONE_SIZES,
@@ -110,8 +111,9 @@ describe('createInitialState', () => {
       expect(player.zones.attack).toEqual(new Array(5).fill(null));
       expect(player.zones.defense).toEqual(new Array(5).fill(null));
       expect(player.zones.enchant).toEqual(new Array(3).fill(null));
-      expect(player.coins).toBe(STARTING_COINS);
+      expect(player.coins).toBe(seat === 'p1' ? STARTING_COINS : STARTING_COINS + SECOND_PLAYER_BONUS_COINS);
       expect(STARTING_COINS).toBe(2);
+      expect(SECOND_PLAYER_BONUS_COINS).toBe(1);
       expect(player.hand).toEqual([]);
       expect(player.market).toEqual([]);
       expect(player.discard).toEqual([]);

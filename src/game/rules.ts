@@ -24,6 +24,8 @@ export const RULES_VERSION = 7;
 export const STARTING_HP = 10;
 // Pièces en stock au début de la partie (demande utilisateur), avant le gain du 1er tour.
 export const STARTING_COINS = 2;
+// Pièce de départ en plus pour le second joueur (p2), contre l'avantage de jouer en premier.
+export const SECOND_PLAYER_BONUS_COINS = 1;
 // Dégâts infligés au héros par chaque attaquant qui perce (demande utilisateur) : fixes,
 // quelle que soit son attaque effective.
 export const BREAKTHROUGH_DAMAGE = 1;
@@ -72,10 +74,10 @@ export function createInitialState(random: () => number = Math.random): GameStat
   let uidCounter = 0;
   const makeUid = () => `c${uidCounter++}`;
 
-  function freshPlayer(): PlayerState {
+  function freshPlayer(bonusCoins = 0): PlayerState {
     return {
       hp: STARTING_HP,
-      coins: STARTING_COINS,
+      coins: STARTING_COINS + bonusCoins,
       turnsPlayed: 0,
       deck: shuffle(buildStarterDeck(makeUid), random),
       market: [],
@@ -92,7 +94,7 @@ export function createInitialState(random: () => number = Math.random): GameStat
     turn: 'p1',
     phase: 'start',
     turnNumber: 1,
-    players: { p1: freshPlayer(), p2: freshPlayer() },
+    players: { p1: freshPlayer(), p2: freshPlayer(SECOND_PLAYER_BONUS_COINS) },
     winner: null,
     eventSeq: 0,
     lastEvent: null,
