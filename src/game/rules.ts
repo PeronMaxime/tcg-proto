@@ -536,14 +536,23 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
 
       let damage = 0;
       let retaliation = 0;
+      let effective = false;
+      let retaliationEffective = false;
       if (state.winner === null) {
         const attackerStats = getMonsterStats(state.players[attackerSeat], attacker.card, 'attack');
         const targetStats = getMonsterStats(state.players[defenderSeat], target.card, 'defense');
-        // Le bonus élémentaire s'ajoute avant le bouclier, qui peut donc aussi l'absorber.
-        const attackBonus = hit.bonusDamage + elementBonus(attacker.card, target.card);
-        damage = Math.max(0, attackerStats.attack + attackBonus - hit.damageReduction);
+        // Le bonus élémentaire s'ajoute avant le bouclier, qui peut donc aussi l'absorber :
+        // le coup n'est « efficace » que si le bonus a réellement augmenté les dégâts.
+        const withoutElement = Math.max(0, attackerStats.attack + hit.bonusDamage - hit.damageReduction);
+        damage = Math.max(
+          0,
+          attackerStats.attack + hit.bonusDamage + elementBonus(attacker.card, target.card) - hit.damageReduction,
+        );
+        effective = damage > withoutElement;
         // E13 : attaque effective du défenseur, plancher ≥ 1 (E16), + son bonus élémentaire.
-        retaliation = targetStats.attack + elementBonus(target.card, attacker.card);
+        const retaliationBonus = elementBonus(target.card, attacker.card);
+        retaliation = targetStats.attack + retaliationBonus;
+        retaliationEffective = retaliationBonus > 0;
       }
 
       // Dégâts simultanés (E5, E13) : un défenseur mis KO par la riposte quand même.
@@ -570,6 +579,8 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
         remaining: targetRemaining,
         retaliation,
         attackerRemaining,
+        effective,
+        retaliationEffective,
         effects,
         hp: snapshotHp(state),
       });
@@ -606,6 +617,8 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
         remaining: state.players[defenderSeat].hp,
         retaliation: 0,
         attackerRemaining: currentDefense(state, attacker, 'attack'),
+        effective: false, // le héros n'a pas d'élément
+        retaliationEffective: false,
         effects,
         hp: snapshotHp(state),
       });

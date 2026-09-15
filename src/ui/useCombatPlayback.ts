@@ -23,6 +23,8 @@ export interface ActiveCombatStep {
   attackerUid: string;
   target: CombatTarget;
   attackerSeat: Seat;
+  effective: boolean; // coup augmenté par l'élément (animation « Efficace ! » sur la cible)
+  retaliationEffective: boolean; // riposte augmentée (animation sur l'attaquant)
 }
 
 export interface CombatPlaybackResult {
@@ -106,13 +108,17 @@ export function useCombatPlayback(state: GameState): CombatPlaybackResult {
   const view = combatDisplay(stepsRef.current, cursor.applied, hpBeforeRef.current);
   const combatView: CombatView = { ...view, stalemate: stalemateRef.current };
 
+  const lungeStep = cursor.lungeIndex !== null ? stepsRef.current[cursor.lungeIndex] : null;
   const activeStep: ActiveCombatStep | null =
-    cursor.lungeIndex !== null
+    lungeStep && cursor.lungeIndex !== null
       ? {
           key: eventIdRef.current * 100 + cursor.lungeIndex,
-          attackerUid: stepsRef.current[cursor.lungeIndex].attackerUid,
-          target: stepsRef.current[cursor.lungeIndex].target,
+          attackerUid: lungeStep.attackerUid,
+          target: lungeStep.target,
           attackerSeat: attackerSeatRef.current,
+          // `?? false` : un évènement de combat écrit avant cette fonctionnalité n'a pas ces champs.
+          effective: lungeStep.effective ?? false,
+          retaliationEffective: lungeStep.retaliationEffective ?? false,
         }
       : null;
 

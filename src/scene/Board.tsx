@@ -9,6 +9,7 @@ import { computeMonsterFaceStats } from './cardFaceStats';
 import type { AttackTrigger, HaloKind } from './Card';
 import Card from './Card';
 import DragController, { type DropTarget } from './DragController';
+import EffectiveBursts, { type EffectiveHit } from './EffectiveBurst';
 import Hero from './Hero';
 import {
   deckPose,
@@ -191,6 +192,7 @@ function Board({
   const dragWorldRef = useRef<THREE.Vector3 | null>(null);
   const entries: RenderEntry[] = [];
   const zonePositionByUid = new Map<string, [number, number, number]>();
+  const zoneCardIdByUid = new Map<string, string>();
 
   // --- Ma main ---
   const canDrag = interactive && state.phase === 'main';
@@ -275,6 +277,7 @@ function Board({
       if (!slot) continue;
       const pose = slotPose(zone, index, mine);
       zonePositionByUid.set(slot.uid, pose.position);
+      zoneCardIdByUid.set(slot.uid, slot.cardId);
 
       const def = getCardDef(slot.cardId);
       let stats: MonsterFaceStats | null = null;
@@ -394,6 +397,26 @@ function Board({
     };
   }
 
+  // Animation « Efficace ! » (éléments) au-dessus de chaque monstre qui encaisse, pendant le
+  // coup en cours, un dégât augmenté par l'avantage élémentaire de celui qui le frappe.
+  const effectiveHits: EffectiveHit[] = [];
+  if (activeStep && activeStep.target.kind === 'monster') {
+    const hits: { boosted: boolean; receiverUid: string; dealerUid: string }[] = [
+      { boosted: activeStep.effective, receiverUid: activeStep.target.uid, dealerUid: activeStep.attackerUid },
+      { boosted: activeStep.retaliationEffective, receiverUid: activeStep.attackerUid, dealerUid: activeStep.target.uid },
+    ];
+    for (const { boosted, receiverUid, dealerUid } of hits) {
+      const position = zonePositionByUid.get(receiverUid);
+      const dealerCardId = zoneCardIdByUid.get(dealerUid);
+      if (!boosted || !position || !dealerCardId) continue;
+      effectiveHits.push({
+        id: `${activeStep.key}-${receiverUid}`,
+        position,
+        element: getCardDef(dealerCardId).element,
+      });
+    }
+  }
+
   const isLegalSlot = (zone: Zone, slot: number) => {
     if (drag === null) return false;
     if (drag.origin) return zone === drag.origin.zone && isActionLegal(state, seat, { type: 'move', uid: drag.uid, slot });
@@ -481,6 +504,8 @@ function Board({
           onDragStart={entry.onDragStart}
         />
       ))}
+
+      <EffectiveBursts hits={effectiveHits} />
 
       {drag && (
         <DragController

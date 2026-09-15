@@ -816,7 +816,12 @@ describe('éléments', () => {
     state.players.p2.zones.defense[0] = makeCard('titan', 't1'); // eau, 7 atq / 7 déf
 
     const { steps } = resolveCombat(state, 'p1');
-    expect(steps[0]).toMatchObject({ damage: 1 + ELEMENT_ADVANTAGE_BONUS, retaliation: 7 });
+    expect(steps[0]).toMatchObject({
+      damage: 1 + ELEMENT_ADVANTAGE_BONUS,
+      retaliation: 7,
+      effective: true,
+      retaliationEffective: false,
+    });
   });
 
   it('défenseur avantagé : +1 dégât sur sa riposte, coup inchangé', () => {
@@ -825,7 +830,13 @@ describe('éléments', () => {
     state.players.p2.zones.defense[0] = makeCard('knight', 'k1'); // feu, 3 atq / 4 déf
 
     const { steps } = resolveCombat(state, 'p1');
-    expect(steps[0]).toMatchObject({ damage: 3, remaining: 1, retaliation: 3 + ELEMENT_ADVANTAGE_BONUS });
+    expect(steps[0]).toMatchObject({
+      damage: 3,
+      remaining: 1,
+      retaliation: 3 + ELEMENT_ADVANTAGE_BONUS,
+      effective: false,
+      retaliationEffective: true,
+    });
   });
 
   it('éléments neutres (opposés sur la roue) : aucun bonus', () => {
@@ -834,7 +845,7 @@ describe('éléments', () => {
     state.players.p2.zones.defense[0] = makeCard('titan', 't1'); // eau
 
     const { steps } = resolveCombat(state, 'p1');
-    expect(steps[0]).toMatchObject({ damage: 3, retaliation: 7 });
+    expect(steps[0]).toMatchObject({ damage: 3, retaliation: 7, effective: false, retaliationEffective: false });
   });
 
   it('le bouclier peut absorber le bonus élémentaire', () => {
@@ -844,6 +855,7 @@ describe('éléments', () => {
 
     const { steps } = resolveCombat(state, 'p1');
     expect(steps[0].damage).toBe(1 + ELEMENT_ADVANTAGE_BONUS - 1);
+    expect(steps[0].effective).toBe(true); // sans l'élément, le bouclier aurait tout absorbé
   });
 
   it("pas de bonus en percée : le héros n'a pas d'élément", () => {
@@ -852,7 +864,7 @@ describe('éléments', () => {
     state.players.p2 = freshPlayer({ hp: 20 });
 
     const { steps } = resolveCombat(state, 'p1');
-    expect(steps[0]).toMatchObject({ target: { kind: 'player' }, damage: 1 });
+    expect(steps[0]).toMatchObject({ target: { kind: 'player' }, damage: 1, effective: false });
   });
 });
 

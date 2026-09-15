@@ -83,7 +83,9 @@ le détail des décisions. Résumé :
   monstre dont l'élément domine celui du monstre qu'il touche lui inflige **1 dégât de plus**
   (`ELEMENT_ADVANTAGE_BONUS`), sur son coup comme sur sa riposte ; le bonus s'ajoute avant le
   bouclier (qui peut donc l'absorber). Pas de bonus en percée (le héros n'a pas d'élément) ;
-  l'élément d'un enchantement est purement visuel.
+  l'élément d'un enchantement est purement visuel. Pendant la lecture du combat, un texte
+  « Efficace ! » aux couleurs de l'élément qui frappe jaillit au-dessus du monstre qui encaisse
+  un dégât augmenté (`EffectiveBurst.tsx`).
 - Les enchantements posés appliquent un effet permanent à **tout le board de leur
   propriétaire** (`getMonsterStats` dans `rules.ts`) tant qu'ils restent en jeu.
 - **Capacités** (voir `PLAN-effets-triggers.md` pour le détail des décisions E1-E12) : certaines

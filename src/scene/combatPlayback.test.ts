@@ -60,6 +60,8 @@ describe('combatDisplay', () => {
       remaining: 0,
       retaliation: 0,
       attackerRemaining: 5,
+      effective: false,
+      retaliationEffective: false,
       effects: [],
       hp: { p1: 20, p2: 20 },
       ...overrides,

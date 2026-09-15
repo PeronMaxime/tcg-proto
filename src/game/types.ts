@@ -107,6 +107,10 @@ export interface CombatStep {
   remaining: number; // défense restante du monstre ciblé (0 = KO) ou PV restants du joueur
   retaliation: number; // riposte reçue par l'attaquant (0 en percée) (E13), élément inclus
   attackerRemaining: number; // défense restante de l'attaquant après l'échange (0 = KO)
+  // Éléments : le coup (resp. la riposte) a été augmenté par l'avantage élémentaire — sert à
+  // l'animation « Efficace ! ». Toujours `false` en percée.
+  effective: boolean;
+  retaliationEffective: boolean;
   effects: EffectLog[]; // effets résolus pendant l'échange, dans l'ordre (E5)
   hp: Record<Seat, number>; // PV des deux joueurs après l'échange, effets compris
 }
