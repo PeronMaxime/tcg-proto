@@ -21,7 +21,8 @@ export type AbilityEffect =
   | { type: 'drawCard'; count: number } // E11
   | { type: 'buff'; target: 'self' | 'otherAllies'; attack: number; defense: number } // E9
   | { type: 'bonusDamage'; amount: number } // Attaque uniquement (E12)
-  | { type: 'shield'; amount: number }; // Défend uniquement (E12)
+  | { type: 'shield'; amount: number } // Défend uniquement (E12)
+  | { type: 'extraMarketCard'; count: number }; // cartes en plus au marché du prochain tour du propriétaire
 
 export interface CardAbility {
   trigger: Trigger;
@@ -47,6 +48,10 @@ export interface MonsterDef extends CardDefBase {
   kind: 'monster';
   attack: number;
   defense: number;
+  // Aura (demande utilisateur) : tant que ce monstre est posé, +attaque/+défense à tous les
+  // AUTRES monstres de son propriétaire, y compris ceux posés après lui — comme un
+  // enchantement `monsterBuff` sur 'all' (doublée si le monstre est doré). Absent = pas d'aura.
+  aura?: { attack: number; defense: number };
 }
 
 export interface EnchantmentDef extends CardDefBase {
@@ -78,6 +83,9 @@ export interface PlayerState {
   hand: CardInstance[];
   zones: Record<Zone, Slot[]>; // longueurs fixes 5 / 5 / 3 ; index 0 = emplacement de gauche
   discard: CardInstance[]; // cartes vendues (`sell`), jamais retirées autrement
+  // Cartes en plus à révéler au marché du prochain tour (effet `extraMarketCard`), remis à 0
+  // dès que ce marché est tiré.
+  extraMarketCards: number;
 }
 
 export type Action =

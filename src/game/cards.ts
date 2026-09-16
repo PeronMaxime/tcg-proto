@@ -24,6 +24,8 @@ import type {
 //
 // v8 : le buff Attaque du Chevalier et les dégâts Défend du Golem ne se déclenchent plus
 // qu'une fois par combat (`oncePerCombat`), plus à chaque cycle (demande utilisateur).
+//
+// v10 : les capacités et l'aura d'un monstre doré sont doublées (demande utilisateur).
 
 export const CARD_CATALOG: CardDef[] = [
   {
@@ -112,7 +114,7 @@ export const CARD_CATALOG: CardDef[] = [
     attack: 7,
     defense: 7,
     element: 'water',
-    abilities: [{ trigger: 'summon', effect: { type: 'buff', target: 'otherAllies', attack: 1, defense: 1 } }],
+    aura: { attack: 1, defense: 1 }, // continu, comme un enchantement (demande utilisateur)
   },
   // Début du combat : ne se déclenche que si la carte combat (en attaque à ton tour, en défense
   // quand l'adversaire t'attaque avec au moins un monstre), donc au plus une fois par manche.
@@ -135,6 +137,17 @@ export const CARD_CATALOG: CardDef[] = [
     defense: 2,
     element: 'air',
     abilities: [{ trigger: 'combatStart', effect: { type: 'damageOpponent', amount: 1 } }],
+  },
+
+  {
+    kind: 'monster',
+    id: 'peddler',
+    name: 'Colporteur',
+    cost: 3,
+    attack: 2,
+    defense: 2,
+    element: 'water',
+    abilities: [{ trigger: 'summon', effect: { type: 'extraMarketCard', count: 1 } }],
   },
 
   {
@@ -204,8 +217,8 @@ export function isElementEffective(from: CardElement, against: CardElement): boo
   return ELEMENT_BEATS[from] === against;
 }
 
-// Nombre d'exemplaires de chaque carte dans le deck de départ (50 cartes au total :
-// 40 monstres, 10 enchantements).
+// Nombre d'exemplaires de chaque carte dans le deck de départ (53 cartes au total :
+// 43 monstres, 10 enchantements).
 export const STARTER_COUNTS: Record<string, number> = {
   squire: 6,
   wolf: 5,
@@ -217,6 +230,7 @@ export const STARTER_COUNTS: Record<string, number> = {
   golem: 4,
   drake: 3,
   titan: 3,
+  peddler: 3,
   banner: 3,
   rampart: 3,
   treasury: 2,
@@ -262,6 +276,31 @@ export function describeEffect(effect: EnchantmentEffect): string {
   }
 }
 
+// Valeurs d'un effet de capacité multipliées (monstre doré : `GOLDEN_MULTIPLIER`).
+export function scaleAbilityEffect(effect: AbilityEffect, multiplier: number): AbilityEffect {
+  if (multiplier === 1) return effect;
+  switch (effect.type) {
+    case 'drawCard':
+    case 'extraMarketCard':
+      return { ...effect, count: effect.count * multiplier };
+    case 'buff':
+      return { ...effect, attack: effect.attack * multiplier, defense: effect.defense * multiplier };
+    default:
+      return { ...effect, amount: effect.amount * multiplier };
+  }
+}
+
+// Texte affiché sur la face d'un monstre à aura, généré depuis la donnée.
+export function describeAura(aura: { attack: number; defense: number }): string {
+  const stats =
+    aura.attack > 0 && aura.defense > 0
+      ? `+${aura.attack}/+${aura.defense}`
+      : aura.attack > 0
+        ? `+${aura.attack} attaque`
+        : `+${aura.defense} défense`;
+  return `${stats} à tes autres monstres`;
+}
+
 // Libellés affichés des déclencheurs (PLAN-effets-triggers.md §4).
 export const TRIGGER_LABELS: Record<Trigger, string> = {
   summon: 'Invoqué',
@@ -300,6 +339,8 @@ function describeAbilityEffect(effect: AbilityEffect): string {
       return `+${effect.amount} ${pluralize(effect.amount, 'dégât')} sur ce coup`;
     case 'shield':
       return `subit ${effect.amount} ${pluralize(effect.amount, 'dégât')} de moins`;
+    case 'extraMarketCard':
+      return `+${effect.count} ${pluralize(effect.count, 'carte')} au marché au prochain tour`;
   }
 }
 
@@ -327,6 +368,7 @@ export function isAbilityAllowed(def: CardDef, ability: CardAbility): boolean {
     case 'shield':
       return effect.amount >= 1;
     case 'drawCard':
+    case 'extraMarketCard':
       return effect.count >= 1;
     case 'buff':
       return true;

@@ -16,7 +16,9 @@ import {
   ELEMENT_ADVANTAGE_BONUS,
   getMonsterStats,
   isFirstTurnOfGame,
+  MARKET_SIZE,
   MIN_ATTACK,
+  nextTurnCoinGain,
   opponentOf,
   resolveCombat,
   SECOND_PLAYER_BONUS_COINS,
@@ -57,13 +59,14 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
     hand: [],
     zones: emptyZones(),
     discard: [],
+    extraMarketCards: 0,
     ...overrides,
   };
 }
 
 function baseState(overrides: Partial<GameState> = {}): GameState {
   return {
-    rulesVersion: 9,
+    rulesVersion: 10,
     turn: 'p1',
     phase: 'main',
     turnNumber: 2, // pas 1 : le tout premier tour de la partie n'a pas de combat
@@ -77,21 +80,21 @@ function baseState(overrides: Partial<GameState> = {}): GameState {
 }
 
 describe('catalogue et deck de départ', () => {
-  it('fait 50 cartes (40 monstres, 10 enchantements), uids uniques', () => {
+  it('fait 53 cartes (43 monstres, 10 enchantements), uids uniques', () => {
     let n = 0;
     const deck = buildStarterDeck(() => `u${n++}`);
-    expect(deck).toHaveLength(50);
+    expect(deck).toHaveLength(53);
 
     const monsters = deck.filter((c) => getCardDef(c.cardId).kind === 'monster');
     const enchantments = deck.filter((c) => getCardDef(c.cardId).kind === 'enchantment');
-    expect(monsters).toHaveLength(40);
+    expect(monsters).toHaveLength(43);
     expect(enchantments).toHaveLength(10);
 
     const uids = new Set(deck.map((c) => c.uid));
-    expect(uids.size).toBe(50);
+    expect(uids.size).toBe(53);
 
     const total = Object.values(STARTER_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(50);
+    expect(total).toBe(53);
   });
 
   it('tout monstre a une attaque de base >= 1 (cohérent avec le plancher MIN_ATTACK, E16)', () => {
@@ -107,7 +110,7 @@ describe('createInitialState', () => {
 
     for (const seat of ['p1', 'p2'] as Seat[]) {
       const player = state.players[seat];
-      expect(player.deck).toHaveLength(50);
+      expect(player.deck).toHaveLength(53);
       expect(player.zones.attack).toEqual(new Array(5).fill(null));
       expect(player.zones.defense).toEqual(new Array(5).fill(null));
       expect(player.zones.enchant).toEqual(new Array(3).fill(null));
@@ -122,7 +125,7 @@ describe('createInitialState', () => {
     expect(state.phase).toBe('start');
     expect(state.turn).toBe('p1');
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(9);
+    expect(state.rulesVersion).toBe(10);
   });
 
   it('est déterministe pour une même graine', () => {
@@ -928,14 +931,14 @@ describe('éléments', () => {
 // ---------------------------------------------------------------------------------------
 
 describe('effets déclenchés', () => {
-  it('catalogue : toutes les capacités respectent isAbilityAllowed ; le deck fait toujours 50', () => {
+  it('catalogue : toutes les capacités respectent isAbilityAllowed ; le deck fait toujours 53', () => {
     for (const def of CARD_CATALOG) {
       for (const ability of def.abilities ?? []) {
         expect(isAbilityAllowed(def, ability)).toBe(true);
       }
     }
     const total = Object.values(STARTER_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(50);
+    expect(total).toBe(53);
   });
 
   it('Invoqué : Écuyer posé -> +1 pièce, logué dans lastEvent.effects', () => {
@@ -963,18 +966,24 @@ describe('effets déclenchés', () => {
     expect(next.players.p2.hp).toBe(0);
   });
 
-  it('Invoqué : Titan -> +1/+1 sur les autres monstres, pas sur lui-même', () => {
+  it('Aura : Titan -> +1/+1 sur les autres monstres (y compris posés après), pas sur lui-même', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.attack[0] = makeCard('squire', 's1');
-    state.players.p1.hand = [makeCard('titan', 't1')];
+    state.players.p1.hand = [makeCard('titan', 't1'), makeCard('guard', 'g1')];
 
-    const next = applyAction(state, 'p1', { type: 'place', uid: 't1', zone: 'defense', slot: 0 })!;
+    let next = applyAction(state, 'p1', { type: 'place', uid: 't1', zone: 'defense', slot: 0 })!;
+    next = applyAction(next, 'p1', { type: 'place', uid: 'g1', zone: 'defense', slot: 1 })!;
 
-    const squire = next.players.p1.zones.attack[0]!;
-    expect(squire.buff).toEqual({ attack: 1, defense: 1 });
-    const titan = next.players.p1.zones.defense[0]!;
-    expect(titan.buff).toBeUndefined();
-    expect(getMonsterStats(next.players.p1, squire, 'attack')).toEqual({ attack: 2, defense: 3 });
+    const p1 = next.players.p1;
+    const squire = p1.zones.attack[0]!;
+    expect(squire.buff).toBeUndefined();
+    expect(getMonsterStats(p1, squire, 'attack')).toEqual({ attack: 2, defense: 3 });
+    expect(getMonsterStats(p1, p1.zones.defense[1]!, 'defense')).toEqual({ attack: 2, defense: 5 });
+    expect(getMonsterStats(p1, p1.zones.defense[0]!, 'defense')).toEqual({ attack: 7, defense: 7 });
+
+    // Le Titan vendu, l'aura disparaît.
+    next = applyAction(next, 'p1', { type: 'sell', uid: 't1' })!;
+    expect(getMonsterStats(next.players.p1, squire, 'attack')).toEqual({ attack: 1, defense: 2 });
   });
 
   it('Vendu : Loup -> +1 PV (E8, plafonné à STARTING_HP)', () => {
@@ -1192,13 +1201,61 @@ describe('effets déclenchés', () => {
     expect(isAbilityAllowed(treasury, { trigger: 'combatStart', effect: { type: 'gainCoins', amount: 1 } })).toBe(false);
   });
 
-  it('Doré : un Écuyer doré posé donne toujours +1 pièce (E10 : les effets ne sont pas doublés)', () => {
+  it('Doré : un Écuyer doré posé donne +2 pièces (capacités doublées), journalisé doublé', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.coins = 0;
     state.players.p1.hand = [{ uid: 's1', cardId: 'squire', golden: true }];
 
     const next = applyAction(state, 'p1', { type: 'place', uid: 's1', zone: 'attack', slot: 0 })!;
-    expect(next.players.p1.coins).toBe(1);
+    expect(next.players.p1.coins).toBe(2);
+    expect(next.lastEvent).toMatchObject({ effects: [{ effect: { type: 'gainCoins', amount: 2 } }] });
+  });
+
+  it('Doré : un Titan doré donne +2/+2 aux autres monstres', () => {
+    const player = freshPlayer();
+    player.zones.defense[0] = { uid: 't1', cardId: 'titan', golden: true };
+    const squire = makeCard('squire', 's1');
+    player.zones.attack[0] = squire;
+    expect(getMonsterStats(player, squire, 'attack')).toEqual({ attack: 3, defense: 4 });
+  });
+
+  it('Invoqué : Colporteur -> une carte de plus au marché du prochain tour, une seule fois', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.hand = [makeCard('peddler', 'p1c')];
+    state.players.p1.deck = Array.from({ length: 10 }, (_, i) => makeCard('squire', `d${i}`));
+
+    let next = applyAction(state, 'p1', { type: 'place', uid: 'p1c', zone: 'attack', slot: 0 })!;
+    expect(next.players.p1.extraMarketCards).toBe(1);
+
+    next = { ...next, turnNumber: 2, turn: 'p1', phase: 'start' };
+    next = applyAction(next, 'p1', { type: 'beginTurn' })!;
+    expect(next.players.p1.market).toHaveLength(MARKET_SIZE + 1);
+    expect(next.players.p1.extraMarketCards).toBe(0);
+
+    next = applyAction(next, 'p1', { type: 'endTurn' })!;
+    next = { ...next, turn: 'p1', phase: 'start' };
+    next = applyAction(next, 'p1', { type: 'beginTurn' })!;
+    expect(next.players.p1.market).toHaveLength(MARKET_SIZE);
+  });
+
+  it('Invoqué : Colporteur doré -> deux cartes de plus au marché', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.hand = [{ uid: 'p1c', cardId: 'peddler', golden: true }];
+
+    const next = applyAction(state, 'p1', { type: 'place', uid: 'p1c', zone: 'attack', slot: 0 })!;
+    expect(next.players.p1.extraMarketCards).toBe(2);
+  });
+
+  it('nextTurnCoinGain : tours joués + 1 + Trésoreries, identique au gain réel', () => {
+    const state = baseState({ phase: 'start' });
+    state.players.p1.turnsPlayed = 3;
+    state.players.p1.coins = 0;
+    state.players.p1.zones.enchant[0] = makeCard('treasury', 'e1');
+    expect(nextTurnCoinGain(state.players.p1)).toBe(5);
+
+    const next = applyAction(state, 'p1', { type: 'beginTurn' })!;
+    expect(next.players.p1.coins).toBe(5);
+    expect(nextTurnCoinGain(next.players.p1)).toBe(6);
   });
 });
 
@@ -1284,7 +1341,7 @@ describe('partie simulée (invariants)', () => {
           p.zones.attack.filter(Boolean).length +
           p.zones.defense.filter(Boolean).length +
           p.zones.enchant.filter(Boolean).length;
-        expect(p.deck.length + p.market.length + p.hand.length + placed + p.discard.length).toBe(50);
+        expect(p.deck.length + p.market.length + p.hand.length + placed + p.discard.length).toBe(53);
         const uids = new Set([
           ...p.deck.map((c) => c.uid),
           ...p.market.map((c) => c.uid),
@@ -1294,7 +1351,7 @@ describe('partie simulée (invariants)', () => {
           ...p.zones.defense.filter((c): c is CardInstance => c !== null).map((c) => c.uid),
           ...p.zones.enchant.filter((c): c is CardInstance => c !== null).map((c) => c.uid),
         ]);
-        expect(uids.size).toBe(50);
+        expect(uids.size).toBe(53);
         expect(p.coins).toBeGreaterThanOrEqual(0);
         expect(p.zones.attack).toHaveLength(5);
         expect(p.zones.defense).toHaveLength(5);

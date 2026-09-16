@@ -1,7 +1,7 @@
 import { Canvas } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { describeAbility, getCardDef, isMonster } from '../game/cards';
-import { isActionLegal, isFirstTurnOfGame } from '../game/rules';
+import { isActionLegal, isFirstTurnOfGame, nextTurnCoinGain } from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
 import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, requestRematch, sendAction } from '../net/rooms';
 import Board, { type DragState, type ScreenRect } from '../scene/Board';
@@ -37,6 +37,8 @@ function PlayerPlate({
   name,
   hp,
   coins,
+  turnsPlayed,
+  nextGain,
   deckCount,
   handCount,
   active,
@@ -45,6 +47,8 @@ function PlayerPlate({
   name: string;
   hp: number;
   coins: number;
+  turnsPlayed: number;
+  nextGain: number;
   deckCount: number;
   handCount: number;
   active: boolean;
@@ -55,6 +59,10 @@ function PlayerPlate({
       <div className="hud-plate-row">
         <span className="hud-name">{name}</span>
         {active && <span className="hud-turn-dot" aria-hidden="true" />}
+        <span className="hud-turn" title={`Tours joués : ${turnsPlayed} · pièces gagnées au prochain tour : ${nextGain}`}>
+          Tour {turnsPlayed} · prochain +{nextGain}
+          <span className="coin-icon coin-icon--small" aria-hidden="true" />
+        </span>
       </div>
       <div className="hud-plate-row">
         <span className="hp-token">
@@ -534,6 +542,8 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             name={opponentName}
             hp={displayedHp[opponentSeat]}
             coins={opponent.coins}
+            turnsPlayed={opponent.turnsPlayed}
+            nextGain={nextTurnCoinGain(opponent)}
             deckCount={opponent.deck.length}
             handCount={opponent.hand.length}
             active={!isMyTurn}
@@ -544,6 +554,8 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             name={myName}
             hp={displayedHp[seat]}
             coins={me.coins}
+            turnsPlayed={me.turnsPlayed}
+            nextGain={nextTurnCoinGain(me)}
             deckCount={me.deck.length}
             handCount={me.hand.length}
             active={isMyTurn}

@@ -4,7 +4,7 @@
 // Module pur : pas d'accès réseau, pas de React, pas de Date.now(). Le seul hasard
 // (mélange des decks) passe par le paramètre `random` pour rester testable.
 
-import { buildStarterDeck, getCardDef, isElementEffective, isMonster } from './cards';
+import { buildStarterDeck, getCardDef, isElementEffective, isMonster, scaleAbilityEffect } from './cards';
 import type {
   Action,
   AbilityEffect,
@@ -20,7 +20,7 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 9;
+export const RULES_VERSION = 10;
 export const STARTING_HP = 10;
 // Pièces en stock au début de la partie (demande utilisateur), avant le gain du 1er tour.
 export const STARTING_COINS = 2;
@@ -84,6 +84,7 @@ export function createInitialState(random: () => number = Math.random): GameStat
       hand: [],
       zones: emptyZones(),
       discard: [],
+      extraMarketCards: 0,
     };
   }
 
@@ -134,6 +135,18 @@ export function getMonsterStats(
       defense += effect.defense;
     }
   }
+  // Auras des autres monstres posés par le même propriétaire (Titan) : s'appliquent aussi aux
+  // monstres posés après, et cessent quand la source quitte le board. Doublées si la source
+  // est dorée.
+  for (const other of [...player.zones.attack, ...player.zones.defense]) {
+    if (!other || other.uid === card.uid) continue;
+    const otherDef = getCardDef(other.cardId);
+    if (isMonster(otherDef) && otherDef.aura) {
+      const multiplier = other.golden ? GOLDEN_MULTIPLIER : 1;
+      attack += otherDef.aura.attack * multiplier;
+      defense += otherDef.aura.defense * multiplier;
+    }
+  }
   return { attack: Math.max(MIN_ATTACK, attack), defense };
 }
 
@@ -165,6 +178,12 @@ function coinsPerTurnBonus(player: PlayerState): number {
     }
   }
   return bonus;
+}
+
+// Pièces que `player` gagnera au début de son prochain tour (R1 + enchantements), pour
+// l'affichage comme pour `applyBeginTurn`.
+export function nextTurnCoinGain(player: PlayerState): number {
+  return player.turnsPlayed + 1 + coinsPerTurnBonus(player);
 }
 
 export function isActionLegal(state: GameState, seat: Seat, action: Action): boolean {
@@ -238,11 +257,13 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
 
 function applyBeginTurn(next: GameState, seat: Seat): void {
   const player = next.players[seat];
+  const gain = nextTurnCoinGain(player); // R1 : base sur le n-ième tour DE CE JOUEUR
   player.turnsPlayed += 1;
-  const gain = player.turnsPlayed + coinsPerTurnBonus(player); // R1 : base sur le n-ième tour DE CE JOUEUR
   player.coins += gain;
 
-  const drawCount = Math.min(MARKET_SIZE, player.deck.length); // H7
+  // H7, + cartes promises par un effet `extraMarketCard` joué depuis le tour précédent.
+  const drawCount = Math.min(MARKET_SIZE + player.extraMarketCards, player.deck.length);
+  player.extraMarketCards = 0;
   const market = [];
   for (let i = 0; i < drawCount; i++) {
     market.push(player.deck.pop()!);
@@ -373,13 +394,6 @@ function clearBuff(card: CardInstance): void {
   delete card.buff;
 }
 
-// E10 : les valeurs d'effet ne sont PAS doublées pour un monstre doré en v1 (seules les
-// stats de base le sont, via `getBaseMonsterStats`). Centralisé ici pour pouvoir changer
-// d'avis facilement sans toucher chaque site d'appel.
-function effectAmount(_card: CardInstance, value: number): number {
-  return value;
-}
-
 interface HitModifiers {
   bonusDamage: number;
   damageReduction: number;
@@ -394,17 +408,17 @@ function applyAbilityEffect(
 ): void {
   switch (effect.type) {
     case 'gainCoins':
-      state.players[seat].coins += effectAmount(card, effect.amount);
+      state.players[seat].coins += effect.amount;
       break;
     case 'damageOpponent':
-      damageHero(state, opponentOf(seat), effectAmount(card, effect.amount));
+      damageHero(state, opponentOf(seat), effect.amount);
       break;
     case 'healSelf':
-      healHero(state, seat, effectAmount(card, effect.amount));
+      healHero(state, seat, effect.amount);
       break;
     case 'drawCard': {
       const player = state.players[seat];
-      const count = effectAmount(card, effect.count);
+      const count = effect.count;
       for (let i = 0; i < count; i++) {
         const drawn = player.deck.pop(); // E11 : le dessus du deck est la fin du tableau
         if (drawn) player.hand.push(drawn);
@@ -412,8 +426,7 @@ function applyAbilityEffect(
       break;
     }
     case 'buff': {
-      const attack = effectAmount(card, effect.attack);
-      const defense = effectAmount(card, effect.defense);
+      const { attack, defense } = effect;
       if (effect.target === 'self') {
         addBuff(card, attack, defense);
       } else {
@@ -427,10 +440,13 @@ function applyAbilityEffect(
       break;
     }
     case 'bonusDamage': // E12 : Attaque uniquement
-      if (hit) hit.bonusDamage += effectAmount(card, effect.amount);
+      if (hit) hit.bonusDamage += effect.amount;
       break;
     case 'shield': // E12 : Défend uniquement
-      if (hit) hit.damageReduction += effectAmount(card, effect.amount);
+      if (hit) hit.damageReduction += effect.amount;
+      break;
+    case 'extraMarketCard':
+      state.players[seat].extraMarketCards += effect.count;
       break;
   }
 }
@@ -458,8 +474,10 @@ function fireTrigger(
       if (firedThisCombat.has(key)) continue;
       firedThisCombat.add(key);
     }
-    applyAbilityEffect(state, seat, card, ability.effect, hit);
-    logs.push({ seat, sourceUid: card.uid, cardId: card.cardId, trigger, effect: ability.effect });
+    // Monstre doré : valeurs doublées, et journalisées doublées pour l'affichage.
+    const effect = scaleAbilityEffect(ability.effect, card.golden ? GOLDEN_MULTIPLIER : 1);
+    applyAbilityEffect(state, seat, card, effect, hit);
+    logs.push({ seat, sourceUid: card.uid, cardId: card.cardId, trigger, effect });
     if (state.winner !== null) break; // E7
   }
   return logs;

@@ -386,7 +386,7 @@ déclencheur apparaît au moins deux fois et chaque effet au moins une fois.
 | Chevalier (`knight`)        | 3/4, 4       | Attaque : gagne +1 attaque (permanent)                 | buff persistant, cumul sur plusieurs cycles  |
 | Golem de pierre (`golem`)   | 1/8, 5       | Défend : 1 dégât au héros adverse                      | l'attaquant peut perdre pendant son combat   |
 | Drake (`drake`)             | 5/4, 6       | KO : +3 PV à ton héros                                 | KO + soin plafonné                           |
-| Titan (`titan`)             | 7/7, 8       | Invoqué : +1/+1 à tes autres monstres                  | buff de groupe excluant la source            |
+| Titan (`titan`)             | 7/7, 8       | Aura : +1/+1 à tes autres monstres (même posés après) | aura continue, comme un enchantement         |
 | Trésorerie (`treasury`)     | ench., 3     | Vendu : +2 pièces (garde son effet `coinsPerTurn`)     | capacité sur enchantement + effet permanent  |
 
 Les valeurs sont volontairement simples et lisibles ; l'équilibrage n'est pas l'objet. À

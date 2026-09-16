@@ -408,6 +408,23 @@ button {
   color: var(--hud-gold-bright);
 }
 
+/* Tours joués et pièces du prochain tour, à droite du nom (visible aussi sur mobile). */
+.hud-turn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  color: var(--hud-ink-dim);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.coin-icon--small {
+  width: 10px;
+  height: 10px;
+}
+
 .hud-deck {
   margin-left: auto;
   font-size: 0.7rem;
