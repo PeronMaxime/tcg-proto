@@ -90,10 +90,11 @@ function MarketZoneTracker({ count, rectRef }: { count: number; rectRef: RefObje
       return;
     }
     const canvasRect = gl.domElement.getBoundingClientRect();
-    const scale = marketCardPose(0, count, true).scale;
+    const aspect = canvasRect.width / Math.max(1, canvasRect.height);
+    const scale = marketCardPose(0, count, true, aspect).scale;
     const halfW = (theme.card.width * scale) / 2;
     const halfH = (theme.card.height * scale) / 2;
-    const rotationX = marketCardPose(0, count, true).rotation[0];
+    const rotationX = marketCardPose(0, count, true, aspect).rotation[0];
     const cos = Math.cos(rotationX);
     const sin = Math.sin(rotationX);
 
@@ -103,7 +104,7 @@ function MarketZoneTracker({ count, rectRef }: { count: number; rectRef: RefObje
     let maxY = -Infinity;
 
     for (let index = 0; index < count; index++) {
-      const [px, py, pz] = marketCardPose(index, count, true).position;
+      const [px, py, pz] = marketCardPose(index, count, true, aspect).position;
       for (const dx of [-halfW, halfW]) {
         for (const dy of [-halfH, halfH]) {
           corner.current.set(px + dx, py + dy * cos, pz + dy * sin);
@@ -186,6 +187,7 @@ function Board({
   onZoomCard,
 }: BoardProps) {
   const opponentSeat: Seat = opponentOf(seat);
+  const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
   const me = state.players[seat];
   const opponent = state.players[opponentSeat];
 
@@ -251,7 +253,7 @@ function Board({
       cardId: card.cardId,
       stats: mine ? unplacedStats(card) : null,
       ko: false,
-      pose: marketCardPose(index, activePlayer.market.length, mine),
+      pose: marketCardPose(index, activePlayer.market.length, mine, aspect),
       hidden: !mine,
       mine,
       halo: buyable ? 'playable' : 'none',

@@ -2,6 +2,7 @@
 // vue de « moi » : mon camp est toujours vers +Z, l'adversaire vers -Z (§6.1).
 
 import type { Zone } from '../game/types';
+import { theme } from './theme';
 
 export interface Pose {
   position: [number, number, number];
@@ -115,15 +116,28 @@ export function discardPose(mine: boolean): Pose {
   };
 }
 
+// Mon marché : taille maximale des cartes, écart entre deux cartes (fraction de leur largeur)
+// et hauteur visible de l'écran à la distance du marché (caméra CAMERA, fov 45°), pour que
+// la rangée tienne en largeur quel que soit le ratio de l'écran.
+const MARKET_MAX_SCALE = 1.6;
+const MARKET_GAP = 0.08;
+const MARKET_VISIBLE_HEIGHT = 9.5;
+const MARKET_MAX_WIDTH = 9;
+
 // Le marché flotte au centre, face à la caméra, du côté du joueur actif (H4 : visible des
-// deux joueurs). `mine` = est-ce le marché de "moi" (vu depuis mon écran) ?
-export function marketCardPose(index: number, total: number, mine: boolean): Pose {
+// deux joueurs). `mine` = est-ce le marché de "moi" (vu depuis mon écran) ? `aspect` = ratio
+// largeur / hauteur du canvas : les cartes rétrécissent si la rangée ne tient plus en largeur
+// (écran étroit, marché agrandi par un Colporteur).
+export function marketCardPose(index: number, total: number, mine: boolean, aspect = 16 / 9): Pose {
   const offset = index - (total - 1) / 2;
   if (mine) {
+    const availableWidth = Math.min(MARKET_MAX_WIDTH, MARKET_VISIBLE_HEIGHT * aspect * 0.94);
+    const fitScale = availableWidth / (Math.max(total, 1) * theme.card.width * (1 + MARKET_GAP));
+    const scale = Math.min(MARKET_MAX_SCALE, fitScale);
     return {
-      position: [offset * 1.7, 3.2, 3.0],
+      position: [offset * theme.card.width * scale * (1 + MARKET_GAP), 3.2, 3.0],
       rotation: [-0.96, 0, 0],
-      scale: 1.3,
+      scale,
     };
   }
   return {
