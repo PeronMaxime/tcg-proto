@@ -26,6 +26,13 @@ import type {
 // qu'une fois par combat (`oncePerCombat`), plus à chaque cycle (demande utilisateur).
 //
 // v10 : les capacités et l'aura d'un monstre doré sont doublées (demande utilisateur).
+//
+// v11 : deck ramené à 50 cartes et rééquilibrage par simulation (bots gloutons, 3 000
+// parties par carte, en mesurant le taux de victoire d'un bot qui évite / privilégie chaque
+// carte). Écuyer : son « KO : pioche 1 carte » se redéclenchait à chaque combat et en faisait
+// de loin la meilleure carte ; Archère, Druidesse et Mage des tempêtes (dégâts/soins directs,
+// les PV étant rares) plus chers ; enchantements de monstres et Trésorerie renforcés ou moins
+// chers, car presque jamais rentables.
 
 export const CARD_CATALOG: CardDef[] = [
   {
@@ -36,10 +43,7 @@ export const CARD_CATALOG: CardDef[] = [
     attack: 1,
     defense: 2,
     element: 'air',
-    abilities: [
-      { trigger: 'summon', effect: { type: 'gainCoins', amount: 1 } },
-      { trigger: 'ko', effect: { type: 'drawCard', count: 1 } },
-    ],
+    abilities: [{ trigger: 'summon', effect: { type: 'gainCoins', amount: 1 } }],
   },
   {
     kind: 'monster',
@@ -68,9 +72,9 @@ export const CARD_CATALOG: CardDef[] = [
     kind: 'monster',
     id: 'archer',
     name: 'Archère',
-    cost: 3,
+    cost: 4,
     attack: 3,
-    defense: 2,
+    defense: 1,
     element: 'air',
     abilities: [{ trigger: 'summon', effect: { type: 'damageOpponent', amount: 1 } }],
   },
@@ -122,7 +126,7 @@ export const CARD_CATALOG: CardDef[] = [
     kind: 'monster',
     id: 'druid',
     name: 'Druidesse',
-    cost: 3,
+    cost: 4,
     attack: 1,
     defense: 3,
     element: 'earth',
@@ -132,7 +136,7 @@ export const CARD_CATALOG: CardDef[] = [
     kind: 'monster',
     id: 'stormMage',
     name: 'Mage des tempêtes',
-    cost: 5,
+    cost: 6,
     attack: 2,
     defense: 2,
     element: 'air',
@@ -156,31 +160,29 @@ export const CARD_CATALOG: CardDef[] = [
     name: 'Étendard de guerre',
     cost: 2,
     element: 'fire',
-    effect: { type: 'monsterBuff', zone: 'attack', attack: 1, defense: 0 },
+    effect: { type: 'monsterBuff', zone: 'attack', attack: 1, defense: 1 },
   },
   {
     kind: 'enchantment',
     id: 'rampart',
     name: 'Rempart',
-    cost: 2,
+    cost: 1, // riposte renforcée ; +1 défense (même à 2 ou 3 +1/+1) ne valait jamais son prix
     element: 'earth',
-    effect: { type: 'monsterBuff', zone: 'defense', attack: 0, defense: 1 },
+    effect: { type: 'monsterBuff', zone: 'defense', attack: 1, defense: 0 },
   },
   {
     kind: 'enchantment',
     id: 'treasury',
     name: 'Trésorerie',
-    cost: 3,
+    cost: 2, // les parties sont courtes : à 3, elle n'était presque jamais rentabilisée
     element: 'water',
     effect: { type: 'coinsPerTurn', amount: 1 },
-    // Vendu +1 (+ la pièce de vente) : rend 2 des 3 pièces, plus remboursée intégralement.
-    abilities: [{ trigger: 'sold', effect: { type: 'gainCoins', amount: 1 } }],
   },
   {
     kind: 'enchantment',
     id: 'blessing',
     name: 'Bénédiction',
-    cost: 5,
+    cost: 4,
     element: 'water',
     effect: { type: 'monsterBuff', zone: 'all', attack: 1, defense: 1 },
   },
@@ -217,12 +219,12 @@ export function isElementEffective(from: CardElement, against: CardElement): boo
   return ELEMENT_BEATS[from] === against;
 }
 
-// Nombre d'exemplaires de chaque carte dans le deck de départ (53 cartes au total :
-// 43 monstres, 10 enchantements).
+// Nombre d'exemplaires de chaque carte dans le deck de départ (50 cartes au total :
+// 40 monstres, 10 enchantements).
 export const STARTER_COUNTS: Record<string, number> = {
-  squire: 6,
+  squire: 5,
   wolf: 5,
-  guard: 5,
+  guard: 4,
   archer: 5,
   druid: 2,
   knight: 5,
@@ -230,7 +232,7 @@ export const STARTER_COUNTS: Record<string, number> = {
   golem: 4,
   drake: 3,
   titan: 3,
-  peddler: 3,
+  peddler: 2,
   banner: 3,
   rampart: 3,
   treasury: 2,

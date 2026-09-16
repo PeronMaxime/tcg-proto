@@ -20,12 +20,13 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 10;
+export const RULES_VERSION = 11;
 export const STARTING_HP = 10;
 // Pièces en stock au début de la partie (demande utilisateur), avant le gain du 1er tour.
 export const STARTING_COINS = 2;
 // Pièce de départ en plus pour le second joueur (p2), contre l'avantage de jouer en premier.
-export const SECOND_PLAYER_BONUS_COINS = 1;
+// v11 : 2 au lieu de 1 — avec 1, le premier joueur gagnait ~62 % des parties simulées.
+export const SECOND_PLAYER_BONUS_COINS = 2;
 // Dégâts infligés au héros par chaque attaquant qui perce (demande utilisateur) : fixes,
 // quelle que soit son attaque effective.
 export const BREAKTHROUGH_DAMAGE = 1;
