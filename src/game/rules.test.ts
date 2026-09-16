@@ -63,7 +63,7 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
 
 function baseState(overrides: Partial<GameState> = {}): GameState {
   return {
-    rulesVersion: 8,
+    rulesVersion: 9,
     turn: 'p1',
     phase: 'main',
     turnNumber: 2, // pas 1 : le tout premier tour de la partie n'a pas de combat
@@ -122,7 +122,7 @@ describe('createInitialState', () => {
     expect(state.phase).toBe('start');
     expect(state.turn).toBe('p1');
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(8);
+    expect(state.rulesVersion).toBe(9);
   });
 
   it('est déterministe pour une même graine', () => {
@@ -1130,6 +1130,66 @@ describe('effets déclenchés', () => {
     const combatEvent = next.lastEvent as Extract<typeof next.lastEvent, { type: 'combat' }>;
     expect(combatEvent.hpBefore).toEqual({ p1: STARTING_HP, p2: 20 });
     expect(combatEvent.steps.at(-1)!.hp).toEqual({ p1: next.players.p1.hp, p2: next.players.p2.hp });
+  });
+
+  it('Début du combat : attaquants puis défenseurs, avant le premier coup', () => {
+    const state = baseState();
+    state.players.p1.hp = STARTING_HP - 3;
+    state.players.p2.hp = STARTING_HP - 3;
+    state.players.p1.zones.attack[0] = makeCard('stormMage', 'm1');
+    state.players.p2.zones.defense[0] = makeCard('druid', 'd1');
+
+    const { startEffects, hpAfterStart, steps } = resolveCombat(state, 'p1');
+
+    expect(startEffects.map((e) => [e.sourceUid, e.trigger])).toEqual([
+      ['m1', 'combatStart'],
+      ['d1', 'combatStart'],
+    ]);
+    expect(hpAfterStart).toEqual({ p1: STARTING_HP - 3, p2: STARTING_HP - 3 }); // -1 puis +1
+    expect(steps.length).toBeGreaterThan(0);
+    expect(steps.flatMap((s) => s.effects).some((e) => e.trigger === 'combatStart')).toBe(false);
+  });
+
+  it("Début du combat : ne se déclenche qu'une fois par combat, même sur plusieurs cycles", () => {
+    const state = baseState();
+    state.players.p1.zones.attack[0] = makeCard('stormMage', 'm1');
+    state.players.p2.zones.defense[0] = makeCard('golem', 'g1');
+
+    const { startEffects, steps } = resolveCombat(state, 'p1');
+    expect(new Set(steps.map((s) => s.cycle)).size).toBeGreaterThan(1);
+    expect(startEffects).toHaveLength(1);
+  });
+
+  it("Début du combat : un défenseur ne se déclenche pas si l'adversaire n'a aucun attaquant", () => {
+    const state = baseState();
+    state.players.p1.hp = STARTING_HP - 2;
+    state.players.p1.zones.defense[0] = makeCard('druid', 'd1');
+
+    const { startEffects, steps } = resolveCombat(state, 'p2');
+    expect(startEffects).toEqual([]);
+    expect(steps).toEqual([]);
+    expect(state.players.p1.hp).toBe(STARTING_HP - 2);
+  });
+
+  it('Début du combat : une victoire arrête le combat avant le premier coup (E7)', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('stormMage', 'm1');
+    state.players.p1.zones.attack[1] = makeCard('stormMage', 'm2');
+    state.players.p2.hp = 1;
+
+    const next = applyAction(state, 'p1', { type: 'endTurn' })!;
+    expect(next.winner).toBe('p1');
+    expect(next.lastEvent).toMatchObject({
+      type: 'combat',
+      steps: [],
+      startEffects: [{ sourceUid: 'm1' }],
+      hpAfterStart: { p1: STARTING_HP, p2: 0 },
+    });
+  });
+
+  it('Début du combat : interdit sur un enchantement', () => {
+    const treasury = getCardDef('treasury');
+    expect(isAbilityAllowed(treasury, { trigger: 'combatStart', effect: { type: 'gainCoins', amount: 1 } })).toBe(false);
   });
 
   it('Doré : un Écuyer doré posé donne toujours +1 pièce (E10 : les effets ne sont pas doublés)', () => {

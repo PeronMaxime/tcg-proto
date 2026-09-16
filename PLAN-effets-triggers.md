@@ -36,6 +36,7 @@ Le travail comporte **deux volets** :
 | Id code   | Libellé affiché | Quand                                                              |
 |-----------|-----------------|--------------------------------------------------------------------|
 | `summon`  | Invoqué         | la carte est posée sur le board (action `place`)                   |
+| `combatStart` | Début du combat | ajout ultérieur : une fois au début de chaque combat où la carte combat, avant le premier coup (attaquants puis défenseurs, gauche à droite ; rien si aucun attaquant) |
 | `attack`  | Attaque         | la carte (monstre en zone d'attaque) attaque pendant le combat — à **chaque** attaque |
 | `defend`  | Défend          | la carte (monstre en zone de défense) est ciblée par une attaque — à **chaque** coup reçu |
 | `ko`      | KO              | la défense de la carte tombe à 0 pendant un combat (attaquant **ou** défenseur) |

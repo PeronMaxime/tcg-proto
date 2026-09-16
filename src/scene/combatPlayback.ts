@@ -12,28 +12,32 @@ export const START_DELAY_MS = 400;
 export const STEP_MS = 550;
 export const IMPACT_MS = 160; // milieu de la fente de Card.tsx
 export const END_PAUSE_MS = 700;
+// Pause après les effets « Début du combat » (affichés à START_DELAY_MS), avant le premier coup.
+export const START_EFFECTS_MS = 900;
 
 export interface PlaybackCursor {
+  startApplied: boolean; // effets « Début du combat » déjà affichés
   lungeIndex: number | null; // coup dont la fente est en cours
   applied: number; // nombre de coups dont l'impact est déjà affiché
   done: boolean;
 }
 
-export function playbackCursor(elapsedMs: number, stepCount: number): PlaybackCursor {
-  if (stepCount === 0) return { lungeIndex: null, applied: 0, done: true };
+export function playbackCursor(elapsedMs: number, stepCount: number, hasStartEffects = false): PlaybackCursor {
+  if (stepCount === 0 && !hasStartEffects) return { startApplied: false, lungeIndex: null, applied: 0, done: true };
 
-  const t = elapsedMs - START_DELAY_MS;
-  if (t < 0) return { lungeIndex: null, applied: 0, done: false };
+  const startApplied = hasStartEffects && elapsedMs >= START_DELAY_MS;
+  const t = elapsedMs - START_DELAY_MS - (hasStartEffects ? START_EFFECTS_MS : 0);
+  if (t < 0) return { startApplied, lungeIndex: null, applied: 0, done: false };
 
   const i = Math.floor(t / STEP_MS);
   if (i < stepCount) {
     const withinStep = t - i * STEP_MS;
     const applied = i + (withinStep >= IMPACT_MS ? 1 : 0);
-    return { lungeIndex: i, applied, done: false };
+    return { startApplied, lungeIndex: i, applied, done: false };
   }
 
   const done = t >= stepCount * STEP_MS + END_PAUSE_MS;
-  return { lungeIndex: null, applied: stepCount, done };
+  return { startApplied, lungeIndex: null, applied: stepCount, done };
 }
 
 export interface CombatDisplay {
@@ -52,10 +56,12 @@ export function combatDisplay(
   steps: CombatStep[],
   applied: number,
   hpBefore: Record<Seat, number>,
+  // Effets « Début du combat » et PV juste après eux, affichés dès que `startApplied`.
+  start: { effects: EffectLog[]; hp: Record<Seat, number>; applied: boolean } | null = null,
 ): CombatDisplay {
   const defense = new Map<string, number>();
   const ko = new Set<string>();
-  const appliedEffects: EffectLog[] = [];
+  const appliedEffects: EffectLog[] = start?.applied ? [...start.effects] : [];
 
   for (let i = 0; i < applied; i++) {
     const step = steps[i];
@@ -70,7 +76,7 @@ export function combatDisplay(
 
   const currentIndex = Math.min(applied, steps.length - 1);
   const currentStep = steps[currentIndex];
-  const hp = applied === 0 ? hpBefore : steps[applied - 1].hp;
+  const hp = applied > 0 ? steps[applied - 1].hp : start?.applied ? start.hp : hpBefore;
   const cycle = currentStep?.cycle ?? 1;
   const phase: CombatDisplay['phase'] = currentStep?.target.kind === 'player' ? 'breakthrough' : 'melee';
 

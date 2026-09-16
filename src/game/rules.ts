@@ -20,7 +20,7 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 8;
+export const RULES_VERSION = 9;
 export const STARTING_HP = 10;
 // Pièces en stock au début de la partie (demande utilisateur), avant le gain du 1er tour.
 export const STARTING_COINS = 2;
@@ -511,6 +511,8 @@ function snapshotHp(state: GameState): Record<Seat, number> {
 }
 
 export interface CombatResult {
+  startEffects: EffectLog[]; // effets « Début du combat », avant le premier coup
+  hpAfterStart: Record<Seat, number>; // PV juste après ces effets
   steps: CombatStep[];
   stalemate: boolean;
 }
@@ -529,6 +531,19 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
 
   const steps: CombatStep[] = [];
   const firedThisCombat = new Set<string>(); // capacités `oncePerCombat` déjà déclenchées
+
+  // --- Début du combat (demande utilisateur) --- Pas d'attaquant = pas de combat, donc pas de
+  // déclenchement (un défenseur ne se déclenche pas quand l'adversaire n'attaque pas). Sinon,
+  // chaque monstre qui participe se déclenche une fois : attaquants de gauche à droite, puis
+  // défenseurs de gauche à droite. Une victoire ici arrête le combat avant le premier coup (E7).
+  const startEffects: EffectLog[] = [];
+  if (attackers.length > 0) {
+    for (const fighter of [...attackers, ...defenders]) {
+      if (state.winner !== null) break; // E7
+      startEffects.push(...fireTrigger(state, fighter.seat, fighter.card, 'combatStart', undefined, firedThisCombat));
+    }
+  }
+  const hpAfterStart = snapshotHp(state);
   let cycle = 0;
   let stalemate = false;
 
@@ -647,7 +662,7 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
     }
   }
 
-  return { steps, stalemate };
+  return { startEffects, hpAfterStart, steps, stalemate };
 }
 
 // Premier tour de la partie (celui de p1) : pas de phase de combat.
@@ -668,10 +683,10 @@ function applyEndTurn(next: GameState, seat: Seat): void {
   const hpBefore = snapshotHp(next);
   // Le premier joueur n'attaque pas à son premier tour (demande utilisateur, contre
   // l'avantage du premier joueur) : combat vide, aucun coup ni aucune capacité de combat.
-  const { steps, stalemate } = isFirstTurnOfGame(next)
-    ? { steps: [], stalemate: false }
+  const { startEffects, hpAfterStart, steps, stalemate } = isFirstTurnOfGame(next)
+    ? { startEffects: [], hpAfterStart: hpBefore, steps: [], stalemate: false }
     : resolveCombat(next, seat); // mute `next` (dégâts, buffs, pièces...)
-  next.lastEvent = { id: next.eventSeq, type: 'combat', seat, steps, hpBefore, stalemate };
+  next.lastEvent = { id: next.eventSeq, type: 'combat', seat, steps, hpBefore, startEffects, hpAfterStart, stalemate };
 
   if (next.winner !== null) return; // H9 : ni changement de tour ni de phase
 

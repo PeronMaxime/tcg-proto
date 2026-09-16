@@ -8,8 +8,9 @@ export type EnchantmentEffect =
   | { type: 'coinsPerTurn'; amount: number };
 
 // Déclencheurs de capacité (E1-E17, PLAN-effets-triggers.md) : `summon`/`sold` hors combat,
+// `combatStart` une fois au début du combat, avant le premier coup (demande utilisateur),
 // `attack`/`defend`/`ko` pendant la résolution d'un échange (§1bis).
-export type Trigger = 'summon' | 'attack' | 'defend' | 'ko' | 'sold';
+export type Trigger = 'summon' | 'combatStart' | 'attack' | 'defend' | 'ko' | 'sold';
 
 // Effets déclenchés par une capacité. `seat` (porté par `EffectLog`) = propriétaire de la
 // carte source, pas forcément le joueur actif.
@@ -144,6 +145,10 @@ export type GameEvent =
       seat: Seat;
       steps: CombatStep[];
       hpBefore: Record<Seat, number>; // PV au début du combat
+      // Effets « Début du combat », résolus avant le premier coup, et PV juste après eux.
+      // Absents sur un évènement écrit avant cette fonctionnalité (accès via `?? []` / `?? hpBefore`).
+      startEffects?: EffectLog[];
+      hpAfterStart?: Record<Seat, number>;
       stalemate: boolean; // combat nul (E16)
     };
 

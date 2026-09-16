@@ -42,6 +42,8 @@ export function useCombatPlayback(state: GameState): CombatPlaybackResult {
   const stepsRef = useRef<CombatStep[]>([]);
   const attackerSeatRef = useRef<Seat>('p1');
   const hpBeforeRef = useRef<Record<Seat, number>>(DEFAULT_HP);
+  const startEffectsRef = useRef<EffectLog[]>([]);
+  const hpAfterStartRef = useRef<Record<Seat, number>>(DEFAULT_HP);
   const stalemateRef = useRef(false);
   const eventIdRef = useRef(0);
   const [, forceRender] = useState(0);
@@ -65,10 +67,12 @@ export function useCombatPlayback(state: GameState): CombatPlaybackResult {
     lastHandledIdRef.current = currentId;
   } else if (currentId !== lastHandledIdRef.current) {
     lastHandledIdRef.current = currentId;
-    if (event?.type === 'combat' && event.steps.length > 0) {
+    if (event?.type === 'combat' && (event.steps.length > 0 || (event.startEffects?.length ?? 0) > 0)) {
       stepsRef.current = event.steps;
       attackerSeatRef.current = event.seat;
       hpBeforeRef.current = event.hpBefore;
+      startEffectsRef.current = event.startEffects ?? [];
+      hpAfterStartRef.current = event.hpAfterStart ?? event.hpBefore;
       stalemateRef.current = event.stalemate;
       eventIdRef.current = event.id;
       startedAtRef.current = performance.now();
@@ -86,7 +90,7 @@ export function useCombatPlayback(state: GameState): CombatPlaybackResult {
     let raf: number;
     const tick = () => {
       const elapsed = performance.now() - (startedAtRef.current ?? 0);
-      const cursor = playbackCursor(elapsed, stepsRef.current.length);
+      const cursor = playbackCursor(elapsed, stepsRef.current.length, startEffectsRef.current.length > 0);
       if (cursor.done) {
         startedAtRef.current = null;
       }
@@ -104,8 +108,12 @@ export function useCombatPlayback(state: GameState): CombatPlaybackResult {
   }
 
   const elapsed = performance.now() - startedAtRef.current;
-  const cursor = playbackCursor(elapsed, stepsRef.current.length);
-  const view = combatDisplay(stepsRef.current, cursor.applied, hpBeforeRef.current);
+  const cursor = playbackCursor(elapsed, stepsRef.current.length, startEffectsRef.current.length > 0);
+  const view = combatDisplay(stepsRef.current, cursor.applied, hpBeforeRef.current, {
+    effects: startEffectsRef.current,
+    hp: hpAfterStartRef.current,
+    applied: cursor.startApplied,
+  });
   const combatView: CombatView = { ...view, stalemate: stalemateRef.current };
 
   const lungeStep = cursor.lungeIndex !== null ? stepsRef.current[cursor.lungeIndex] : null;

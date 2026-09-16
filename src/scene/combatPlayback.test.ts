@@ -5,19 +5,32 @@ import {
   IMPACT_MS,
   playbackCursor,
   START_DELAY_MS,
+  START_EFFECTS_MS,
   STEP_MS,
 } from './combatPlayback';
-import type { CombatStep, Seat } from '../game/types';
+import type { CombatStep, EffectLog, Seat } from '../game/types';
 
 describe('playbackCursor', () => {
   it('est terminé immédiatement pour zéro coup', () => {
-    expect(playbackCursor(0, 0)).toEqual({ lungeIndex: null, applied: 0, done: true });
-    expect(playbackCursor(99999, 0)).toEqual({ lungeIndex: null, applied: 0, done: true });
+    expect(playbackCursor(0, 0)).toEqual({ startApplied: false, lungeIndex: null, applied: 0, done: true });
+    expect(playbackCursor(99999, 0)).toEqual({ startApplied: false, lungeIndex: null, applied: 0, done: true });
   });
 
   it("rien n'est appliqué avant le délai de départ", () => {
     const cursor = playbackCursor(START_DELAY_MS - 1, 2);
-    expect(cursor).toEqual({ lungeIndex: null, applied: 0, done: false });
+    expect(cursor).toEqual({ startApplied: false, lungeIndex: null, applied: 0, done: false });
+  });
+
+  it('Début du combat : effets affichés au délai de départ, premier coup décalé de START_EFFECTS_MS', () => {
+    expect(playbackCursor(START_DELAY_MS - 1, 2, true).startApplied).toBe(false);
+    const shown = playbackCursor(START_DELAY_MS + 1, 2, true);
+    expect(shown).toEqual({ startApplied: true, lungeIndex: null, applied: 0, done: false });
+    expect(playbackCursor(START_DELAY_MS + START_EFFECTS_MS + 1, 2, true).lungeIndex).toBe(0);
+  });
+
+  it('Début du combat sans aucun coup (victoire immédiate) : la lecture dure quand même', () => {
+    expect(playbackCursor(START_DELAY_MS + 1, 0, true)).toMatchObject({ startApplied: true, done: false });
+    expect(playbackCursor(START_DELAY_MS + START_EFFECTS_MS + END_PAUSE_MS + 1, 0, true).done).toBe(true);
   });
 
   it('la fente du 1er coup démarre juste après le délai de départ', () => {
@@ -127,6 +140,21 @@ describe('combatDisplay', () => {
     expect(display.complete).toBe(true);
     expect(display.phase).toBe('breakthrough');
     expect(display.cycle).toBe(2);
+  });
+
+  it('Début du combat : effets et PV affichés avant le premier impact', () => {
+    const effect: EffectLog = {
+      seat: 'p1',
+      sourceUid: 'm1',
+      cardId: 'stormMage',
+      trigger: 'combatStart',
+      effect: { type: 'damageOpponent', amount: 1 },
+    };
+    const start = { effects: [effect], hp: { p1: 20, p2: 19 }, applied: false };
+    expect(combatDisplay(steps, 0, hpBefore, start)).toMatchObject({ hp: hpBefore, appliedEffects: [] });
+    const shown = combatDisplay(steps, 0, hpBefore, { ...start, applied: true });
+    expect(shown).toMatchObject({ hp: { p1: 20, p2: 19 }, appliedEffects: [effect] });
+    expect(combatDisplay(steps, 1, hpBefore, { ...start, applied: true }).appliedEffects).toEqual([effect]);
   });
 
   it('zéro coup : displays vides, PV = hpBefore', () => {

@@ -114,6 +114,28 @@ export const CARD_CATALOG: CardDef[] = [
     element: 'water',
     abilities: [{ trigger: 'summon', effect: { type: 'buff', target: 'otherAllies', attack: 1, defense: 1 } }],
   },
+  // Début du combat : ne se déclenche que si la carte combat (en attaque à ton tour, en défense
+  // quand l'adversaire t'attaque avec au moins un monstre), donc au plus une fois par manche.
+  {
+    kind: 'monster',
+    id: 'druid',
+    name: 'Druidesse',
+    cost: 3,
+    attack: 1,
+    defense: 3,
+    element: 'earth',
+    abilities: [{ trigger: 'combatStart', effect: { type: 'healSelf', amount: 1 } }],
+  },
+  {
+    kind: 'monster',
+    id: 'stormMage',
+    name: 'Mage des tempêtes',
+    cost: 5,
+    attack: 2,
+    defense: 2,
+    element: 'air',
+    abilities: [{ trigger: 'combatStart', effect: { type: 'damageOpponent', amount: 1 } }],
+  },
 
   {
     kind: 'enchantment',
@@ -185,11 +207,13 @@ export function isElementEffective(from: CardElement, against: CardElement): boo
 // Nombre d'exemplaires de chaque carte dans le deck de départ (50 cartes au total :
 // 40 monstres, 10 enchantements).
 export const STARTER_COUNTS: Record<string, number> = {
-  squire: 7,
-  wolf: 6,
-  guard: 6,
-  archer: 6,
+  squire: 6,
+  wolf: 5,
+  guard: 5,
+  archer: 5,
+  druid: 2,
   knight: 5,
+  stormMage: 2,
   golem: 4,
   drake: 3,
   titan: 3,
@@ -241,6 +265,7 @@ export function describeEffect(effect: EnchantmentEffect): string {
 // Libellés affichés des déclencheurs (PLAN-effets-triggers.md §4).
 export const TRIGGER_LABELS: Record<Trigger, string> = {
   summon: 'Invoqué',
+  combatStart: 'Début du combat',
   attack: 'Attaque',
   defend: 'Défend',
   ko: 'KO',
@@ -285,13 +310,14 @@ export function describeAbility(ability: CardAbility): string {
 }
 
 // E12 (+ combat réservé aux monstres) : `bonusDamage` seulement sur Attaque, `shield`
-// seulement sur Défend ; `attack`/`defend`/`ko` interdits sur un enchantement ; `amount`/
+// seulement sur Défend ; `combatStart`/`attack`/`defend`/`ko` interdits sur un enchantement ; `amount`/
 // `count` doivent valoir au moins 1 (E16).
 export function isAbilityAllowed(def: CardDef, ability: CardAbility): boolean {
   const { trigger, effect } = ability;
   if (effect.type === 'bonusDamage' && trigger !== 'attack') return false;
   if (effect.type === 'shield' && trigger !== 'defend') return false;
-  if (def.kind === 'enchantment' && (trigger === 'attack' || trigger === 'defend' || trigger === 'ko')) return false;
+  const combatTriggers: Trigger[] = ['combatStart', 'attack', 'defend', 'ko'];
+  if (def.kind === 'enchantment' && combatTriggers.includes(trigger)) return false;
 
   switch (effect.type) {
     case 'gainCoins':

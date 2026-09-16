@@ -96,6 +96,9 @@ le détail des décisions. Résumé :
   cartes ont une ou plusieurs capacités = un déclencheur (`Trigger` dans `types.ts`) → un effet
   (`AbilityEffect`), résolu immédiatement et sans chaîne (aucun effet de la v1 ne pose, ne vend
   ni ne met KO une carte). Déclencheurs : `summon` (la carte rejoint le board, action `place`),
+  `combatStart` (« Début du combat » : une fois par combat, avant le premier coup, pour chaque
+  monstre qui y participe — attaquants de gauche à droite puis défenseurs ; rien si l'attaquant
+  n'a aucun monstre en attaque),
   `attack` (elle attaque, à chaque coup porté en mêlée — pas en percée), `defend` (elle est ciblée par une attaque, à
   chaque coup reçu), `ko` (sa défense tombe à 0 pendant un combat, une seule fois par combat),
   `sold` (elle est vendue, action `sell`). Dans un même échange, l'ordre est : Attaque de
@@ -108,7 +111,7 @@ le détail des décisions. Résumé :
   seulement) et bouclier (Défend seulement, peut absorber un coup entièrement). Pour ajouter une
   capacité à une carte, éditer son `abilities` dans `CARD_CATALOG` (`src/game/cards.ts`) ;
   `isAbilityAllowed` vérifie qu'elle respecte les règles (bonus/bouclier sur le bon
-  déclencheur, pas de déclencheur de combat sur un enchantement, valeurs ≥ 1). Un joueur voit un
+  déclencheur, pas de déclencheur de combat — Début du combat compris — sur un enchantement, valeurs ≥ 1). Un joueur voit un
   petit toast pour chaque capacité déclenchée (les siennes et celles de l'adversaire).
 - **Poser une carte** : glisser-déposer une carte de sa main sur un emplacement libre de la
   bonne zone (les emplacements légaux s'allument pendant le glisser).
