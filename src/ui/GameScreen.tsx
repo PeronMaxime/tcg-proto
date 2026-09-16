@@ -10,6 +10,7 @@ import CameraRig from '../scene/CameraRig';
 import type { DropTarget } from '../scene/DragController';
 import { CAMERA } from '../scene/layout';
 import { getCardFaceDataUrl } from '../scene/textures';
+import ElementWheel from './ElementWheel';
 import { useCombatPlayback } from './useCombatPlayback';
 
 // Écran de jeu : scène 3D plein écran + HUD superposé en surcouche. Un seul <Canvas>, y
@@ -481,6 +482,8 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
 
       {!showVictory && (
         <div className="hud-layer">
+          <ElementWheel />
+
           <button
             className={`room-badge ${codeCopied ? 'is-copied' : ''}`}
             onClick={copyRoomCode}

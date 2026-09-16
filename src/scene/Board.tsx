@@ -3,12 +3,13 @@ import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import { getCardDef, isMonster } from '../game/cards';
 import { getBaseMonsterStats, isActionLegal, opponentOf, ZONE_SIZES } from '../game/rules';
-import type { CardInstance, GameState, MonsterZone, Seat, Zone } from '../game/types';
+import type { CardInstance, EffectLog, GameState, MonsterZone, Seat, Zone } from '../game/types';
 import type { ActiveCombatStep, CombatView } from '../ui/useCombatPlayback';
 import { computeMonsterFaceStats } from './cardFaceStats';
 import type { AttackTrigger, HaloKind } from './Card';
 import Card from './Card';
 import DragController, { type DropTarget } from './DragController';
+import AbilityPulses, { type AbilityTrigger } from './AbilityPulse';
 import EffectiveBursts, { type EffectiveHit } from './EffectiveBurst';
 import Hero from './Hero';
 import {
@@ -422,6 +423,23 @@ function Board({
     }
   }
 
+  // Effet visuel sur la carte source de chaque capacité déclenchée : à la pose (évènement
+  // `place`) et au fil de la lecture du combat. Une carte vendue a déjà quitté le board, son
+  // effet n'est signalé que par le toast du HUD.
+  const abilityTriggers: AbilityTrigger[] = [];
+  const pushAbilityTriggers = (prefix: string, effects: EffectLog[]) => {
+    effects.forEach((effect, index) => {
+      const position = zonePositionByUid.get(effect.sourceUid);
+      if (!position) return;
+      abilityTriggers.push({ id: `${prefix}-${index}`, position, element: getCardDef(effect.cardId).element });
+    });
+  };
+  const lastEvent = state.lastEvent;
+  if (lastEvent?.type === 'place') pushAbilityTriggers(`place-${lastEvent.id}`, lastEvent.effects);
+  if (lastEvent?.type === 'combat' && combatView) {
+    pushAbilityTriggers(`combat-${lastEvent.id}`, combatView.appliedEffects);
+  }
+
   const isLegalSlot = (zone: Zone, slot: number) => {
     if (drag === null) return false;
     if (drag.origin) return zone === drag.origin.zone && isActionLegal(state, seat, { type: 'move', uid: drag.uid, slot });
@@ -511,6 +529,7 @@ function Board({
       ))}
 
       <EffectiveBursts hits={effectiveHits} />
+      <AbilityPulses triggers={abilityTriggers} />
 
       {drag && (
         <DragController

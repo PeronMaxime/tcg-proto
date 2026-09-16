@@ -631,6 +631,56 @@ button {
 
 /* -- Fil d'effets (capacités déclenchées, §6.3) -- */
 
+/* -- Roue des affinités élémentaires, à gauche au milieu -- */
+
+.element-wheel {
+  position: absolute;
+  left: clamp(0.6rem, 2vw, 1.4rem);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  width: 140px;
+  padding: 0.45rem 0.4rem 0.5rem;
+  border-radius: 0.7rem;
+  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
+  border: 1px solid var(--hud-gold-dim);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  opacity: 0.92;
+  pointer-events: auto;
+}
+
+.element-wheel svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.element-wheel-title {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08rem;
+  text-transform: uppercase;
+  color: var(--hud-gold-bright);
+}
+
+.element-wheel-label {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  fill: var(--hud-ink);
+}
+
+.element-wheel-caption {
+  font-size: 0.6rem;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--hud-ink-dim);
+}
+
 .effect-toasts {
   position: absolute;
   left: clamp(0.6rem, 2vw, 1.4rem);
@@ -761,6 +811,15 @@ button {
   }
 
   .leave-button span {
+    display: none;
+  }
+
+  .element-wheel {
+    width: 84px;
+    padding: 0.3rem;
+  }
+
+  .element-wheel-caption {
     display: none;
   }
 }
