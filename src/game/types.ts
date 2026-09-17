@@ -115,15 +115,32 @@ export type Action =
 
 export type CombatTarget = { kind: 'monster'; uid: string } | { kind: 'player' };
 
-// Effet résolu par une capacité, journalisé pour que les deux clients affichent le même
-// retour visuel (§6.3). `seat` = propriétaire de la carte source.
-export interface EffectLog {
+// Effet résolu, journalisé pour que les deux clients affichent le même retour visuel
+// (§6.3) : le fil d'effets du HUD et la pulsation sur la carte source en vivent. `seat` =
+// propriétaire de la carte source. Deux formes, distinguées par `kind` :
+// - une capacité (`CardAbility`) qui a résolu son effet — la forme historique, dont `kind`
+//   est omis pour rester compatible avec les évènements écrits avant les habiletés ;
+// - une habileté (`Keyword`) qui vient de modifier la résolution (Provocation qui détourne
+//   l'attaque, Protection qui l'annule, Portée, Furie, Toxic, Négociant à la vente). Elles
+//   n'ont pas d'`AbilityEffect` : c'est le mot-clé lui-même qui est journalisé.
+export interface AbilityEffectLog {
+  kind?: 'ability';
   seat: Seat;
   sourceUid: string;
   cardId: string;
   trigger: Trigger;
   effect: AbilityEffect;
 }
+
+export interface KeywordEffectLog {
+  kind: 'keyword';
+  seat: Seat;
+  sourceUid: string;
+  cardId: string;
+  keyword: Keyword;
+}
+
+export type EffectLog = AbilityEffectLog | KeywordEffectLog;
 
 export interface CombatStep {
   cycle: number; // 1, 2, … pour la mêlée (E14) ; cycle de la percée = dernier cycle + 1 (E15)

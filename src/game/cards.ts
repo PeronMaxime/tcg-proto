@@ -341,6 +341,26 @@ export function describeKeyword(keyword: Keyword, golden = false): string {
   return `${KEYWORD_LABELS[keyword]} : ${describeKeywordEffect(keyword, golden)}`;
 }
 
+// Texte du fil d'effets quand une habileté vient de se déclencher en jeu, ex. « Protection :
+// dégâts annulés ». Distinct de `describeKeywordEffect`, qui énonce la règle sur la face de
+// la carte : ici on raconte ce qui vient de se passer, au passé, comme pour une capacité.
+export function describeKeywordTrigger(keyword: Keyword): string {
+  switch (keyword) {
+    case 'reach':
+      return `${KEYWORD_LABELS.reach} : touche aussi les voisins de sa cible`;
+    case 'taunt':
+      return `${KEYWORD_LABELS.taunt} : l'attaque est détournée sur lui`;
+    case 'protection':
+      return `${KEYWORD_LABELS.protection} : les dégâts sont annulés`;
+    case 'merchant':
+      return `${KEYWORD_LABELS.merchant} : +${KEYWORD_MERCHANT_BONUS} pièce à la vente`;
+    case 'fury':
+      return `${KEYWORD_LABELS.fury} : l'excédent passe au défenseur suivant`;
+    case 'toxic':
+      return `${KEYWORD_LABELS.toxic} : la cible touchée est tuée`;
+  }
+}
+
 export function hasKeywordDef(def: CardDef, keyword: Keyword): boolean {
   return isMonster(def) && (def.keywords?.includes(keyword) ?? false);
 }

@@ -87,6 +87,13 @@ export function hasKeyword(card: CardInstance, keyword: Keyword): boolean {
   return hasKeywordDef(getCardDef(card.cardId), keyword);
 }
 
+// Journalise le déclenchement d'une habileté pour le fil d'effets du HUD et la pulsation
+// sur la carte (§6.3) : contrairement à une capacité, une habileté ne résout pas d'effet,
+// c'est le mot-clé qui est journalisé. `seat` = propriétaire de la carte qui la porte.
+function keywordLog(seat: Seat, card: CardInstance, keyword: Keyword): EffectLog {
+  return { kind: 'keyword', seat, sourceUid: card.uid, cardId: card.cardId, keyword };
+}
+
 // Pièces rendues par la vente d'une carte posée : dorée = `SELL_GOLDEN_COINS`, et K4
 // Négociant ajoute `KEYWORD_MERCHANT_BONUS` dans les deux cas. Partagé avec l'interface,
 // qui affiche le montant sur le bouton « Vendre ».
@@ -395,6 +402,7 @@ function applySell(next: GameState, seat: Seat, uid: string): void {
     player.coins += sellValue(card); // K4 Négociant : +1 pièce
     // E4 : Vendu se déclenche après que la carte a quitté le board, la pièce versée, en défausse.
     const effects = fireTrigger(next, seat, card, 'sold');
+    if (hasKeyword(card, 'merchant')) effects.unshift(keywordLog(seat, card, 'merchant'));
     next.lastEvent = { id: next.eventSeq, type: 'sell', seat, uid, zone, slot, effects };
     return;
   }
@@ -590,6 +598,7 @@ function dealCollateral(
     fighter.protection -= 1;
     damage = 0;
     absorbedUids.push(fighter.card.uid);
+    effects.push(keywordLog(fighter.seat, fighter.card, 'protection'));
   }
   fighter.damageTaken += damage;
   const remaining = currentDefense(state, fighter, zone);
@@ -669,9 +678,14 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
       // les attaquants suivants du cycle frapperont en percée (E14).
       if (remainingDefenders.length === 0) break;
       const target = pickTarget(remainingDefenders)!;
+      // K2 Provocation : journalisée seulement quand elle a réellement détourné l'attaque,
+      // c'est-à-dire quand la cible n'était pas déjà celle qu'une attaque ordinaire aurait
+      // choisie (le défenseur debout le plus à gauche, R4).
+      const tauntRedirect = target !== remainingDefenders[0] && hasKeyword(target.card, 'taunt');
 
       const hit: HitModifiers = { bonusDamage: 0, damageReduction: 0 };
       let effects = fireTrigger(state, attackerSeat, attacker.card, 'attack', hit, firedThisCombat);
+      if (tauntRedirect) effects.unshift(keywordLog(defenderSeat, target.card, 'taunt'));
       if (state.winner === null) {
         effects = effects.concat(fireTrigger(state, defenderSeat, target.card, 'defend', hit, firedThisCombat));
       }
@@ -705,12 +719,14 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
           damage = 0;
           effective = false;
           absorbedUids.push(target.card.uid);
+          effects.push(keywordLog(defenderSeat, target.card, 'protection'));
         }
         // K6 Toxic : le moindre dégât infligé tue — sauf s'il vient d'être absorbé. On monte
         // le coup jusqu'à la défense restante sans jamais le réduire (K5 Furie doit encore
         // pouvoir déborder si l'attaque dépassait déjà cette défense).
         if (damage > 0 && hasKeyword(attacker.card, 'toxic')) {
           damage = Math.max(damage, targetDefenseBefore);
+          effects.push(keywordLog(attackerSeat, attacker.card, 'toxic'));
         }
 
         // Mêmes deux règles sur la riposte : la protection de l'attaquant l'absorbe, et un
@@ -720,9 +736,11 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
           retaliation = 0;
           retaliationEffective = false;
           absorbedUids.push(attacker.card.uid);
+          effects.push(keywordLog(attackerSeat, attacker.card, 'protection'));
         }
         if (retaliation > 0 && hasKeyword(target.card, 'toxic')) {
           retaliation = Math.max(retaliation, currentDefense(state, attacker, 'attack'));
+          effects.push(keywordLog(defenderSeat, target.card, 'toxic'));
         }
       }
 
@@ -750,6 +768,7 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
       if (state.winner === null && target.ko && leftover > 0 && hasKeyword(attacker.card, 'fury')) {
         const next = pickTarget(standingFighters(state, defenders, 'defense'));
         if (next) {
+          effects.push(keywordLog(attackerSeat, attacker.card, 'fury'));
           const dealt = dealCollateral(state, next, 'defense', leftover, effects, absorbedUids);
           overflow = { uid: next.card.uid, damage: dealt.damage, remaining: dealt.remaining };
           damageThisCycle += dealt.damage;
@@ -762,8 +781,13 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
       const splash: NonNullable<CombatStep['splash']> = [];
       if (state.winner === null && hasKeyword(attacker.card, 'reach')) {
         const base = KEYWORD_REACH_DAMAGE + (attacker.card.golden ? KEYWORD_REACH_GOLDEN_BONUS : 0);
-        for (const neighbor of standingFighters(state, defenders, 'defense')) {
-          if (Math.abs(neighbor.slot - target.slot) !== 1) continue;
+        const neighbors = standingFighters(state, defenders, 'defense').filter(
+          (n) => Math.abs(n.slot - target.slot) === 1,
+        );
+        // Journalisée une seule fois par coup, avant les dégâts collatéraux, même si elle
+        // éclabousse les deux voisins : c'est une habileté qui se déclenche, pas un effet par cible.
+        if (neighbors.length > 0) effects.push(keywordLog(attackerSeat, attacker.card, 'reach'));
+        for (const neighbor of neighbors) {
           const bonus = elementBonus(attacker.card, neighbor.card);
           const dealt = dealCollateral(state, neighbor, 'defense', base + bonus, effects, absorbedUids);
           splash.push({

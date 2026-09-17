@@ -180,12 +180,25 @@ export interface CardAbility {
 - Journal d'un effet résolu, pour que les deux clients affichent la même chose :
 
 ```ts
-export interface EffectLog {
+export type EffectLog = AbilityEffectLog | KeywordEffectLog;
+
+export interface AbilityEffectLog {
+  kind?: 'ability';   // omis : compatible avec les évènements écrits avant les habiletés
   seat: Seat;         // propriétaire de la carte source
   sourceUid: string;
   cardId: string;
   trigger: Trigger;
   effect: AbilityEffect;
+}
+
+// v12 : une habileté (mot-clé) qui modifie la résolution est journalisée elle aussi, sinon
+// le combat dévie (attaque détournée, dégâts annulés, éclaboussure…) sans rien à lire.
+export interface KeywordEffectLog {
+  kind: 'keyword';
+  seat: Seat;
+  sourceUid: string;
+  cardId: string;
+  keyword: Keyword;
 }
 ```
 
@@ -446,7 +459,8 @@ reflètent l'état final dès l'arrivée de l'évènement `combat`, pas au fil d
 
 1. **Fil d'effets (obligatoire)** — petite pile de toasts HTML dans `GameScreen` (côté
    gauche, sous la plaque adverse ; styles dans `src/styles.css` dans le ton du HUD), ex.
-   « Golem de pierre — Défend : 1 dégât au héros adverse ». Couleur/icône différente selon
+   « Golem de pierre — Défend : 1 dégât au héros adverse », ou, pour une habileté,
+   « Garde du pont — Provocation : l'attaque est détournée sur lui ». Couleur/icône différente selon
    que la carte source est à moi ou à l'adversaire. Chaque toast disparaît après ~2,5 s.
    Sources : `lastEvent.effects` d'un nouvel évènement `place`/`sell`, et les
    `appliedEffects` du combat au fil de la lecture. Même garde que la bannière de tour :

@@ -34,7 +34,23 @@ import {
   STARTING_HP,
   ZONE_SIZES,
 } from './rules';
-import type { CardElement, CardInstance, GameState, Keyword, PlayerState, Seat, Zone } from './types';
+import type {
+  CardElement,
+  CardInstance,
+  EffectLog,
+  GameState,
+  Keyword,
+  PlayerState,
+  Seat,
+  Trigger,
+  Zone,
+} from './types';
+
+// Déclencheur d'une ligne du journal d'effets, `null` pour une habileté (K1-K6), qui n'en a
+// pas : ces tests ne portent que sur les capacités.
+function triggerOf(effect: EffectLog): Trigger | null {
+  return effect.kind === 'keyword' ? null : effect.trigger;
+}
 
 // PRNG déterministe pour des tests reproductibles (mélange du deck).
 function seededRandom(seed: number): () => number {
@@ -1067,8 +1083,8 @@ describe('effets déclenchés', () => {
     // Cycle 1 : la Protection du golem (K3) absorbe le coup ; 5 (4 + buff) puis 5 ensuite, il
     // tombe au 3e coup, puis percée (pas une attaque).
     expect(steps.map((s) => s.target.kind)).toEqual(['monster', 'monster', 'monster', 'player']);
-    expect(steps[0].effects.filter((e) => e.trigger === 'attack')).toHaveLength(1);
-    expect(steps[1].effects.filter((e) => e.trigger === 'attack')).toHaveLength(0);
+    expect(steps[0].effects.filter((e) => triggerOf(e) === 'attack')).toHaveLength(1);
+    expect(steps[1].effects.filter((e) => triggerOf(e) === 'attack')).toHaveLength(0);
     const knight = state.players.p1.zones.attack[0]!;
     expect(knight.buff).toEqual({ attack: 1, defense: 0 });
 
@@ -1112,7 +1128,7 @@ describe('effets déclenchés', () => {
 
     const { steps } = resolveCombat(state, 'p1');
     expect(steps).toHaveLength(4); // 2 cycles, 2 attaquants
-    expect(steps.map((s) => s.effects.filter((e) => e.trigger === 'defend').length)).toEqual([1, 0, 0, 0]);
+    expect(steps.map((s) => s.effects.filter((e) => triggerOf(e) === 'defend').length)).toEqual([1, 0, 0, 0]);
     expect(state.players.p1.hp).toBe(STARTING_HP - 1);
   });
 
@@ -1156,7 +1172,7 @@ describe('effets déclenchés', () => {
     state.players.p2.zones.defense[0] = makeCard('drake', 'd1'); // KO : soin (pas de Défend), 4 déf
 
     const { steps } = resolveCombat(state, 'p1');
-    expect(steps[0].effects.map((e) => e.trigger)).toEqual(['attack', 'ko']);
+    expect(steps[0].effects.map((e) => triggerOf(e))).toEqual(['attack', 'ko']);
   });
 
   it('CombatStep.hp et hpBefore restent cohérents avec les PV finaux', () => {
@@ -1179,13 +1195,13 @@ describe('effets déclenchés', () => {
 
     const { startEffects, hpAfterStart, steps } = resolveCombat(state, 'p1');
 
-    expect(startEffects.map((e) => [e.sourceUid, e.trigger])).toEqual([
+    expect(startEffects.map((e) => [e.sourceUid, triggerOf(e)])).toEqual([
       ['m1', 'combatStart'],
       ['d1', 'combatStart'],
     ]);
     expect(hpAfterStart).toEqual({ p1: STARTING_HP - 3, p2: STARTING_HP - 3 }); // -1 puis +1
     expect(steps.length).toBeGreaterThan(0);
-    expect(steps.flatMap((s) => s.effects).some((e) => e.trigger === 'combatStart')).toBe(false);
+    expect(steps.flatMap((s) => s.effects).some((e) => triggerOf(e) === 'combatStart')).toBe(false);
   });
 
   it("Début du combat : ne se déclenche qu'une fois par combat, même sur plusieurs cycles", () => {
@@ -1462,6 +1478,50 @@ describe('habiletés (mots-clés)', () => {
     const state = combatState(['titan'], ['spider']);
     const { steps } = resolveCombat(state, 'p1');
     expect(steps[0]).toMatchObject({ retaliation: 7, attackerRemaining: 0 });
+  });
+
+  // Journal des habiletés : elles alimentent le même fil d'effets que les capacités (§6.3),
+  // sinon le joueur voit le combat dévier sans rien lire à l'écran.
+  function keywordLogs(effects: EffectLog[]): [string, Keyword, Seat][] {
+    return effects
+      .filter((e): e is Extract<EffectLog, { kind: 'keyword' }> => e.kind === 'keyword')
+      .map((e) => [e.sourceUid, e.keyword, e.seat]);
+  }
+
+  it('journal : Provocation est journalisée quand elle détourne réellement l’attaque', () => {
+    const state = combatState(['knight'], ['squire', 'guard']);
+    const { steps } = resolveCombat(state, 'p1');
+    expect(keywordLogs(steps[0].effects)).toContainEqual(['d1', 'taunt', 'p2']);
+
+    // Le garde est déjà le défenseur le plus à gauche : rien n'est détourné, rien n'est journalisé.
+    const leftmost = combatState(['knight'], ['guard', 'squire']);
+    const first = resolveCombat(leftmost, 'p1').steps[0];
+    expect(keywordLogs(first.effects).some(([, keyword]) => keyword === 'taunt')).toBe(false);
+  });
+
+  it('journal : Protection, Portée, Furie et Toxic apparaissent dans les effets du coup', () => {
+    const absorbed = resolveCombat(combatState(['wasp'], ['sentinel']), 'p1').steps[0];
+    expect(keywordLogs(absorbed.effects)).toEqual([['d0', 'protection', 'p2']]); // Toxic annulé : pas journalisé
+
+    const poisoned = resolveCombat(combatState(['wasp'], ['titan']), 'p1').steps[0];
+    expect(keywordLogs(poisoned.effects)).toContainEqual(['a0', 'toxic', 'p1']);
+
+    const reach = combatState(['harpooner'], ['squire', 'squire', 'squire']);
+    reach.players.p2.zones.defense[1] = makeCard('guard', 'd1'); // Provocation : cible le milieu
+    const splashed = resolveCombat(reach, 'p1').steps[0];
+    expect(keywordLogs(splashed.effects)).toContainEqual(['a0', 'reach', 'p1']);
+
+    const fury = resolveCombat(combatState(['berserker'], ['squire', 'squire']), 'p1').steps[0];
+    expect(keywordLogs(fury.effects)).toContainEqual(['a0', 'fury', 'p1']);
+  });
+
+  it('journal : Négociant est journalisé sur l’évènement de vente', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('peddler', 'pd1');
+
+    const next = applyAction(state, 'p1', { type: 'sell', uid: 'pd1' })!;
+    const event = next.lastEvent as Extract<typeof next.lastEvent, { type: 'sell' }>;
+    expect(keywordLogs(event.effects)).toEqual([['pd1', 'merchant', 'p1']]);
   });
 });
 

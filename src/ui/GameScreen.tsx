@@ -1,6 +1,6 @@
 import { Canvas } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { describeAbility, getCardDef, isMonster } from '../game/cards';
+import { describeAbility, describeKeywordTrigger, getCardDef, isMonster } from '../game/cards';
 import {
   isActionLegal,
   isFirstTurnOfGame,
@@ -95,6 +95,14 @@ interface EffectToast {
   mine: boolean;
 }
 
+// Texte d'une ligne du fil d'effets : une capacité qui a résolu son effet, ou une habileté
+// (mot-clé) qui vient de modifier la résolution — Provocation, Protection, Portée, Furie,
+// Toxic, Négociant ne passent pas par `CardAbility` et ont leur propre libellé.
+function describeEffectLog(log: EffectLog): string {
+  if (log.kind === 'keyword') return describeKeywordTrigger(log.keyword);
+  return describeAbility({ trigger: log.trigger, effect: log.effect });
+}
+
 function combatBannerText(cycle: number, phase: 'melee' | 'breakthrough', stalemate: boolean, complete: boolean): string {
   if (stalemate && complete) return 'Combat nul';
   if (phase === 'breakthrough') return 'Percée !';
@@ -170,7 +178,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     if (effects.length === 0) return;
     const toasts: EffectToast[] = effects.map((effect) => ({
       key: toastIdRef.current++,
-      text: `${getCardDef(effect.cardId).name} — ${describeAbility({ trigger: effect.trigger, effect: effect.effect })}`,
+      text: `${getCardDef(effect.cardId).name} — ${describeEffectLog(effect)}`,
       mine: effect.seat === seat,
     }));
     setEffectToasts((prev) => [...prev, ...toasts]);
