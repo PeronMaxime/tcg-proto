@@ -133,6 +133,21 @@ describe('combatDisplay', () => {
     expect(koed.ko.has('d1')).toBe(true);
   });
 
+  it('K3 Protection : le bouclier ne disparaît qu’au coup qui le consomme', () => {
+    const protectedSteps: CombatStep[] = [
+      step({ attackerUid: 'a1', target: { kind: 'monster', uid: 'd1' }, damage: 0, remaining: 5 }),
+      step({
+        attackerUid: 'a2',
+        target: { kind: 'monster', uid: 'd1' },
+        damage: 0,
+        remaining: 5,
+        absorbedUids: ['d1'],
+      }),
+    ];
+    expect(combatDisplay(protectedSteps, 1, hpBefore).protectionSpent.has('d1')).toBe(false);
+    expect(combatDisplay(protectedSteps, 2, hpBefore).protectionSpent.has('d1')).toBe(true);
+  });
+
   it('fin : tout appliqué, PV du joueur mis à jour, phase percée', () => {
     const display = combatDisplay(steps, 3, hpBefore);
     expect(display.hp).toEqual({ p1: 20, p2: 17 });

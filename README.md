@@ -125,7 +125,9 @@ le détail des décisions. Résumé :
   - **Protection** : les **premiers dégâts** reçus pendant un combat sont annulés — coup subi
     en défense, riposte subie en attaquant, mais aussi dégâts collatéraux de Portée ou de
     Furie, qui cassent la protection comme le reste. Elle se recharge au combat suivant
-    (Golem de pierre, Sentinelle d'acier).
+    (Golem de pierre, Sentinelle d'acier). Un **bouclier** flotte au-dessus du monstre tant
+    que sa protection est intacte, et éclate au coup exact qui la consomme (`shielded` dans
+    `Card.tsx`, alimenté par `protectionSpent` du curseur de lecture).
   - **Négociant** : rapporte **1 pièce de plus** à la vente, soit 2 (4 si la carte est dorée)
     (Colporteur, Gardien des reliques).
   - **Furie** : quand son coup tue un défenseur, les dégâts **en excès** ne sont plus perdus

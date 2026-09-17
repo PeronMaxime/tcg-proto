@@ -1,7 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
-import { getCardDef, isMonster } from '../game/cards';
+import { getCardDef, hasKeywordDef, isMonster } from '../game/cards';
 import { getBaseMonsterStats, isActionLegal, opponentOf, ZONE_SIZES } from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Seat, Zone } from '../game/types';
 import type { ActiveCombatStep, CombatView } from '../ui/useCombatPlayback';
@@ -135,6 +135,7 @@ interface RenderEntry {
   cardId: string;
   stats: MonsterFaceStats | null;
   ko: boolean;
+  shielded?: boolean; // K3 Protection encore intacte (bouclier affiché sur la carte)
   pose: Pose;
   hidden: boolean;
   mine: boolean;
@@ -312,11 +313,18 @@ function Board({
       const movable = mine && canDrag && !myMarketOpen && (zone === 'attack' || zone === 'defense');
       const dragged = slot.uid === drag?.uid;
 
+      // K3 Protection : bouclier visible tant que la protection n'a pas servi. Elle se
+      // recharge à chaque combat, donc hors combat elle est toujours intacte ; pendant la
+      // lecture, `protectionSpent` la retire au coup exact qui l'a consommée.
+      const shielded =
+        hasKeywordDef(def, 'protection') && !ko && !(combatView?.protectionSpent.has(slot.uid) ?? false);
+
       entries.push({
         uid: slot.uid,
         cardId: slot.cardId,
         stats,
         ko,
+        shielded,
         pose,
         hidden: false,
         mine,
@@ -525,6 +533,7 @@ function Board({
           cardId={entry.cardId}
           stats={entry.stats}
           ko={entry.ko}
+          shielded={entry.shielded}
           pose={entry.pose}
           spawnPose={spawnPoseFor(entry.uid, entry.mine)}
           hidden={entry.hidden}

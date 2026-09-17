@@ -10,6 +10,7 @@ import { STARTING_HP } from '../game/rules';
 export interface CombatView {
   defense: Map<string, number>;
   ko: Set<string>;
+  protectionSpent: Set<string>;
   hp: Record<Seat, number>;
   appliedEffects: EffectLog[];
   cycle: number;

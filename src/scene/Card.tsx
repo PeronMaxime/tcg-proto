@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { getCardDef } from '../game/cards';
 import { handHoverPose, type Pose } from './layout';
 import { theme } from './theme';
-import { getCardBackTexture, getCardFaceTexture, type MonsterFaceStats } from './textures';
+import { getCardBackTexture, getCardFaceTexture, getShieldTexture, type MonsterFaceStats } from './textures';
 
 export type HaloKind = 'none' | 'playable' | 'selected' | 'target';
 
@@ -17,6 +17,9 @@ interface CardProps {
   cardId: string;
   stats: MonsterFaceStats | null; // null pour un enchantement (§6.4)
   ko: boolean;
+  // K3 Protection encore intacte : un bouclier flotte au-dessus de la carte tant qu'elle
+  // n'a rien encaissé (demande utilisateur), et éclate quand la protection est consommée.
+  shielded?: boolean;
   pose: Pose;
   spawnPose?: Pose; // pose de départ si la carte apparaît pour la première fois (D6)
   hidden: boolean;
@@ -35,6 +38,7 @@ const DAMP_LAMBDA = 10;
 const DRAG_DAMP_LAMBDA = 28; // la carte tenue suit le pointeur de près
 const DRAG_SCALE = 0.8;
 const LUNGE_DURATION = 0.45; // s
+const SHIELD_SIZE = 0.66; // côté du plan portant l'emblème de bouclier (K3)
 
 function haloColor(kind: HaloKind): string {
   switch (kind) {
@@ -53,6 +57,7 @@ function Card({
   cardId,
   stats,
   ko,
+  shielded = false,
   pose,
   spawnPose,
   hidden,
@@ -67,6 +72,7 @@ function Card({
   const def = getCardDef(cardId);
   const faceTexture = useMemo(() => getCardFaceTexture(def, stats), [def, stats]);
   const backTexture = useMemo(() => getCardBackTexture(), []);
+  const shieldTexture = useMemo(() => getShieldTexture(), []);
   const { width, height } = theme.card;
 
   const groupRef = useRef<THREE.Group>(null!);
@@ -82,6 +88,10 @@ function Card({
   const lunge = useRef<{ start: number; base: THREE.Vector3; target: THREE.Vector3 } | null>(null);
   const lastAttackId = useRef<number | null>(null);
   const koAmount = useRef(0); // 0 = debout, 1 = KO complet (amorti)
+  const shieldGroupRef = useRef<THREE.Group>(null!);
+  const shieldMaterialRef = useRef<THREE.MeshBasicMaterial>(null!);
+  const shieldBreak = useRef(0); // éclat du bouclier au moment où la protection est consommée
+  const prevShielded = useRef(shielded);
 
   const [hovered, setHovered] = useState(false);
 
@@ -110,6 +120,12 @@ function Card({
     if (golden && !prevGolden.current) goldFlash.current = 1;
     prevGolden.current = golden;
   }, [stats?.golden]);
+
+  // Protection consommée : le bouclier grossit d'un coup puis s'efface.
+  useEffect(() => {
+    if (!shielded && prevShielded.current) shieldBreak.current = 1;
+    prevShielded.current = shielded;
+  }, [shielded]);
 
   useEffect(() => {
     if (attackTrigger && attackTrigger.id !== lastAttackId.current && groupRef.current) {
@@ -187,6 +203,22 @@ function Card({
         DAMP_LAMBDA,
         delta,
       );
+    }
+
+    shieldBreak.current = THREE.MathUtils.damp(shieldBreak.current, 0, 5, delta);
+    if (shieldMaterialRef.current && shieldGroupRef.current) {
+      const shimmer = 0.62 + Math.sin(performance.now() / 420) * 0.16;
+      const target = shielded ? shimmer : 0;
+      // L'éclat de rupture prend le dessus sur la disparition, le temps de s'estomper.
+      shieldMaterialRef.current.opacity = Math.max(
+        THREE.MathUtils.damp(shieldMaterialRef.current.opacity, target, 14, delta),
+        shieldBreak.current,
+      );
+      const scale = (shielded ? 1 : 1.1) + shieldBreak.current * 0.7;
+      shieldGroupRef.current.scale.setScalar(
+        THREE.MathUtils.damp(shieldGroupRef.current.scale.x, scale, 14, delta),
+      );
+      shieldGroupRef.current.visible = shieldMaterialRef.current.opacity > 0.01;
     }
 
     if (flipRef.current) {
@@ -289,6 +321,21 @@ function Card({
         <planeGeometry args={[width + 0.26, height + 0.26]} />
         <meshBasicMaterial ref={goldGlowMaterialRef} color={theme.colors.gold} transparent opacity={0} />
       </mesh>
+
+      {/* Bouclier de la Protection (K3) : au-dessus de la face, il ne pivote pas avec elle. */}
+      <group ref={shieldGroupRef} position={[0, 0, 0.05]} visible={false}>
+        <mesh>
+          <planeGeometry args={[SHIELD_SIZE, SHIELD_SIZE]} />
+          <meshBasicMaterial
+            ref={shieldMaterialRef}
+            map={shieldTexture}
+            transparent
+            opacity={0}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+      </group>
 
       <group ref={flipRef}>
         <mesh castShadow>

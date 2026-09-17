@@ -45,6 +45,9 @@ export interface CombatDisplay {
   // la riposte, E13) — les deux camps peuvent donc apparaître ici.
   defense: Map<string, number>;
   ko: Set<string>;
+  // K3 Protection : monstres dont la protection a déjà été consommée par un coup affiché —
+  // leur bouclier disparaît de l'écran au moment exact où il encaisse (demande utilisateur).
+  protectionSpent: Set<string>;
   hp: Record<Seat, number>; // PV des deux joueurs après le dernier coup appliqué
   appliedEffects: EffectLog[]; // effets des coups déjà appliqués, dans l'ordre
   cycle: number; // cycle du dernier coup appliqué (ou du coup en cours)
@@ -61,6 +64,7 @@ export function combatDisplay(
 ): CombatDisplay {
   const defense = new Map<string, number>();
   const ko = new Set<string>();
+  const protectionSpent = new Set<string>();
   const appliedEffects: EffectLog[] = start?.applied ? [...start.effects] : [];
 
   for (let i = 0; i < applied; i++) {
@@ -77,6 +81,7 @@ export function combatDisplay(
       defense.set(hit.uid, hit.remaining);
       if (hit.remaining === 0) ko.add(hit.uid);
     }
+    for (const uid of step.absorbedUids ?? []) protectionSpent.add(uid);
     appliedEffects.push(...step.effects);
   }
 
@@ -86,5 +91,5 @@ export function combatDisplay(
   const cycle = currentStep?.cycle ?? 1;
   const phase: CombatDisplay['phase'] = currentStep?.target.kind === 'player' ? 'breakthrough' : 'melee';
 
-  return { defense, ko, hp, appliedEffects, cycle, phase, complete: applied >= steps.length };
+  return { defense, ko, protectionSpent, hp, appliedEffects, cycle, phase, complete: applied >= steps.length };
 }

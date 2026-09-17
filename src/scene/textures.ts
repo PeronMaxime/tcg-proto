@@ -640,3 +640,73 @@ export function getCardBackTexture(): THREE.CanvasTexture {
 export function getCardFaceDataUrl(def: CardDef, stats: MonsterFaceStats | null): string {
   return getCardFaceTexture(def, stats).image.toDataURL('image/png');
 }
+
+// ---------------------------------------------------------------------------------------
+// Emblème de bouclier (K3 Protection) posé au-dessus d'un monstre dont la protection est
+// encore intacte (demande utilisateur) — voir `Card.tsx`. Un seul canvas, mis en cache.
+// ---------------------------------------------------------------------------------------
+
+const SHIELD_TEXTURE_SIZE = 256;
+let shieldTextureCache: THREE.CanvasTexture | null = null;
+
+function shieldPath(ctx: CanvasRenderingContext2D): void {
+  ctx.beginPath();
+  ctx.moveTo(128, 34);
+  ctx.lineTo(212, 62);
+  ctx.bezierCurveTo(212, 150, 184, 196, 128, 224);
+  ctx.bezierCurveTo(72, 196, 44, 150, 44, 62);
+  ctx.closePath();
+}
+
+export function getShieldTexture(): THREE.CanvasTexture {
+  if (shieldTextureCache) return shieldTextureCache;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = SHIELD_TEXTURE_SIZE;
+  canvas.height = SHIELD_TEXTURE_SIZE;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D indisponible');
+
+  // Halo diffus : le bouclier reste visible même par-dessus une illustration claire.
+  const glow = ctx.createRadialGradient(128, 128, 20, 128, 128, 126);
+  glow.addColorStop(0, 'rgba(150, 220, 255, 0.55)');
+  glow.addColorStop(0.55, 'rgba(90, 170, 255, 0.28)');
+  glow.addColorStop(1, 'rgba(90, 170, 255, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, SHIELD_TEXTURE_SIZE, SHIELD_TEXTURE_SIZE);
+
+  // Plaque du bouclier, translucide pour laisser deviner la carte au travers.
+  const plate = ctx.createLinearGradient(0, 30, 0, 226);
+  plate.addColorStop(0, 'rgba(226, 246, 255, 0.92)');
+  plate.addColorStop(0.45, 'rgba(120, 190, 250, 0.78)');
+  plate.addColorStop(1, 'rgba(46, 104, 190, 0.85)');
+  ctx.fillStyle = plate;
+  shieldPath(ctx);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.lineWidth = 9;
+  ctx.lineJoin = 'round';
+  shieldPath(ctx);
+  ctx.stroke();
+
+  // Croix centrale + reflet, pour lire l'emblème même en tout petit sur la table.
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fillRect(120, 72, 16, 110);
+  ctx.fillRect(84, 108, 88, 16);
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(128, 40);
+  ctx.lineTo(196, 64);
+  ctx.bezierCurveTo(196, 110, 186, 146, 128, 176);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  shieldTextureCache = texture;
+  return texture;
+}
