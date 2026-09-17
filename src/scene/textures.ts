@@ -642,8 +642,10 @@ export function getCardFaceDataUrl(def: CardDef, stats: MonsterFaceStats | null)
 }
 
 // ---------------------------------------------------------------------------------------
-// Emblème de bouclier (K3 Protection) posé au-dessus d'un monstre dont la protection est
-// encore intacte (demande utilisateur) — voir `Card.tsx`. Un seul canvas, mis en cache.
+// Marques d'habileté posées sur un monstre (demande utilisateur), voir `Card.tsx` : un
+// emblème de bouclier pour la Provocation (K2), une bulle d'énergie enveloppant la carte
+// pour la Protection (K3). Les deux se superposent sur un monstre qui a les deux habiletés.
+// Un seul canvas chacune, mis en cache.
 // ---------------------------------------------------------------------------------------
 
 const SHIELD_TEXTURE_SIZE = 256;
@@ -667,34 +669,35 @@ export function getShieldTexture(): THREE.CanvasTexture {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas 2D indisponible');
 
-  // Halo diffus : le bouclier reste visible même par-dessus une illustration claire.
+  // Acier et or, franchement distincts du cyan de la bulle : sur un monstre qui a les deux
+  // habiletés, on doit lire l'emblème par-dessus la coque sans les confondre.
   const glow = ctx.createRadialGradient(128, 128, 20, 128, 128, 126);
-  glow.addColorStop(0, 'rgba(150, 220, 255, 0.55)');
-  glow.addColorStop(0.55, 'rgba(90, 170, 255, 0.28)');
-  glow.addColorStop(1, 'rgba(90, 170, 255, 0)');
+  glow.addColorStop(0, 'rgba(255, 216, 140, 0.5)');
+  glow.addColorStop(0.55, 'rgba(210, 160, 60, 0.26)');
+  glow.addColorStop(1, 'rgba(210, 160, 60, 0)');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, SHIELD_TEXTURE_SIZE, SHIELD_TEXTURE_SIZE);
 
   // Plaque du bouclier, translucide pour laisser deviner la carte au travers.
   const plate = ctx.createLinearGradient(0, 30, 0, 226);
-  plate.addColorStop(0, 'rgba(226, 246, 255, 0.92)');
-  plate.addColorStop(0.45, 'rgba(120, 190, 250, 0.78)');
-  plate.addColorStop(1, 'rgba(46, 104, 190, 0.85)');
+  plate.addColorStop(0, 'rgba(236, 240, 246, 0.92)');
+  plate.addColorStop(0.45, 'rgba(150, 160, 176, 0.8)');
+  plate.addColorStop(1, 'rgba(70, 78, 94, 0.88)');
   ctx.fillStyle = plate;
   shieldPath(ctx);
   ctx.fill();
 
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.strokeStyle = theme.colors.goldLight;
   ctx.lineWidth = 9;
   ctx.lineJoin = 'round';
   shieldPath(ctx);
   ctx.stroke();
 
   // Croix centrale + reflet, pour lire l'emblème même en tout petit sur la table.
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fillStyle = theme.colors.goldLight;
   ctx.fillRect(120, 72, 16, 110);
   ctx.fillRect(84, 108, 88, 16);
-  ctx.globalAlpha = 0.35;
+  ctx.globalAlpha = 0.3;
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
   ctx.moveTo(128, 40);
@@ -708,5 +711,68 @@ export function getShieldTexture(): THREE.CanvasTexture {
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
   shieldTextureCache = texture;
+  return texture;
+}
+
+// Bulle de la Protection : coque d'énergie au format de la carte (5:7), creuse au centre
+// pour ne pas masquer la face — seul le liseré brille. Rendue en fondu additif (`Card.tsx`).
+const BUBBLE_TEXTURE_WIDTH = 256;
+const BUBBLE_TEXTURE_HEIGHT = 358;
+let bubbleTextureCache: THREE.CanvasTexture | null = null;
+
+export function getBubbleTexture(): THREE.CanvasTexture {
+  if (bubbleTextureCache) return bubbleTextureCache;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = BUBBLE_TEXTURE_WIDTH;
+  canvas.height = BUBBLE_TEXTURE_HEIGHT;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D indisponible');
+
+  const cx = BUBBLE_TEXTURE_WIDTH / 2;
+  const cy = BUBBLE_TEXTURE_HEIGHT / 2;
+  const radius = cx - 4;
+
+  // Espace circulaire étiré à la hauteur de la carte : le dégradé suit l'ovale de la bulle.
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(1, BUBBLE_TEXTURE_HEIGHT / BUBBLE_TEXTURE_WIDTH);
+
+  const shell = ctx.createRadialGradient(0, 0, radius * 0.2, 0, 0, radius);
+  shell.addColorStop(0, 'rgba(120, 200, 255, 0.04)');
+  shell.addColorStop(0.62, 'rgba(130, 210, 255, 0.1)');
+  shell.addColorStop(0.86, 'rgba(165, 235, 255, 0.42)');
+  shell.addColorStop(0.97, 'rgba(240, 252, 255, 0.85)');
+  shell.addColorStop(1, 'rgba(150, 225, 255, 0)');
+  ctx.fillStyle = shell;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Liseré net, pour que la bulle se lise même de loin sur la table.
+  ctx.strokeStyle = 'rgba(225, 248, 255, 0.75)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.95, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Reflet en haut à gauche : c'est lui qui donne le volume de sphère.
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+  ctx.lineWidth = 9;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.78, Math.PI * 1.08, Math.PI * 1.42);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.6, Math.PI * 1.14, Math.PI * 1.3);
+  ctx.stroke();
+  ctx.restore();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  bubbleTextureCache = texture;
   return texture;
 }

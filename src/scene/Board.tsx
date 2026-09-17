@@ -135,7 +135,8 @@ interface RenderEntry {
   cardId: string;
   stats: MonsterFaceStats | null;
   ko: boolean;
-  shielded?: boolean; // K3 Protection encore intacte (bouclier affiché sur la carte)
+  tauntShield?: boolean; // K2 Provocation : bouclier affiché tant que le monstre est debout
+  protectionBubble?: boolean; // K3 Protection encore intacte : bulle autour de la carte
   pose: Pose;
   hidden: boolean;
   mine: boolean;
@@ -313,10 +314,13 @@ function Board({
       const movable = mine && canDrag && !myMarketOpen && (zone === 'attack' || zone === 'defense');
       const dragged = slot.uid === drag?.uid;
 
-      // K3 Protection : bouclier visible tant que la protection n'a pas servi. Elle se
-      // recharge à chaque combat, donc hors combat elle est toujours intacte ; pendant la
-      // lecture, `protectionSpent` la retire au coup exact qui l'a consommée.
-      const shielded =
+      // K2 Provocation : le bouclier dit « frappez-moi d'abord », donc il reste tant que le
+      // monstre tient debout.
+      const tauntShield = hasKeywordDef(def, 'taunt') && !ko;
+      // K3 Protection : la bulle tient tant que la protection n'a pas servi. Elle se recharge
+      // à chaque combat, donc hors combat elle est toujours intacte ; pendant la lecture,
+      // `protectionSpent` la fait éclater au coup exact qui l'a consommée.
+      const protectionBubble =
         hasKeywordDef(def, 'protection') && !ko && !(combatView?.protectionSpent.has(slot.uid) ?? false);
 
       entries.push({
@@ -324,7 +328,8 @@ function Board({
         cardId: slot.cardId,
         stats,
         ko,
-        shielded,
+        tauntShield,
+        protectionBubble,
         pose,
         hidden: false,
         mine,
@@ -533,7 +538,8 @@ function Board({
           cardId={entry.cardId}
           stats={entry.stats}
           ko={entry.ko}
-          shielded={entry.shielded}
+          tauntShield={entry.tauntShield}
+          protectionBubble={entry.protectionBubble}
           pose={entry.pose}
           spawnPose={spawnPoseFor(entry.uid, entry.mine)}
           hidden={entry.hidden}

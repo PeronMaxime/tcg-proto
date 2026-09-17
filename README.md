@@ -121,13 +121,16 @@ le détail des décisions. Résumé :
     du voisin touché). Ces dégâts collatéraux ne provoquent pas de riposte, mais cassent une
     Protection (Archère, Harponneuse).
   - **Provocation** : tant qu'il est debout, ce défenseur est visé **avant** tous les autres,
-    même s'il n'est pas le plus à gauche (Garde du pont, Sentinelle d'acier).
+    même s'il n'est pas le plus à gauche (Garde du pont, Sentinelle d'acier). Un **bouclier**
+    d'acier et d'or flotte sur le monstre tant qu'il tient debout (`tauntShield` dans
+    `Card.tsx`).
   - **Protection** : les **premiers dégâts** reçus pendant un combat sont annulés — coup subi
     en défense, riposte subie en attaquant, mais aussi dégâts collatéraux de Portée ou de
     Furie, qui cassent la protection comme le reste. Elle se recharge au combat suivant
-    (Golem de pierre, Sentinelle d'acier). Un **bouclier** flotte au-dessus du monstre tant
-    que sa protection est intacte, et éclate au coup exact qui la consomme (`shielded` dans
-    `Card.tsx`, alimenté par `protectionSpent` du curseur de lecture).
+    (Golem de pierre, Sentinelle d'acier). Une **bulle** d'énergie cyan enveloppe le monstre
+    tant que sa protection est intacte et éclate au coup exact qui la consomme
+    (`protectionBubble` dans `Card.tsx`, alimenté par `protectionSpent` du curseur de
+    lecture). Les deux marques se superposent sur un monstre qui a les deux habiletés.
   - **Négociant** : rapporte **1 pièce de plus** à la vente, soit 2 (4 si la carte est dorée)
     (Colporteur, Gardien des reliques).
   - **Furie** : quand son coup tue un défenseur, les dégâts **en excès** ne sont plus perdus

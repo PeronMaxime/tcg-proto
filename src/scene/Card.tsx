@@ -4,7 +4,13 @@ import * as THREE from 'three';
 import { getCardDef } from '../game/cards';
 import { handHoverPose, type Pose } from './layout';
 import { theme } from './theme';
-import { getCardBackTexture, getCardFaceTexture, getShieldTexture, type MonsterFaceStats } from './textures';
+import {
+  getBubbleTexture,
+  getCardBackTexture,
+  getCardFaceTexture,
+  getShieldTexture,
+  type MonsterFaceStats,
+} from './textures';
 
 export type HaloKind = 'none' | 'playable' | 'selected' | 'target';
 
@@ -17,9 +23,11 @@ interface CardProps {
   cardId: string;
   stats: MonsterFaceStats | null; // null pour un enchantement (§6.4)
   ko: boolean;
-  // K3 Protection encore intacte : un bouclier flotte au-dessus de la carte tant qu'elle
-  // n'a rien encaissé (demande utilisateur), et éclate quand la protection est consommée.
-  shielded?: boolean;
+  // Marques d'habileté (demande utilisateur), superposables sur un monstre qui a les deux :
+  // `tauntShield` = bouclier de la Provocation, affiché tant que le monstre est debout ;
+  // `protectionBubble` = bulle de la Protection, qui éclate au coup qui la consomme.
+  tauntShield?: boolean;
+  protectionBubble?: boolean;
   pose: Pose;
   spawnPose?: Pose; // pose de départ si la carte apparaît pour la première fois (D6)
   hidden: boolean;
@@ -38,7 +46,11 @@ const DAMP_LAMBDA = 10;
 const DRAG_DAMP_LAMBDA = 28; // la carte tenue suit le pointeur de près
 const DRAG_SCALE = 0.8;
 const LUNGE_DURATION = 0.45; // s
-const SHIELD_SIZE = 0.66; // côté du plan portant l'emblème de bouclier (K3)
+const SHIELD_SIZE = 0.62; // côté du plan portant l'emblème de bouclier (K2 Provocation)
+// La bulle (K3 Protection) déborde juste assez de la carte pour l'envelopper sans mordre
+// sur l'emplacement voisin (cartes espacées de 1.05 pour 1.2 de large, voir layout.ts).
+const BUBBLE_WIDTH_RATIO = 1.14;
+const BUBBLE_HEIGHT_RATIO = 1.1;
 
 function haloColor(kind: HaloKind): string {
   switch (kind) {
@@ -57,7 +69,8 @@ function Card({
   cardId,
   stats,
   ko,
-  shielded = false,
+  tauntShield = false,
+  protectionBubble = false,
   pose,
   spawnPose,
   hidden,
@@ -73,6 +86,7 @@ function Card({
   const faceTexture = useMemo(() => getCardFaceTexture(def, stats), [def, stats]);
   const backTexture = useMemo(() => getCardBackTexture(), []);
   const shieldTexture = useMemo(() => getShieldTexture(), []);
+  const bubbleTexture = useMemo(() => getBubbleTexture(), []);
   const { width, height } = theme.card;
 
   const groupRef = useRef<THREE.Group>(null!);
@@ -88,10 +102,11 @@ function Card({
   const lunge = useRef<{ start: number; base: THREE.Vector3; target: THREE.Vector3 } | null>(null);
   const lastAttackId = useRef<number | null>(null);
   const koAmount = useRef(0); // 0 = debout, 1 = KO complet (amorti)
-  const shieldGroupRef = useRef<THREE.Group>(null!);
   const shieldMaterialRef = useRef<THREE.MeshBasicMaterial>(null!);
-  const shieldBreak = useRef(0); // éclat du bouclier au moment où la protection est consommée
-  const prevShielded = useRef(shielded);
+  const bubbleGroupRef = useRef<THREE.Group>(null!);
+  const bubbleMaterialRef = useRef<THREE.MeshBasicMaterial>(null!);
+  const bubbleBreak = useRef(0); // éclat de la bulle au moment où la protection est consommée
+  const prevProtectionBubble = useRef(protectionBubble);
 
   const [hovered, setHovered] = useState(false);
 
@@ -121,11 +136,11 @@ function Card({
     prevGolden.current = golden;
   }, [stats?.golden]);
 
-  // Protection consommée : le bouclier grossit d'un coup puis s'efface.
+  // Protection consommée : la bulle enfle d'un coup puis éclate.
   useEffect(() => {
-    if (!shielded && prevShielded.current) shieldBreak.current = 1;
-    prevShielded.current = shielded;
-  }, [shielded]);
+    if (!protectionBubble && prevProtectionBubble.current) bubbleBreak.current = 1;
+    prevProtectionBubble.current = protectionBubble;
+  }, [protectionBubble]);
 
   useEffect(() => {
     if (attackTrigger && attackTrigger.id !== lastAttackId.current && groupRef.current) {
@@ -205,20 +220,32 @@ function Card({
       );
     }
 
-    shieldBreak.current = THREE.MathUtils.damp(shieldBreak.current, 0, 5, delta);
-    if (shieldMaterialRef.current && shieldGroupRef.current) {
-      const shimmer = 0.62 + Math.sin(performance.now() / 420) * 0.16;
-      const target = shielded ? shimmer : 0;
+    if (shieldMaterialRef.current) {
+      const shimmer = 0.68 + Math.sin(performance.now() / 420) * 0.14;
+      shieldMaterialRef.current.opacity = THREE.MathUtils.damp(
+        shieldMaterialRef.current.opacity,
+        tauntShield ? shimmer : 0,
+        DAMP_LAMBDA,
+        delta,
+      );
+      shieldMaterialRef.current.visible = shieldMaterialRef.current.opacity > 0.01;
+    }
+
+    bubbleBreak.current = THREE.MathUtils.damp(bubbleBreak.current, 0, 5, delta);
+    if (bubbleMaterialRef.current && bubbleGroupRef.current) {
+      // Respiration lente de la coque, puis éclat bref quand la protection est consommée.
+      const shimmer = 0.8 + Math.sin(performance.now() / 520) * 0.18;
+      const target = protectionBubble ? shimmer : 0;
       // L'éclat de rupture prend le dessus sur la disparition, le temps de s'estomper.
-      shieldMaterialRef.current.opacity = Math.max(
-        THREE.MathUtils.damp(shieldMaterialRef.current.opacity, target, 14, delta),
-        shieldBreak.current,
+      bubbleMaterialRef.current.opacity = Math.max(
+        THREE.MathUtils.damp(bubbleMaterialRef.current.opacity, target, 14, delta),
+        bubbleBreak.current,
       );
-      const scale = (shielded ? 1 : 1.1) + shieldBreak.current * 0.7;
-      shieldGroupRef.current.scale.setScalar(
-        THREE.MathUtils.damp(shieldGroupRef.current.scale.x, scale, 14, delta),
+      const scale = (protectionBubble ? 1 : 1.18) + bubbleBreak.current * 0.3;
+      bubbleGroupRef.current.scale.setScalar(
+        THREE.MathUtils.damp(bubbleGroupRef.current.scale.x, scale, 14, delta),
       );
-      shieldGroupRef.current.visible = shieldMaterialRef.current.opacity > 0.01;
+      bubbleGroupRef.current.visible = bubbleMaterialRef.current.opacity > 0.01;
     }
 
     if (flipRef.current) {
@@ -322,20 +349,36 @@ function Card({
         <meshBasicMaterial ref={goldGlowMaterialRef} color={theme.colors.gold} transparent opacity={0} />
       </mesh>
 
-      {/* Bouclier de la Protection (K3) : au-dessus de la face, il ne pivote pas avec elle. */}
-      <group ref={shieldGroupRef} position={[0, 0, 0.05]} visible={false}>
+      {/* Marques d'habileté : au-dessus de la face, elles ne pivotent pas avec elle et se
+          superposent (bulle de Protection autour de la carte, bouclier de Provocation
+          par-dessus) sur un monstre qui a les deux. */}
+      <group ref={bubbleGroupRef} position={[0, 0, 0.035]} visible={false}>
         <mesh>
-          <planeGeometry args={[SHIELD_SIZE, SHIELD_SIZE]} />
+          <planeGeometry args={[width * BUBBLE_WIDTH_RATIO, height * BUBBLE_HEIGHT_RATIO]} />
           <meshBasicMaterial
-            ref={shieldMaterialRef}
-            map={shieldTexture}
+            ref={bubbleMaterialRef}
+            map={bubbleTexture}
             transparent
             opacity={0}
             depthWrite={false}
             toneMapped={false}
+            blending={THREE.AdditiveBlending}
           />
         </mesh>
       </group>
+
+      <mesh position={[0, 0, 0.05]}>
+        <planeGeometry args={[SHIELD_SIZE, SHIELD_SIZE]} />
+        <meshBasicMaterial
+          ref={shieldMaterialRef}
+          map={shieldTexture}
+          transparent
+          opacity={0}
+          visible={false}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
 
       <group ref={flipRef}>
         <mesh castShadow>
