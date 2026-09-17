@@ -1073,6 +1073,117 @@ button {
   margin: 0;
 }
 
+/* -- Lancer de pièce du début de partie (détermine qui commence) -- */
+
+.coin-flip-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.6rem;
+  background: radial-gradient(circle at 50% 45%, rgba(20, 22, 30, 0.82), rgba(5, 6, 10, 0.94));
+  perspective: 900px;
+  pointer-events: none;
+}
+
+.coin-flip-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1rem, 2.4vw, 1.4rem);
+  letter-spacing: 0.22rem;
+  text-transform: uppercase;
+  color: var(--hud-ink-dim);
+}
+
+.coin-flip-coin {
+  position: relative;
+  width: clamp(7rem, 16vw, 10rem);
+  aspect-ratio: 1;
+  transform-style: preserve-3d;
+  animation: coin-toss-mine 2.2s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.coin-flip-coin.lands-theirs {
+  animation-name: coin-toss-theirs;
+}
+
+/* Les deux faces de la pièce : la mienne à pile, celle de l'adversaire à face (retournée
+   d'un demi-tour, donc lisible à l'endroit quand c'est elle qui se présente). */
+.coin-flip-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem;
+  border-radius: 50%;
+  border: 3px solid var(--hud-gold-bright);
+  background: radial-gradient(circle at 34% 30%, #f6dd94, var(--hud-gold) 62%, #8a6c24);
+  box-shadow: 0 0 2.2rem rgba(240, 207, 107, 0.35);
+  backface-visibility: hidden;
+  font-family: var(--font-display);
+  font-size: clamp(0.75rem, 1.7vw, 1rem);
+  text-align: center;
+  color: #2a2110;
+  overflow: hidden;
+}
+
+.coin-flip-face--theirs {
+  transform: rotateX(180deg);
+}
+
+.coin-flip-result {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.1rem, 3vw, 1.7rem);
+  letter-spacing: 0.08rem;
+  color: var(--hud-ink);
+  opacity: 0;
+  animation: coin-flip-result-in 0.5s ease 2.1s forwards;
+}
+
+.coin-flip-result.mine {
+  color: var(--hud-gold-bright);
+}
+
+@keyframes coin-toss-mine {
+  0% {
+    transform: translateY(0) rotateX(0deg) scale(0.92);
+  }
+  45% {
+    transform: translateY(-9rem) rotateX(1080deg) scale(1.06);
+  }
+  100% {
+    transform: translateY(0) rotateX(2160deg) scale(1);
+  }
+}
+
+@keyframes coin-toss-theirs {
+  0% {
+    transform: translateY(0) rotateX(0deg) scale(0.92);
+  }
+  45% {
+    transform: translateY(-9rem) rotateX(1080deg) scale(1.06);
+  }
+  100% {
+    transform: translateY(0) rotateX(2340deg) scale(1);
+  }
+}
+
+@keyframes coin-flip-result-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .turn-banner {
     animation: none;
@@ -1085,5 +1196,19 @@ button {
 
   .fusion-zone {
     animation: none;
+  }
+
+  /* Pas de toupie : la pièce se présente directement sur la face du joueur tiré. */
+  .coin-flip-coin {
+    animation: none;
+  }
+
+  .coin-flip-coin.lands-theirs {
+    transform: rotateX(180deg);
+  }
+
+  .coin-flip-result {
+    animation: none;
+    opacity: 1;
   }
 }

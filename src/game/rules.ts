@@ -32,11 +32,12 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 13;
+export const RULES_VERSION = 14;
 export const STARTING_HP = 10;
 // Pièces en stock au début de la partie (demande utilisateur), avant le gain du 1er tour.
 export const STARTING_COINS = 2;
-// Pièce de départ en plus pour le second joueur (p2), contre l'avantage de jouer en premier.
+// Pièces de départ en plus pour le joueur qui NE commence PAS (désigné par le lancer de
+// pièce, v14 : ce n'est plus forcément p2), contre l'avantage de jouer en premier.
 // v11 : 2 au lieu de 1 — avec 1, le premier joueur gagnait ~62 % des parties simulées.
 export const SECOND_PLAYER_BONUS_COINS = 2;
 // Dégâts infligés au héros par chaque attaquant qui perce (demande utilisateur) : fixes,
@@ -125,17 +126,27 @@ export function createInitialState(random: () => number = Math.random): GameStat
       zones: emptyZones(),
       discard: [],
       extraMarketCards: 0,
+      movesUsed: { attack: false, defense: false },
     };
   }
 
-  // H6 : pas de main de départ, p1 (créateur de la room) commence. `beginTurn` (T3)
-  // démarre le premier tour comme tous les autres — pas de mise en place ici.
+  // Lancer de pièce du début de partie (demande utilisateur) : le siège tiré joue en
+  // premier, l'autre reçoit les pièces de compensation. Tiré AVANT les decks pour que le
+  // résultat ne dépende pas de leur mélange (et reste stable si celui-ci change).
+  const starter: Seat = random() < 0.5 ? 'p1' : 'p2';
+
+  // H6 : pas de main de départ. `beginTurn` (T3) démarre le premier tour comme tous les
+  // autres — pas de mise en place ici.
   return {
     rulesVersion: RULES_VERSION,
-    turn: 'p1',
+    starter,
+    turn: starter,
     phase: 'start',
     turnNumber: 1,
-    players: { p1: freshPlayer(), p2: freshPlayer(SECOND_PLAYER_BONUS_COINS) },
+    players: {
+      p1: freshPlayer(starter === 'p1' ? 0 : SECOND_PLAYER_BONUS_COINS),
+      p2: freshPlayer(starter === 'p2' ? 0 : SECOND_PLAYER_BONUS_COINS),
+    },
     winner: null,
     eventSeq: 0,
     lastEvent: null,
@@ -226,6 +237,14 @@ export function nextTurnCoinGain(player: PlayerState): number {
   return player.turnsPlayed + 1 + coinsPerTurnBonus(player);
 }
 
+// Déplacement encore disponible dans cette zone ce tour-ci (demande utilisateur : un seul
+// déplacement par zone et par tour, soit au plus un en attaque et un en défense). Exporté
+// pour que le plateau n'autorise pas à saisir une carte qu'on ne pourrait plus déplacer.
+// `movesUsed` peut manquer sur un état écrit avant cette règle : absent = rien d'utilisé.
+export function canMoveInZone(player: PlayerState, zone: MonsterZone): boolean {
+  return player.movesUsed?.[zone] !== true;
+}
+
 export function isActionLegal(state: GameState, seat: Seat, action: Action): boolean {
   if (state.winner !== null) return false;
   if (state.turn !== seat) return false;
@@ -265,12 +284,14 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
     case 'move': {
       // Repositionne une carte déjà posée à l'intérieur de SA zone (attaque ou défense)
       // uniquement : pas de changement de zone (demande utilisateur). Emplacement occupé =
-      // échange des deux cartes, pour pouvoir réorganiser même une zone pleine.
+      // échange des deux cartes, pour pouvoir réorganiser même une zone pleine. Un seul
+      // déplacement par zone et par tour (`canMoveInZone`).
       if (state.phase !== 'main') return false;
       if (!Number.isInteger(action.slot)) return false;
       for (const zone of ['attack', 'defense'] as MonsterZone[]) {
         const from = player.zones[zone].findIndex((s) => s?.uid === action.uid);
         if (from === -1) continue;
+        if (!canMoveInZone(player, zone)) return false;
         if (action.slot === from) return false; // pas de no-op
         return action.slot >= 0 && action.slot < ZONE_SIZES[zone];
       }
@@ -300,6 +321,8 @@ function applyBeginTurn(next: GameState, seat: Seat): void {
   const gain = nextTurnCoinGain(player); // R1 : base sur le n-ième tour DE CE JOUEUR
   player.turnsPlayed += 1;
   player.coins += gain;
+  // Nouveau tour : les deux déplacements (un par zone) sont de nouveau disponibles.
+  player.movesUsed = { attack: false, defense: false };
 
   // H7, + cartes promises par un effet `extraMarketCard` joué depuis le tour précédent.
   const drawCount = Math.min(MARKET_SIZE + player.extraMarketCards, player.deck.length);
@@ -339,7 +362,8 @@ function applyPlace(next: GameState, seat: Seat, uid: string, zone: Zone, slot: 
 }
 
 // Repositionne une carte déjà posée dans un autre emplacement de SA zone (attaque ou
-// défense), en l'échangeant avec la carte qui l'occupait le cas échéant : pas de
+// défense), en l'échangeant avec la carte qui l'occupait le cas échéant, et consomme le
+// déplacement de cette zone pour le tour en cours : pas de
 // déclenchement de capacité (les cartes ne quittent pas le board, E3/E4 ne s'appliquent qu'à
 // la pose/vente), pas de changement de zone (`isActionLegal` l'impose déjà).
 function applyMove(next: GameState, seat: Seat, uid: string, slot: number): void {
@@ -351,6 +375,9 @@ function applyMove(next: GameState, seat: Seat, uid: string, slot: number): void
     const swapped = player.zones[zone][slot];
     player.zones[zone][from] = swapped;
     player.zones[zone][slot] = card;
+    // Un échange consomme le déplacement de SA zone, pas deux : c'est la zone qui a droit à
+    // un déplacement par tour, pas chaque carte.
+    player.movesUsed = { ...(player.movesUsed ?? { attack: false, defense: false }), [zone]: true };
     next.lastEvent = {
       id: next.eventSeq,
       type: 'move',

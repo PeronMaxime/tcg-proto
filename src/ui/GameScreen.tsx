@@ -29,6 +29,10 @@ interface GameScreenProps {
   onLeaveToMenu: () => void;
 }
 
+// Durée du lancer de pièce du début de partie, calée sur l'animation CSS `.coin-flip-coin`
+// (voir styles.css) : le premier tour ne démarre qu'une fois la pièce retombée.
+const COIN_FLIP_MS = 2800;
+
 // Livre ouvert, pour le bouton des règles.
 const RULES_ICON_PATH = 'M12 6.5C10.5 5.2 8.6 4.5 6 4.5H3v14h3c2.6 0 4.5.7 6 2 1.5-1.3 3.4-2 6-2h3v-14h-3c-2.6 0-4.5.7-6 2zM12 6.5v14';
 const LEAVE_ICON_PATH = 'M9 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h5M15 8l4 4-4 4M19 12H8';
@@ -119,11 +123,26 @@ function phaseLabel(isMyTurn: boolean, playing: boolean, phase: string, turnNumb
   return "Tour de l'adversaire";
 }
 
-function hintText(isMyTurn: boolean, playing: boolean, phase: string, fusable: boolean): string {
+// Déplacements encore disponibles ce tour-ci (un par zone) : sans ce rappel, une carte
+// simplement plus saisissable laisserait croire à un bug.
+function movesHint(movesUsed: Record<MonsterZone, boolean> | undefined): string {
+  const left = (['attack', 'defense'] as MonsterZone[]).filter((zone) => movesUsed?.[zone] !== true);
+  if (left.length === 2) return '';
+  if (left.length === 0) return ' · plus aucun déplacement ce tour';
+  return ` · déplacement restant : ${left[0] === 'attack' ? 'attaque' : 'défense'}`;
+}
+
+function hintText(
+  isMyTurn: boolean,
+  playing: boolean,
+  phase: string,
+  fusable: boolean,
+  movesUsed: Record<MonsterZone, boolean> | undefined,
+): string {
   if (playing) return '';
   if (!isMyTurn) return "En attente de l'adversaire…";
   if (fusable) return 'Relâche la carte dans la zone de fusion pour créer un monstre doré';
-  if (phase === 'main') return 'Achète, pose ou déplace tes cartes, puis lance le combat';
+  if (phase === 'main') return `Achète, pose ou déplace tes cartes, puis lance le combat${movesHint(movesUsed)}`;
   return '';
 }
 
@@ -170,6 +189,20 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const toastIdRef = useRef(0);
 
   const { playing, combatView, activeStep, displayedHp } = useCombatPlayback(state);
+
+  // Lancer de pièce du début de partie (demande utilisateur) : le siège tiré est déjà dans
+  // l'état (`state.starter`), l'animation ne fait que le révéler. Tant que le premier
+  // `beginTurn` n'a pas été joué, `lastEvent` est `null` chez les deux clients : ils
+  // affichent donc la même pièce au même moment, et une revanche la relance.
+  const awaitingCoinFlip = state.lastEvent === null && state.winner === null;
+  const [coinFlipDone, setCoinFlipDone] = useState(false);
+  useEffect(() => {
+    setCoinFlipDone(false);
+    if (!awaitingCoinFlip) return;
+    const timeout = setTimeout(() => setCoinFlipDone(true), COIN_FLIP_MS);
+    return () => clearTimeout(timeout);
+  }, [awaitingCoinFlip]);
+  const showCoinFlip = awaitingCoinFlip && !coinFlipDone;
 
   // Fil d'effets (§6.3) : un toast par effet de capacité résolu, ~2,5 s. Sources : les
   // `effects` d'un nouvel évènement `place`/`sell`, et les `appliedEffects` du combat au fil
@@ -355,10 +388,11 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   // filet).
   useEffect(() => {
     if (playing || state.winner || state.turn !== seat || state.phase !== 'start') return;
+    if (showCoinFlip) return; // le premier tour attend que la pièce soit retombée
     if (lastAutoBeginTurnEventSeq.current === state.eventSeq) return;
     lastAutoBeginTurnEventSeq.current = state.eventSeq;
     sendAction(room, seat, { type: 'beginTurn' });
-  }, [playing, state.winner, state.turn, state.phase, state.eventSeq, room, seat]);
+  }, [playing, showCoinFlip, state.winner, state.turn, state.phase, state.eventSeq, room, seat]);
 
   async function buy(uid: string) {
     await sendAction(room, seat, { type: 'buy', uid });
@@ -498,6 +532,19 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
         </div>
       )}
 
+      {showCoinFlip && (
+        <div className="coin-flip-overlay">
+          <p className="coin-flip-title">Lancer de pièce</p>
+          <div className={`coin-flip-coin ${state.starter === seat ? 'lands-mine' : 'lands-theirs'}`}>
+            <span className="coin-flip-face coin-flip-face--mine">{myName}</span>
+            <span className="coin-flip-face coin-flip-face--theirs">{opponentName}</span>
+          </div>
+          <p className={`coin-flip-result ${state.starter === seat ? 'mine' : 'theirs'}`}>
+            {state.starter === seat ? 'Tu commences !' : `${opponentName} commence`}
+          </p>
+        </div>
+      )}
+
       {!showVictory && (
         <div className="hud-layer">
           <ElementWheel />
@@ -598,7 +645,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             <span>{mainButtonLabel}</span>
           </button>
 
-          <p className="hint">{hintText(isMyTurn, playing, state.phase, fusable)}</p>
+          <p className="hint">{hintText(isMyTurn, playing, state.phase, fusable, me.movesUsed)}</p>
         </div>
       )}
 

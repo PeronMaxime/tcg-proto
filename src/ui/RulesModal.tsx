@@ -17,6 +17,7 @@ const SECTIONS: RulesSection[] = [
     title: 'Le but',
     lines: [
       "Chaque joueur commence avec 10 points de vie. Le premier qui fait tomber le héros adverse à 0 gagne.",
+      "Un lancer de pièce désigne qui joue en premier ; l'autre reçoit 2 pièces de départ en compensation.",
     ],
   },
   {
@@ -35,6 +36,7 @@ const SECTIONS: RulesSection[] = [
       "Zone de défense (5 emplacements) : ces monstres encaissent les coups adverses.",
       "Zone d'enchantements (3 emplacements) : ces cartes renforcent tous tes monstres tant qu'elles restent en jeu.",
       "Glisse une carte de ta main vers un emplacement libre pour la poser ; glisse une carte posée vers un autre emplacement de la même zone pour la déplacer.",
+      "Un seul déplacement par zone et par tour : un en attaque et un en défense, alors choisis bien (un échange de deux cartes compte pour le déplacement de sa zone).",
     ],
   },
   {

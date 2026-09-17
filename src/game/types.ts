@@ -99,6 +99,10 @@ export interface PlayerState {
   // Cartes en plus à révéler au marché du prochain tour (effet `extraMarketCard`), remis à 0
   // dès que ce marché est tiré.
   extraMarketCards: number;
+  // Déplacements déjà effectués pendant le tour en cours (demande utilisateur : un seul
+  // déplacement par zone et par tour, donc au plus un en attaque et un en défense). Remis à
+  // `{ attack: false, defense: false }` au début de chaque tour de CE joueur (`beginTurn`).
+  movesUsed: Record<MonsterZone, boolean>;
 }
 
 export type Action =
@@ -107,7 +111,9 @@ export type Action =
   | { type: 'place'; uid: string; zone: Zone; slot: number }
   // Déplace une carte déjà posée vers un autre emplacement de la même zone (attaque ou
   // défense) : on ne peut pas changer de zone en la déplaçant (demande utilisateur). Si
-  // l'emplacement est occupé, les deux cartes échangent leur place.
+  // l'emplacement est occupé, les deux cartes échangent leur place. Un seul déplacement par
+  // zone et par tour (`PlayerState.movesUsed`) : un échange compte pour un déplacement de la
+  // zone concernée, pas deux.
   | { type: 'move'; uid: string; slot: number }
   | { type: 'fuse'; uid: string } // uid : la carte en main qui devient dorée
   | { type: 'sell'; uid: string }
@@ -201,6 +207,11 @@ export type GameEvent =
 
 export interface GameState {
   rulesVersion: number; // T7
+  // Joueur désigné par le lancer de pièce du début de partie (demande utilisateur) : c'est
+  // lui qui joue le premier tour, l'autre reçoit `SECOND_PLAYER_BONUS_COINS`. Conservé dans
+  // l'état pour que LES DEUX clients animent la même pièce, et que le résultat survive à un
+  // rafraîchissement.
+  starter: Seat;
   turn: Seat;
   phase: Phase;
   turnNumber: number; // compteur GLOBAL, pour l'affichage uniquement — pas pour les pièces (R1)

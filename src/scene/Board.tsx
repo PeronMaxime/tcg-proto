@@ -2,7 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import { getCardDef, hasKeywordDef, isMonster } from '../game/cards';
-import { getBaseMonsterStats, isActionLegal, opponentOf, ZONE_SIZES } from '../game/rules';
+import { canMoveInZone, getBaseMonsterStats, isActionLegal, opponentOf, ZONE_SIZES } from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Seat, Zone } from '../game/types';
 import type { ActiveCombatStep, CombatView } from '../ui/useCombatPlayback';
 import { computeMonsterFaceStats } from './cardFaceStats';
@@ -310,8 +310,15 @@ function Board({
 
       // Une carte déjà posée peut être déplacée à la souris vers un autre emplacement libre
       // de SA zone pendant la phase principale (demande utilisateur) : uniquement la mienne,
-      // uniquement en attaque/défense (pas les enchantements).
-      const movable = mine && canDrag && !myMarketOpen && (zone === 'attack' || zone === 'defense');
+      // uniquement en attaque/défense (pas les enchantements), et seulement si le
+      // déplacement de cette zone n'a pas déjà été utilisé ce tour-ci — sinon la carte se
+      // soulèverait pour rien, aucun emplacement ne s'allumant.
+      const movable =
+        mine &&
+        canDrag &&
+        !myMarketOpen &&
+        (zone === 'attack' || zone === 'defense') &&
+        canMoveInZone(ownerPlayer, zone as MonsterZone);
       const dragged = slot.uid === drag?.uid;
 
       // K2 Provocation : le bouclier dit « frappez-moi d'abord », donc il reste tant que le

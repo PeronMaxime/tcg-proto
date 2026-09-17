@@ -84,6 +84,7 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
     zones: emptyZones(),
     discard: [],
     extraMarketCards: 0,
+    movesUsed: { attack: false, defense: false },
     ...overrides,
   };
 }
@@ -91,6 +92,7 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
 function baseState(overrides: Partial<GameState> = {}): GameState {
   return {
     rulesVersion: 11,
+    starter: 'p1',
     turn: 'p1',
     phase: 'main',
     turnNumber: 2, // pas 1 : le tout premier tour de la partie n'a pas de combat
@@ -138,7 +140,10 @@ describe('createInitialState', () => {
       expect(player.zones.attack).toEqual(new Array(5).fill(null));
       expect(player.zones.defense).toEqual(new Array(5).fill(null));
       expect(player.zones.enchant).toEqual(new Array(3).fill(null));
-      expect(player.coins).toBe(seat === 'p1' ? STARTING_COINS : STARTING_COINS + SECOND_PLAYER_BONUS_COINS);
+      // Les pièces de compensation vont au joueur qui NE commence PAS (tirage à pile ou face).
+      expect(player.coins).toBe(
+        seat === state.starter ? STARTING_COINS : STARTING_COINS + SECOND_PLAYER_BONUS_COINS,
+      );
       expect(STARTING_COINS).toBe(2);
       expect(SECOND_PLAYER_BONUS_COINS).toBe(2);
       expect(player.hand).toEqual([]);
@@ -147,9 +152,25 @@ describe('createInitialState', () => {
       expect(player.hp).toBe(10);
     }
     expect(state.phase).toBe('start');
-    expect(state.turn).toBe('p1');
+    expect(state.turn).toBe(state.starter);
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(13);
+    expect(state.rulesVersion).toBe(14);
+  });
+
+  it('tire au sort le joueur qui commence (lancer de pièce) et compense celui qui suit', () => {
+    // Le tirage est le tout premier appel à `random` : un stub constant suffit à forcer
+    // chaque face de la pièce.
+    const heads = createInitialState(() => 0.1);
+    expect(heads.starter).toBe('p1');
+    expect(heads.turn).toBe('p1');
+    expect(heads.players.p2.coins).toBe(STARTING_COINS + SECOND_PLAYER_BONUS_COINS);
+    expect(heads.players.p1.coins).toBe(STARTING_COINS);
+
+    const tails = createInitialState(() => 0.9);
+    expect(tails.starter).toBe('p2');
+    expect(tails.turn).toBe('p2');
+    expect(tails.players.p1.coins).toBe(STARTING_COINS + SECOND_PLAYER_BONUS_COINS);
+    expect(tails.players.p2.coins).toBe(STARTING_COINS);
   });
 
   it('est déterministe pour une même graine', () => {
@@ -424,6 +445,39 @@ describe('applyAction - move', () => {
     state.players.p1.hand = [makeCard('squire', 'h1')];
     expect(applyAction(state, 'p1', { type: 'move', uid: 'h1', slot: 0 })).toBeNull();
     expect(applyAction(state, 'p1', { type: 'move', uid: 'unknown', slot: 0 })).toBeNull();
+  });
+
+  it('autorise un seul déplacement par zone et par tour, indépendamment entre attaque et défense', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'a1');
+    state.players.p1.zones.attack[1] = makeCard('guard', 'a2');
+    state.players.p1.zones.defense[0] = makeCard('archer', 'd1');
+
+    const afterAttackMove = applyAction(state, 'p1', { type: 'move', uid: 'a1', slot: 4 })!;
+    expect(afterAttackMove.players.p1.movesUsed).toEqual({ attack: true, defense: false });
+
+    // Attaque consommée : plus aucun déplacement dans cette zone, même avec une autre carte.
+    expect(applyAction(afterAttackMove, 'p1', { type: 'move', uid: 'a1', slot: 2 })).toBeNull();
+    expect(applyAction(afterAttackMove, 'p1', { type: 'move', uid: 'a2', slot: 2 })).toBeNull();
+
+    // La défense garde le sien, et l'épuise à son tour.
+    const afterDefenseMove = applyAction(afterAttackMove, 'p1', { type: 'move', uid: 'd1', slot: 2 })!;
+    expect(afterDefenseMove.players.p1.movesUsed).toEqual({ attack: true, defense: true });
+    expect(applyAction(afterDefenseMove, 'p1', { type: 'move', uid: 'd1', slot: 4 })).toBeNull();
+  });
+
+  it("un échange ne consomme que le déplacement de sa zone, et le tour suivant les rend", () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'a1');
+    state.players.p1.zones.attack[1] = makeCard('guard', 'a2');
+
+    const swapped = applyAction(state, 'p1', { type: 'move', uid: 'a1', slot: 1 })!;
+    expect(swapped.players.p1.movesUsed).toEqual({ attack: true, defense: false });
+
+    // `beginTurn` du tour suivant de ce joueur : les deux déplacements repartent à neuf.
+    swapped.phase = 'start';
+    const renewed = applyAction(swapped, 'p1', { type: 'beginTurn' })!;
+    expect(renewed.players.p1.movesUsed).toEqual({ attack: false, defense: false });
   });
 });
 

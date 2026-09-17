@@ -56,13 +56,20 @@ le détail des décisions. Résumé :
 
 - Chaque joueur a un deck de 60 cartes (48 monstres + 12 enchantements). Le plateau a 3 zones par
   joueur : **attaque** (5 emplacements), **défense** (5), **enchantements** (3). Une carte
-  posée ne bouge plus.
-- Chaque joueur commence la partie avec **2 pièces** en stock (`STARTING_COINS`), le second
-  joueur avec **1 pièce de plus** (`SECOND_PLAYER_BONUS_COINS`).
+  posée peut être **déplacée** (action `move`) vers un autre emplacement de **sa** zone — pas
+  d'une zone à l'autre — mais **une seule fois par zone et par tour** : au plus un déplacement
+  en attaque et un en défense (`PlayerState.movesUsed`, remis à zéro par `beginTurn`). Un
+  déplacement vers un emplacement occupé **échange** les deux cartes et ne consomme que le
+  déplacement de sa zone.
+- **Début de partie** : un **lancer de pièce** désigne le joueur qui commence (`state.starter`,
+  tiré dans `createInitialState`, animé par la surcouche `.coin-flip-overlay` de `GameScreen`
+  avant le premier `beginTurn`). Chaque joueur commence avec **2 pièces** en stock
+  (`STARTING_COINS`), celui qui **ne commence pas** avec **2 pièces de plus**
+  (`SECOND_PLAYER_BONUS_COINS`).
 - **Tour** : le joueur gagne `N` pièces (`N` = le n-ième tour **de ce joueur**, les pièces se
   cumulent) → **marché** : 3 cartes du dessus du deck, achetables, à la main ; les invendus
   retournent au fond du deck → **phase principale** : poser gratuitement autant de cartes que
-  voulu → **combat automatique**. Exception : le premier joueur ne combat pas à son premier
+  voulu → **combat automatique**. Exception : le joueur qui commence ne combat pas à son premier
   tour (`isFirstTurnOfGame` dans `rules.ts`), pour compenser l'avantage de jouer en premier.
 - **Combat** (voir `PLAN-effets-triggers.md` §1bis pour le détail des décisions E13-E17) : les
   monstres de la zone d'attaque du joueur actif frappent, de gauche à droite, le monstre de la
