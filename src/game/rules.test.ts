@@ -14,7 +14,9 @@ import {
   BREAKTHROUGH_DAMAGE,
   createInitialState,
   ELEMENT_ADVANTAGE_BONUS,
+  getBaseMonsterStats,
   getMonsterStats,
+  GOLDEN_MULTIPLIER,
   isFirstTurnOfGame,
   MARKET_SIZE,
   MIN_ATTACK,
@@ -450,15 +452,40 @@ describe('fusion dorée', () => {
     expect(next.players.p1.zones.defense[0]?.uid).toBe('w1');
   });
 
-  it('efface le buff des exemplaires absorbés (E9)', () => {
+  it('reporte les buffs permanents des exemplaires absorbés sur la carte dorée', () => {
     const state = baseState({ phase: 'main' });
-    state.players.p1.zones.attack[0] = { uid: 'w1', cardId: 'wolf', buff: { attack: 1, defense: 1 } };
+    state.players.p1.zones.attack[0] = { uid: 'w1', cardId: 'wolf', buff: { attack: 3, defense: 1 } };
+    state.players.p1.zones.attack[1] = { uid: 'w2', cardId: 'wolf', buff: { attack: 2, defense: 0 } };
+    state.players.p1.hand = [makeCard('wolf', 'w3')];
+
+    const next = applyAction(state, 'p1', { type: 'fuse', uid: 'w3' })!;
+    const golden = next.players.p1.hand.find((c) => c.uid === 'w3')!;
+    expect(golden.buff).toEqual({ attack: 5, defense: 1 });
+    // Les exemplaires absorbés partent en défausse sans buff (E9).
+    expect(next.players.p1.discard.every((c) => c.buff === undefined)).toBe(true);
+  });
+
+  it('une carte dorée sans exemplaire buffé ne reçoit aucun champ buff', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
     state.players.p1.zones.attack[1] = makeCard('wolf', 'w2');
     state.players.p1.hand = [makeCard('wolf', 'w3')];
 
     const next = applyAction(state, 'p1', { type: 'fuse', uid: 'w3' })!;
-    const absorbed = next.players.p1.discard.find((c) => c.uid === 'w1')!;
-    expect(absorbed.buff).toBeUndefined();
+    expect(next.players.p1.hand.find((c) => c.uid === 'w3')!.buff).toBeUndefined();
+  });
+
+  it("le chevalier doré garde l'attaque gagnée par les exemplaires fusionnés", () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = { uid: 'k1', cardId: 'knight', buff: { attack: 2, defense: 0 } };
+    state.players.p1.zones.attack[1] = { uid: 'k2', cardId: 'knight', buff: { attack: 1, defense: 0 } };
+    state.players.p1.hand = [makeCard('knight', 'k3')];
+
+    const fused = applyAction(state, 'p1', { type: 'fuse', uid: 'k3' })!;
+    const placed = applyAction(fused, 'p1', { type: 'place', uid: 'k3', zone: 'attack', slot: 0 })!;
+    const card = placed.players.p1.zones.attack[0]!;
+    const base = getBaseMonsterStats('knight');
+    expect(getMonsterStats(placed.players.p1, card, 'attack').attack).toBe(base.attack * GOLDEN_MULTIPLIER + 3);
   });
 
   it("refuse avec 1 seul exemplaire posé ; ne compte ni les dorés ni ceux de l'adversaire", () => {

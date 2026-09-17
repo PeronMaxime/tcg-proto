@@ -146,12 +146,20 @@ interface RenderEntry {
 }
 
 // Stats affichées d'une carte hors du board (main, marché, animations) : base du monstre,
-// doublée s'il est doré, sans enchantements.
+// doublée s'il est doré, plus le buff permanent (E9) qu'elle transporte — une carte dorée
+// hérite des buffs des exemplaires absorbés par la fusion — et sans enchantements.
 function unplacedStats(card: CardInstance): MonsterFaceStats | null {
   if (!isMonster(getCardDef(card.cardId))) return null;
   const golden = card.golden === true;
   const base = getBaseMonsterStats(card.cardId, golden);
-  return { ...base, attackTone: 'base', defenseTone: 'base', golden };
+  const buff = card.buff ?? { attack: 0, defense: 0 };
+  return {
+    attack: base.attack + buff.attack,
+    defense: base.defense + buff.defense,
+    attackTone: buff.attack > 0 ? 'buffed' : 'base',
+    defenseTone: buff.defense > 0 ? 'buffed' : 'base',
+    golden,
+  };
 }
 
 function DeckPile({ pose, count, color }: { pose: Pose; count: number; color: string }) {

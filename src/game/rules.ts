@@ -328,7 +328,9 @@ function applyMove(next: GameState, seat: Seat, uid: string, slot: number): void
 
 // Fusion dorée : la carte en main devient dorée (elle reste en main) et absorbe les
 // FUSION_COUNT - 1 premiers exemplaires posés, qui partent en défausse (le total de 50
-// cartes par joueur reste donc intact). Un monstre doré ne fusionne plus.
+// cartes par joueur reste donc intact). Un monstre doré ne fusionne plus. Exception à E9 :
+// les buffs permanents des exemplaires absorbés (attaque gagnée en attaquant, par exemple)
+// ne sont pas perdus, ils sont reportés sur la carte dorée.
 function applyFuse(next: GameState, seat: Seat, uid: string): void {
   const player = next.players[seat];
   const card = player.hand.find((c) => c.uid === uid)!;
@@ -336,7 +338,8 @@ function applyFuse(next: GameState, seat: Seat, uid: string): void {
   for (const { zone, slot } of fusionPartners(player, card).slice(0, FUSION_COUNT - 1)) {
     const absorbed = player.zones[zone][slot]!;
     player.zones[zone][slot] = null;
-    clearBuff(absorbed); // E9 : le buff disparaît, la carte quitte le board (fusion)
+    if (absorbed.buff) addBuff(card, absorbed.buff.attack, absorbed.buff.defense);
+    clearBuff(absorbed); // E9 : le buff disparaît de l'exemplaire absorbé, il quitte le board
     player.discard.push(absorbed);
     fusedUids.push(absorbed.uid);
   }
@@ -389,8 +392,9 @@ function addBuff(card: CardInstance, attack: number, defense: number): void {
   card.buff = { attack: (card.buff?.attack ?? 0) + attack, defense: (card.buff?.defense ?? 0) + defense };
 }
 
-// E9 : le buff disparaît quand la carte quitte le board (vente, fusion) — jamais de champ
-// `buff` explicite sur une carte qui n'en a pas.
+// E9 : le buff disparaît quand la carte quitte le board (vente, fusion — dans ce dernier cas
+// il a d'abord été reporté sur la carte dorée) — jamais de champ `buff` explicite sur une
+// carte qui n'en a pas.
 function clearBuff(card: CardInstance): void {
   delete card.buff;
 }
