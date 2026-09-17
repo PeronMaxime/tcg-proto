@@ -16,6 +16,7 @@ import type { DropTarget } from '../scene/DragController';
 import { CAMERA } from '../scene/layout';
 import { getCardFaceDataUrl } from '../scene/textures';
 import ElementWheel from './ElementWheel';
+import RulesModal from './RulesModal';
 import { useCombatPlayback } from './useCombatPlayback';
 
 // Écran de jeu : scène 3D plein écran + HUD superposé en surcouche. Un seul <Canvas>, y
@@ -28,6 +29,8 @@ interface GameScreenProps {
   onLeaveToMenu: () => void;
 }
 
+// Livre ouvert, pour le bouton des règles.
+const RULES_ICON_PATH = 'M12 6.5C10.5 5.2 8.6 4.5 6 4.5H3v14h3c2.6 0 4.5.7 6 2 1.5-1.3 3.4-2 6-2h3v-14h-3c-2.6 0-4.5.7-6 2zM12 6.5v14';
 const LEAVE_ICON_PATH = 'M9 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h5M15 8l4 4-4 4M19 12H8';
 
 function CoinBadge({ coins }: { coins: number }) {
@@ -150,6 +153,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const [turnBanner, setTurnBanner] = useState<{ seat: Seat; coinsGained: number; key: number } | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
   const [marketVisible, setMarketVisible] = useState(true);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [effectToasts, setEffectToasts] = useState<EffectToast[]>([]);
   const lastHandledTurnEventId = useRef<number | undefined>(undefined);
   const lastAutoBeginTurnEventSeq = useRef<number | null>(null);
@@ -288,6 +292,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
       if (e.key === 'Escape') {
         cancelDrag();
         setZoomedUid(null);
+        setRulesOpen(false);
       }
     }
     window.addEventListener('keydown', onKeyDown);
@@ -499,6 +504,13 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             <span className="room-badge-hint">{codeCopied ? 'Copié !' : 'Copier'}</span>
           </button>
 
+          <button className="rules-button" onClick={() => setRulesOpen(true)} title="Voir les règles du jeu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d={RULES_ICON_PATH} />
+            </svg>
+            <span>Règles</span>
+          </button>
+
           <button className="leave-button" onClick={leaveGame} title="Quitter la partie et revenir au menu">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d={LEAVE_ICON_PATH} />
@@ -601,6 +613,8 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           </div>
         </div>
       )}
+
+      {rulesOpen && <RulesModal onClose={() => setRulesOpen(false)} />}
 
       {showVictory && (
         <div className="end-overlay">
