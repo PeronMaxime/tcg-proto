@@ -71,6 +71,12 @@ export function combatDisplay(
     }
     defense.set(step.attackerUid, step.attackerRemaining);
     if (step.attackerRemaining === 0) ko.add(step.attackerUid);
+    // Habiletés : les victimes collatérales de Portée (K1) et de Furie (K5) perdent de la
+    // défense sans être la cible du coup — elles doivent quand même s'afficher blessées/KO.
+    for (const hit of [...(step.splash ?? []), ...(step.overflow ? [step.overflow] : [])]) {
+      defense.set(hit.uid, hit.remaining);
+      if (hit.remaining === 0) ko.add(hit.uid);
+    }
     appliedEffects.push(...step.effects);
   }
 

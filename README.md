@@ -54,7 +54,7 @@ room vit en `sessionStorage`).
 Règles v1 (marché, zones fixes, combat automatique) — voir `PLAN-tcg-proto-regles-v1.md` pour
 le détail des décisions. Résumé :
 
-- Chaque joueur a un deck de 50 cartes (monstres + enchantements). Le plateau a 3 zones par
+- Chaque joueur a un deck de 60 cartes (48 monstres + 12 enchantements). Le plateau a 3 zones par
   joueur : **attaque** (5 emplacements), **défense** (5), **enchantements** (3). Une carte
   posée ne bouge plus.
 - Chaque joueur commence la partie avec **2 pièces** en stock (`STARTING_COINS`), le second
@@ -113,6 +113,31 @@ le détail des décisions. Résumé :
   `isAbilityAllowed` vérifie qu'elle respecte les règles (bonus/bouclier sur le bon
   déclencheur, pas de déclencheur de combat — Début du combat compris — sur un enchantement, valeurs ≥ 1). Un joueur voit un
   petit toast pour chaque capacité déclenchée (les siennes et celles de l'adversaire).
+- **Habiletés** (mots-clés, `Keyword` dans `types.ts`) : contrairement à une capacité, une
+  habileté n'a pas de déclencheur — c'est une règle permanente portée par certains monstres,
+  affichée en tête de leur face (« Portée : … »). Les six habiletés actuelles :
+  - **Portée** : chaque coup porté touche aussi les monstres des emplacements **voisins** de
+    la cible, pour 1 dégât (+1 si le monstre est doré, +1 de plus si son élément domine celui
+    du voisin touché). Ces dégâts collatéraux ne provoquent pas de riposte, mais cassent une
+    Protection (Archère, Harponneuse).
+  - **Provocation** : tant qu'il est debout, ce défenseur est visé **avant** tous les autres,
+    même s'il n'est pas le plus à gauche (Garde du pont, Sentinelle d'acier).
+  - **Protection** : les **premiers dégâts** reçus pendant un combat sont annulés — coup subi
+    en défense, riposte subie en attaquant, mais aussi dégâts collatéraux de Portée ou de
+    Furie, qui cassent la protection comme le reste. Elle se recharge au combat suivant
+    (Golem de pierre, Sentinelle d'acier).
+  - **Négociant** : rapporte **1 pièce de plus** à la vente, soit 2 (4 si la carte est dorée)
+    (Colporteur, Gardien des reliques).
+  - **Furie** : quand son coup tue un défenseur, les dégâts **en excès** ne sont plus perdus
+    (H2) mais reportés sur le défenseur suivant — une seule fois, et sans riposte (Drake,
+    Berserker).
+  - **Toxic** : quel que soit le nombre de dégâts infligés, il **tue** le monstre qu'il touche
+    (coup comme riposte), sauf si une Protection a absorbé le coup (Araignée venimeuse, Guêpe
+    tueuse).
+
+  Pour donner une habileté à une carte, ajouter son mot-clé à `keywords` dans `CARD_CATALOG`
+  (`src/game/cards.ts`) ; les valeurs chiffrées sont les constantes `KEYWORD_*` du même
+  fichier, les règles vivent dans `resolveCombat` / `sellValue` (`src/game/rules.ts`).
 - **Poser une carte** : glisser-déposer une carte de sa main sur un emplacement libre de la
   bonne zone (les emplacements légaux s'allument pendant le glisser).
 - **Déplacer une carte posée** : la glisser vers un autre emplacement de sa zone (attaque ou
@@ -131,7 +156,7 @@ le détail des décisions. Résumé :
 - **Marché** : seul le joueur actif voit ses cartes ; l'adversaire les voit face cachée.
 - **Vendre une carte posée** (clic sur la carte → zoom → bouton « Vendre ») la retire
   définitivement du board vers une pile de défausse (jamais remélangée au deck) et rapporte
-  1 pièce (action `sell` dans `rules.ts`).
+  1 pièce, 3 si la carte est dorée, +1 si elle est Négociante (`sellValue` dans `rules.ts`).
 
 Plusieurs points sont des **hypothèses par défaut**, marquées `// Hn` (H1 à H12,
 `PLAN-tcg-proto-regles-v1.md`) puis `// En` (E1 à E17, `PLAN-effets-triggers.md`) dans le code :

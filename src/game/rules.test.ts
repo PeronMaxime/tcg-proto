@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   buildStarterDeck,
   CARD_CATALOG,
+  describeKeyword,
   ELEMENT_BEATS,
   getCardDef,
+  hasKeywordDef,
   isAbilityAllowed,
   isElementEffective,
   isMonster,
+  KEYWORD_LABELS,
   STARTER_COUNTS,
 } from './cards';
 import {
@@ -24,11 +27,14 @@ import {
   opponentOf,
   resolveCombat,
   SECOND_PLAYER_BONUS_COINS,
+  SELL_COINS,
+  SELL_GOLDEN_COINS,
+  sellValue,
   STARTING_COINS,
   STARTING_HP,
   ZONE_SIZES,
 } from './rules';
-import type { CardElement, CardInstance, GameState, PlayerState, Seat, Zone } from './types';
+import type { CardElement, CardInstance, GameState, Keyword, PlayerState, Seat, Zone } from './types';
 
 // PRNG déterministe pour des tests reproductibles (mélange du deck).
 function seededRandom(seed: number): () => number {
@@ -82,21 +88,21 @@ function baseState(overrides: Partial<GameState> = {}): GameState {
 }
 
 describe('catalogue et deck de départ', () => {
-  it('fait 50 cartes (40 monstres, 10 enchantements), uids uniques', () => {
+  it('fait 60 cartes (48 monstres, 12 enchantements), uids uniques', () => {
     let n = 0;
     const deck = buildStarterDeck(() => `u${n++}`);
-    expect(deck).toHaveLength(50);
+    expect(deck).toHaveLength(60);
 
     const monsters = deck.filter((c) => getCardDef(c.cardId).kind === 'monster');
     const enchantments = deck.filter((c) => getCardDef(c.cardId).kind === 'enchantment');
-    expect(monsters).toHaveLength(40);
-    expect(enchantments).toHaveLength(10);
+    expect(monsters).toHaveLength(48);
+    expect(enchantments).toHaveLength(12);
 
     const uids = new Set(deck.map((c) => c.uid));
-    expect(uids.size).toBe(50);
+    expect(uids.size).toBe(60);
 
     const total = Object.values(STARTER_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(50);
+    expect(total).toBe(60);
   });
 
   it('tout monstre a une attaque de base >= 1 (cohérent avec le plancher MIN_ATTACK, E16)', () => {
@@ -112,7 +118,7 @@ describe('createInitialState', () => {
 
     for (const seat of ['p1', 'p2'] as Seat[]) {
       const player = state.players[seat];
-      expect(player.deck).toHaveLength(50);
+      expect(player.deck).toHaveLength(60);
       expect(player.zones.attack).toEqual(new Array(5).fill(null));
       expect(player.zones.defense).toEqual(new Array(5).fill(null));
       expect(player.zones.enchant).toEqual(new Array(3).fill(null));
@@ -127,7 +133,7 @@ describe('createInitialState', () => {
     expect(state.phase).toBe('start');
     expect(state.turn).toBe('p1');
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(11);
+    expect(state.rulesVersion).toBe(13);
   });
 
   it('est déterministe pour une même graine', () => {
@@ -601,6 +607,15 @@ describe('applyAction - sell', () => {
     expect(next.players.p1.coins).toBeLessThan(getCardDef('treasury').cost);
   });
 
+  it('rend 3 pièces pour une carte dorée au lieu de 1', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = { uid: 'g1', cardId: 'guard', golden: true };
+    const before = state.players.p1.coins;
+
+    const next = applyAction(state, 'p1', { type: 'sell', uid: 'g1' })!;
+    expect(next.players.p1.coins).toBe(before + 3);
+  });
+
   it('efface le buff de la carte vendue (E9)', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.attack[0] = { uid: 'g1', cardId: 'guard', buff: { attack: 1, defense: 1 } };
@@ -710,12 +725,13 @@ describe('combat : riposte et cycles', () => {
 
     const { steps } = resolveCombat(state, 'p1');
     // Cycle 1 : les deux attaquants frappent (le défenseur survit aux deux coups) ;
-    // l'archère (2 déf) meurt à la riposte du titan (7 atq), le golem (8 déf) survit.
-    // Golem (terre) contre Titan (eau) : +1 dégât élémentaire, soit 2 par coup.
+    // l'archère (1 déf) meurt à la riposte du titan (7 atq), le golem (8 déf) survit.
+    // Golem (terre) contre Titan (eau) : +1 dégât élémentaire, soit 2 par coup. Sa Protection
+    // (K3) absorbe la riposte du cycle 1, il ne saigne donc qu'à partir du cycle 2.
     expect(steps[0]).toMatchObject({ cycle: 1, attackerUid: 'attack0', damage: 3, remaining: 4, attackerRemaining: 0 });
-    expect(steps[1]).toMatchObject({ cycle: 1, attackerUid: 'attack1', damage: 2, remaining: 2, attackerRemaining: 1 });
+    expect(steps[1]).toMatchObject({ cycle: 1, attackerUid: 'attack1', damage: 2, remaining: 2, attackerRemaining: 8 });
     // Cycle 2 : seul le golem attaque encore (l'archère est KO, absente des coups suivants).
-    expect(steps[2]).toMatchObject({ cycle: 2, attackerUid: 'attack1', damage: 2, remaining: 0, attackerRemaining: 0 });
+    expect(steps[2]).toMatchObject({ cycle: 2, attackerUid: 'attack1', damage: 2, remaining: 0, attackerRemaining: 1 });
     expect(steps.filter((s) => s.cycle === 2).every((s) => s.attackerUid !== 'attack0')).toBe(true);
   });
 
@@ -897,7 +913,8 @@ describe('éléments', () => {
 
   it('attaquant avantagé : +1 dégât sur son coup, riposte inchangée', () => {
     const state = baseState();
-    state.players.p1.zones.attack[0] = makeCard('golem', 'g1'); // terre, 1 atq / 8 déf
+    // Druidesse plutôt que Golem : sans habileté, sa riposte n'est pas absorbée (K3).
+    state.players.p1.zones.attack[0] = makeCard('druid', 'd1'); // terre, 1 atq / 3 déf
     state.players.p2.zones.defense[0] = makeCard('titan', 't1'); // eau, 7 atq / 7 déf
 
     const { steps } = resolveCombat(state, 'p1');
@@ -958,14 +975,14 @@ describe('éléments', () => {
 // ---------------------------------------------------------------------------------------
 
 describe('effets déclenchés', () => {
-  it('catalogue : toutes les capacités respectent isAbilityAllowed ; le deck fait toujours 50', () => {
+  it('catalogue : toutes les capacités respectent isAbilityAllowed ; le deck fait toujours 60', () => {
     for (const def of CARD_CATALOG) {
       for (const ability of def.abilities ?? []) {
         expect(isAbilityAllowed(def, ability)).toBe(true);
       }
     }
     const total = Object.values(STARTER_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(50);
+    expect(total).toBe(60);
   });
 
   it('Invoqué : Écuyer posé -> +1 pièce, logué dans lastEvent.effects', () => {
@@ -1047,8 +1064,9 @@ describe('effets déclenchés', () => {
     state.players.p2.zones.defense[0] = makeCard('golem', 'g1'); // terre, 1 atq / 8 déf : tient 2 cycles
 
     const { steps } = resolveCombat(state, 'p1');
-    // 5 (4 + buff) puis 5 : le golem tombe au 2e coup, puis percée (pas une attaque).
-    expect(steps.map((s) => s.target.kind)).toEqual(['monster', 'monster', 'player']);
+    // Cycle 1 : la Protection du golem (K3) absorbe le coup ; 5 (4 + buff) puis 5 ensuite, il
+    // tombe au 3e coup, puis percée (pas une attaque).
+    expect(steps.map((s) => s.target.kind)).toEqual(['monster', 'monster', 'monster', 'player']);
     expect(steps[0].effects.filter((e) => e.trigger === 'attack')).toHaveLength(1);
     expect(steps[1].effects.filter((e) => e.trigger === 'attack')).toHaveLength(0);
     const knight = state.players.p1.zones.attack[0]!;
@@ -1270,6 +1288,183 @@ describe('effets déclenchés', () => {
   });
 });
 
+// ---------------------------------------------------------------------------------------
+// Habiletés (mots-clés) — demande utilisateur, K1 à K6 (voir `Keyword` dans types.ts).
+// ---------------------------------------------------------------------------------------
+
+describe('habiletés (mots-clés)', () => {
+  function combatState(attack: (string | null)[], defense: (string | null)[]): GameState {
+    const state = baseState();
+    state.players.p1.zones.attack = state.players.p1.zones.attack.map((_, i) =>
+      attack[i] ? makeCard(attack[i]!, `a${i}`) : null,
+    );
+    state.players.p2.zones.defense = state.players.p2.zones.defense.map((_, i) =>
+      defense[i] ? makeCard(defense[i]!, `d${i}`) : null,
+    );
+    return state;
+  }
+
+  it('catalogue : les habiletés ne portent que sur des monstres et ont toutes un libellé', () => {
+    for (const def of CARD_CATALOG) {
+      for (const keyword of (isMonster(def) ? def.keywords : undefined) ?? []) {
+        expect(KEYWORD_LABELS[keyword]).toBeTruthy();
+        expect(describeKeyword(keyword)).toContain(KEYWORD_LABELS[keyword]);
+      }
+      if (!isMonster(def)) expect('keywords' in def).toBe(false);
+    }
+    // Chaque habileté existe au moins une fois dans le catalogue : sinon elle n'est jouable nulle part.
+    for (const keyword of Object.keys(KEYWORD_LABELS) as Keyword[]) {
+      expect(CARD_CATALOG.some((def) => hasKeywordDef(def, keyword))).toBe(true);
+    }
+  });
+
+  it('K2 Provocation : le défenseur qui provoque est visé avant celui de gauche', () => {
+    // Écuyer en 0 (sans habileté), Garde du pont en 1 (Provocation) : c'est le garde qui prend.
+    const state = combatState(['knight'], ['squire', 'guard']);
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0].target).toEqual({ kind: 'monster', uid: 'd1' });
+    // Tant qu'il tient, il reste la cible ; l'écuyer n'est touché qu'après sa chute.
+    const firstSquireStep = steps.findIndex((s) => s.target.kind === 'monster' && s.target.uid === 'd0');
+    const guardKoStep = steps.findIndex((s) => s.target.kind === 'monster' && s.target.uid === 'd1' && s.remaining === 0);
+    expect(guardKoStep).toBeGreaterThanOrEqual(0);
+    expect(firstSquireStep).toBeGreaterThan(guardKoStep);
+  });
+
+  it('K1 Portée : les voisins immédiats de la cible prennent 1 dégât, sans riposter', () => {
+    // Harponneuse (eau, 2/2, Portée) contre trois écuyers (air, 1/2) : la cible prend 2, ses
+    // deux voisins 1 chacun. Le voisin éloigné (emplacement 3) n'est pas touché.
+    const state = combatState(['harpooner'], ['squire', 'squire', 'squire', null, 'squire']);
+    state.players.p2.zones.defense[1] = makeCard('guard', 'd1'); // Provocation : cible le milieu
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0].target).toEqual({ kind: 'monster', uid: 'd1' });
+    expect(steps[0].splash).toEqual([
+      { uid: 'd0', damage: 1, remaining: 1, effective: false },
+      { uid: 'd2', damage: 1, remaining: 1, effective: false },
+    ]);
+  });
+
+  it('K1 Portée : +1 dégât si le monstre est doré, +1 de plus si son élément est efficace', () => {
+    // Archère dorée (air) : 1 + 1 (dorée) contre un écuyer (air, neutre), + 1 de plus contre
+    // un voisin de terre (air > terre).
+    const state = combatState(['archer'], ['squire', 'guard', 'druid']);
+    state.players.p1.zones.attack[0]!.golden = true;
+    state.players.p2.zones.defense[1] = makeCard('guard', 'd1'); // Provocation : cible le milieu
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0].splash).toEqual([
+      { uid: 'd0', damage: 2, remaining: 0, effective: false }, // écuyer (air) : 2 déf
+      { uid: 'd2', damage: 3, remaining: 0, effective: true }, // druidesse (terre) : 3 déf
+    ]);
+  });
+
+  it('K3 Protection : les premiers dégâts du combat sont annulés, les suivants non', () => {
+    // Chevalier (4 atq) contre Sentinelle d'acier (2/5, Provocation + Protection).
+    const state = combatState(['knight'], ['sentinel']);
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ damage: 0, remaining: 5, absorbedUids: ['d0'] });
+    expect(steps[1].damage).toBeGreaterThan(0);
+    expect(steps[1].absorbedUids).toBeUndefined();
+  });
+
+  it('K3 Protection : elle se recharge au combat suivant', () => {
+    const state = combatState(['knight'], ['sentinel']);
+    resolveCombat(state, 'p1');
+
+    state.players.p2.zones.defense[0] = makeCard('sentinel', 'd0b');
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ damage: 0, absorbedUids: ['d0b'] });
+  });
+
+  it('K3 Protection : elle absorbe aussi la riposte reçue par un attaquant', () => {
+    const state = combatState(['golem'], ['titan']); // golem : 1/8 + Protection
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ retaliation: 0, attackerRemaining: 8, absorbedUids: ['a0'] });
+  });
+
+  it('K3 Protection : les dégâts de Portée la cassent sans blesser leur victime', () => {
+    // Harponneuse (Portée) vise le Garde du pont (Provocation) ; son voisin, le Golem,
+    // encaisse le dégât collatéral avec sa Protection : 0 dégât, mais la protection est
+    // consommée et ne le couvre plus au coup suivant.
+    const state = combatState(['harpooner'], ['golem', 'guard']);
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0].target).toEqual({ kind: 'monster', uid: 'd1' });
+    expect(steps[0].splash).toEqual([{ uid: 'd0', damage: 0, remaining: 8, effective: false }]);
+    expect(steps[0].absorbedUids).toEqual(['d0']);
+    // Cycle 2 : la protection est cassée, le voisin prend bien son dégât.
+    expect(steps[1].splash).toEqual([{ uid: 'd0', damage: 1, remaining: 7, effective: false }]);
+    expect(steps[1].absorbedUids).toBeUndefined();
+  });
+
+  it('K3 Protection : les dégâts en excès de Furie la cassent aussi', () => {
+    // Berserker (feu, 4 atq, Furie) tue l'écuyer (air, 1/2) avec 5 dégâts : les 3 en excès
+    // vont au Golem, dont la Protection les annule en se consommant.
+    const state = combatState(['berserker'], ['squire', 'golem']);
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({
+      damage: 5,
+      remaining: 0,
+      overflow: { uid: 'd1', damage: 0, remaining: 8 },
+      absorbedUids: ['d1'],
+    });
+  });
+
+  it('K4 Négociant : la vente rapporte 1 pièce de plus, dorure comprise', () => {
+    expect(sellValue(makeCard('peddler', 'p1'))).toBe(SELL_COINS + 1);
+    expect(sellValue({ ...makeCard('peddler', 'p2'), golden: true })).toBe(SELL_GOLDEN_COINS + 1);
+    expect(sellValue(makeCard('squire', 's1'))).toBe(SELL_COINS);
+
+    const state = baseState({ phase: 'main' });
+    state.players.p1.coins = 0;
+    state.players.p1.zones.attack[0] = makeCard('peddler', 'pd1');
+
+    const next = applyAction(state, 'p1', { type: 'sell', uid: 'pd1' })!;
+    expect(next.players.p1.coins).toBe(2);
+  });
+
+  it('K5 Furie : les dégâts en excès sur un défenseur tué passent au défenseur suivant', () => {
+    // Berserker (feu, 4 atq, Furie) contre deux écuyers (air, 1/2) : 5 dégâts (feu > air),
+    // donc 3 de trop au premier, reportés sur le second, qui tombe aussi — sans riposter
+    // (ce n'est pas une attaque).
+    const state = combatState(['berserker'], ['squire', 'squire']);
+
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ damage: 5, remaining: 0, overflow: { uid: 'd1', damage: 3, remaining: 0 } });
+    // Les deux défenseurs sont tombés sur le même coup : le suivant est déjà une percée.
+    expect(steps[1].target).toEqual({ kind: 'player' });
+  });
+
+  it('K5 Furie : sans l’habileté, l’excédent est perdu (H2)', () => {
+    const state = combatState(['knight'], ['squire', 'squire']); // 4 atq, pas de Furie
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0].overflow).toBeUndefined();
+    expect(steps[1].target).toEqual({ kind: 'monster', uid: 'd1' });
+  });
+
+  it('K6 Toxic : 1 dégât suffit à tuer, mais une Protection l’annule', () => {
+    // Guêpe tueuse (1 atq, Toxic) contre le Titan (7/7) : elle le tue et meurt à la riposte.
+    const state = combatState(['wasp'], ['titan']);
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ damage: 7, remaining: 0, attackerRemaining: 0 });
+
+    // Contre la Sentinelle d'acier (Protection), le coup est absorbé : personne ne meurt du poison.
+    const protectedState = combatState(['wasp'], ['sentinel']);
+    const first = resolveCombat(protectedState, 'p1').steps[0];
+    expect(first).toMatchObject({ damage: 0, remaining: 5, absorbedUids: ['d0'] });
+  });
+
+  it('K6 Toxic : un défenseur toxique tue l’attaquant par sa riposte', () => {
+    // Araignée venimeuse (earth, 1 atq, Toxic) en défense contre le Titan (7/7).
+    const state = combatState(['titan'], ['spider']);
+    const { steps } = resolveCombat(state, 'p1');
+    expect(steps[0]).toMatchObject({ retaliation: 7, attackerRemaining: 0 });
+  });
+});
+
 describe('applyAction - endTurn', () => {
   it('après le combat, les zones sont identiques à avant (H1)', () => {
     const state = baseState({ phase: 'main' });
@@ -1352,7 +1547,7 @@ describe('partie simulée (invariants)', () => {
           p.zones.attack.filter(Boolean).length +
           p.zones.defense.filter(Boolean).length +
           p.zones.enchant.filter(Boolean).length;
-        expect(p.deck.length + p.market.length + p.hand.length + placed + p.discard.length).toBe(50);
+        expect(p.deck.length + p.market.length + p.hand.length + placed + p.discard.length).toBe(60);
         const uids = new Set([
           ...p.deck.map((c) => c.uid),
           ...p.market.map((c) => c.uid),
@@ -1362,7 +1557,7 @@ describe('partie simulée (invariants)', () => {
           ...p.zones.defense.filter((c): c is CardInstance => c !== null).map((c) => c.uid),
           ...p.zones.enchant.filter((c): c is CardInstance => c !== null).map((c) => c.uid),
         ]);
-        expect(uids.size).toBe(50);
+        expect(uids.size).toBe(60);
         expect(p.coins).toBeGreaterThanOrEqual(0);
         expect(p.zones.attack).toHaveLength(5);
         expect(p.zones.defense).toHaveLength(5);
@@ -1399,13 +1594,18 @@ describe('partie simulée (invariants)', () => {
             state = applyAction(state, seat, { type: 'fuse', uid: card.uid })!;
           } else {
             const def = getCardDef(card.cardId);
-            const zone: Zone = def.kind === 'enchantment' ? 'enchant' : 'attack';
-            const slot = firstLegalSlot(state, seat, zone) ?? firstLegalSlot(state, seat, 'defense');
+            // Un enchantement n'a qu'une zone possible ; un monstre se replie sur la défense
+            // quand la zone d'attaque est pleine (et l'emplacement doit venir de CETTE zone).
+            let zone: Zone = def.kind === 'enchantment' ? 'enchant' : 'attack';
+            let slot = firstLegalSlot(state, seat, zone);
+            if (slot === null && def.kind === 'monster') {
+              zone = 'defense';
+              slot = firstLegalSlot(state, seat, zone);
+            }
             if (slot === null) {
               state = applyAction(state, seat, { type: 'endTurn' })!;
             } else {
-              const actualZone: Zone = zone === 'attack' && firstLegalSlot(state, seat, 'attack') === null ? 'defense' : zone;
-              state = applyAction(state, seat, { type: 'place', uid: card.uid, zone: actualZone, slot })!;
+              state = applyAction(state, seat, { type: 'place', uid: card.uid, zone, slot })!;
             }
           }
         }

@@ -5,6 +5,7 @@ import type {
   CardElement,
   CardInstance,
   EnchantmentEffect,
+  Keyword,
   MonsterDef,
   Trigger,
 } from './types';
@@ -33,6 +34,11 @@ import type {
 // de loin la meilleure carte ; Archère, Druidesse et Mage des tempêtes (dégâts/soins directs,
 // les PV étant rares) plus chers ; enchantements de monstres et Trésorerie renforcés ou moins
 // chers, car presque jamais rentables.
+//
+// v12 : habiletés (mots-clés, `Keyword`) — demande utilisateur. Les habiletés sont posées sur
+// des cartes existantes (Portée/Provocation/Protection/Négociant/Furie) et sur 5 nouvelles
+// cartes, deck porté à 60. Coûts ajustés par simulation (bots gloutons) pour que chaque
+// habileté reste payante sans dominer : voir le commentaire de chaque carte touchée.
 
 export const CARD_CATALOG: CardDef[] = [
   {
@@ -62,10 +68,11 @@ export const CARD_CATALOG: CardDef[] = [
     kind: 'monster',
     id: 'guard',
     name: 'Garde du pont',
-    cost: 2,
+    cost: 3, // v12 : +1 (Provocation, qui force l'adversaire à traverser ses 4 défense)
     attack: 1,
     defense: 4,
     element: 'water',
+    keywords: ['taunt'],
     abilities: [{ trigger: 'defend', effect: { type: 'shield', amount: 1 } }],
   },
   {
@@ -76,6 +83,7 @@ export const CARD_CATALOG: CardDef[] = [
     attack: 3,
     defense: 1,
     element: 'air',
+    keywords: ['reach'], // v12 : sa flèche éclabousse les voisins de sa cible
     abilities: [{ trigger: 'summon', effect: { type: 'damageOpponent', amount: 1 } }],
   },
   {
@@ -94,20 +102,22 @@ export const CARD_CATALOG: CardDef[] = [
     kind: 'monster',
     id: 'golem',
     name: 'Golem de pierre',
-    cost: 6,
+    cost: 7, // v12 : +1 (Protection sur 8 de défense allongeait trop les combats)
     attack: 1,
     defense: 8,
     element: 'earth',
+    keywords: ['protection'],
     abilities: [{ trigger: 'defend', effect: { type: 'damageOpponent', amount: 1 }, oncePerCombat: true }],
   },
   {
     kind: 'monster',
     id: 'drake',
     name: 'Drake',
-    cost: 6,
+    cost: 7, // v12 : +1, la Furie a fait de ses 5 d'attaque la carte la plus rentable
     attack: 5,
     defense: 4,
     element: 'fire',
+    keywords: ['fury'], // v12 : 5 d'attaque déborde souvent sur le défenseur suivant
     abilities: [{ trigger: 'ko', effect: { type: 'healSelf', amount: 2 } }],
   },
   {
@@ -151,7 +161,70 @@ export const CARD_CATALOG: CardDef[] = [
     attack: 2,
     defense: 2,
     element: 'water',
+    keywords: ['merchant'], // v12 : revendu 2 pièces, il ne coûte que 1 pièce nette
     abilities: [{ trigger: 'summon', effect: { type: 'extraMarketCard', count: 1 } }],
+  },
+
+  // --- v12 : nouvelles cartes bâties autour d'une habileté (demande utilisateur) ---
+  {
+    kind: 'monster',
+    id: 'harpooner',
+    name: 'Harponneuse',
+    cost: 3,
+    attack: 2,
+    defense: 2,
+    element: 'water',
+    keywords: ['reach'],
+  },
+  {
+    kind: 'monster',
+    id: 'berserker',
+    name: 'Berserker',
+    cost: 3, // à 4, l'éviter faisait gagner : 2 de défense, il ne déborde qu'une fois
+    attack: 4,
+    defense: 2,
+    element: 'fire',
+    keywords: ['fury'], // grosse attaque, peu de défense : il déborde une fois puis tombe
+  },
+  {
+    kind: 'monster',
+    id: 'sentinel',
+    name: "Sentinelle d'acier",
+    cost: 5,
+    attack: 2,
+    defense: 5,
+    element: 'water',
+    keywords: ['taunt', 'protection'], // mur pur : il encaisse le premier coup puis bloque la file
+  },
+  {
+    kind: 'monster',
+    id: 'spider',
+    name: 'Araignée venimeuse',
+    cost: 4, // Toxic tue n'importe quoi : c'est sa défense, pas son attaque, qui fixe son prix
+    attack: 1,
+    defense: 4,
+    element: 'earth',
+    keywords: ['toxic'],
+  },
+  {
+    kind: 'monster',
+    id: 'wasp',
+    name: 'Guêpe tueuse',
+    cost: 2, // à 3, la préférer faisait perdre : elle meurt à la première riposte
+    attack: 1,
+    defense: 1,
+    element: 'air',
+    keywords: ['toxic'], // échange à sens unique : elle tue une grosse carte et meurt à la riposte
+  },
+  {
+    kind: 'monster',
+    id: 'relicKeeper',
+    name: 'Gardien des reliques',
+    cost: 2,
+    attack: 1,
+    defense: 3,
+    element: 'earth',
+    keywords: ['merchant'], // acheté 2, revendu 2 : un mur que l'on recycle sans perte
   },
 
   {
@@ -219,24 +292,84 @@ export function isElementEffective(from: CardElement, against: CardElement): boo
   return ELEMENT_BEATS[from] === against;
 }
 
-// Nombre d'exemplaires de chaque carte dans le deck de départ (50 cartes au total :
-// 40 monstres, 10 enchantements).
+// ---------------------------------------------------------------------------------------
+// Habiletés (mots-clés) — demande utilisateur. Valeurs chiffrées ici (côté données), règles
+// dans rules.ts : ce fichier ne dépend jamais de rules.ts (c'est rules.ts qui l'importe).
+// ---------------------------------------------------------------------------------------
+
+// Portée : dégâts infligés à CHAQUE voisin de la cible, +1 si le monstre est doré et +1 de
+// plus si son élément est efficace contre celui du voisin touché.
+export const KEYWORD_REACH_DAMAGE = 1;
+export const KEYWORD_REACH_GOLDEN_BONUS = 1;
+// Négociant : pièces en plus rendues par la vente (1 → 2, ou 3 → 4 pour une carte dorée).
+export const KEYWORD_MERCHANT_BONUS = 1;
+// Protection : nombre d'attaques encaissées sans dégât, remis à neuf à chaque combat.
+export const KEYWORD_PROTECTION_USES = 1;
+
+export const KEYWORD_LABELS: Record<Keyword, string> = {
+  reach: 'Portée',
+  taunt: 'Provocation',
+  protection: 'Protection',
+  merchant: 'Négociant',
+  fury: 'Furie',
+  toxic: 'Toxic',
+};
+
+// Texte affiché après le nom de l'habileté sur la face de la carte, ex. « Portée : … ».
+// `golden` ne change que Portée (seule habileté chiffrée à profiter de la dorure).
+export function describeKeywordEffect(keyword: Keyword, golden = false): string {
+  switch (keyword) {
+    case 'reach': {
+      const damage = KEYWORD_REACH_DAMAGE + (golden ? KEYWORD_REACH_GOLDEN_BONUS : 0);
+      return `touche aussi les monstres autour de sa cible (${damage} ${pluralize(damage, 'dégât')})`;
+    }
+    case 'taunt':
+      return "doit être attaqué en priorité tant qu'il est en vie";
+    case 'protection':
+      return 'annule les premiers dégâts reçus à chaque combat';
+    case 'merchant':
+      return `rapporte ${KEYWORD_MERCHANT_BONUS} pièce de plus à la vente`;
+    case 'fury':
+      return 'reporte ses dégâts en excès sur le défenseur suivant';
+    case 'toxic':
+      return 'tue tout monstre à qui il inflige le moindre dégât';
+  }
+}
+
+// Texte complet affiché sur la face, ex. « Provocation : doit être attaqué en priorité… ».
+export function describeKeyword(keyword: Keyword, golden = false): string {
+  return `${KEYWORD_LABELS[keyword]} : ${describeKeywordEffect(keyword, golden)}`;
+}
+
+export function hasKeywordDef(def: CardDef, keyword: Keyword): boolean {
+  return isMonster(def) && (def.keywords?.includes(keyword) ?? false);
+}
+
+// Nombre d'exemplaires de chaque carte dans le deck de départ (v12 : 60 cartes au total,
+// 48 monstres et 12 enchantements — même proportion qu'avec les 50 cartes de la v11).
+// Les cartes à habileté restent minoritaires pour qu'une manche n'en montre pas que ça.
 export const STARTER_COUNTS: Record<string, number> = {
-  squire: 5,
-  wolf: 5,
+  squire: 4,
+  wolf: 4,
   guard: 4,
-  archer: 5,
+  archer: 4,
   druid: 2,
-  knight: 5,
+  knight: 4,
   stormMage: 2,
-  golem: 4,
+  golem: 3,
   drake: 3,
-  titan: 3,
+  titan: 2,
   peddler: 2,
+  harpooner: 3,
+  berserker: 3,
+  sentinel: 2,
+  spider: 2,
+  wasp: 2,
+  relicKeeper: 2,
   banner: 3,
   rampart: 3,
-  treasury: 2,
-  blessing: 2,
+  treasury: 3,
+  blessing: 3,
 };
 
 export function createCardInstance(cardId: string, makeUid: () => string): CardInstance {

@@ -1,7 +1,15 @@
 import * as THREE from 'three';
-import { describeAbility, describeAura, describeEffect, scaleAbilityEffect, TRIGGER_LABELS } from '../game/cards';
+import {
+  describeAbility,
+  describeAura,
+  describeEffect,
+  describeKeywordEffect,
+  KEYWORD_LABELS,
+  scaleAbilityEffect,
+  TRIGGER_LABELS,
+} from '../game/cards';
 import { GOLDEN_MULTIPLIER } from '../game/rules';
-import type { CardAbility, CardDef, CardElement } from '../game/types';
+import type { CardAbility, CardDef, CardElement, Keyword } from '../game/types';
 import { ART_HEIGHT, ART_WIDTH, drawCardArt } from './cardArt';
 import { theme } from './theme';
 
@@ -244,6 +252,15 @@ function abilityRuns(ability: CardAbility): TextRun[] {
   return [
     { text: full.slice(0, splitAt + 2), bold: true },
     { text: full.slice(splitAt + 3), bold: false },
+  ];
+}
+
+// « Portée : touche aussi… » → nom de l'habileté en gras, effet normal (même forme qu'une
+// capacité, pour que la face reste homogène).
+function keywordRuns(keyword: Keyword, golden: boolean): TextRun[] {
+  return [
+    { text: `${KEYWORD_LABELS[keyword]} :`, bold: true },
+    { text: describeKeywordEffect(keyword, golden), bold: false },
   ];
 }
 
@@ -531,11 +548,15 @@ export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null)
     drawElementBadge(ctx, def.element, w - 32, 34);
     drawTypeBanner(ctx, golden ? '★ Monstre doré ★' : 'Monstre', w, golden);
 
-    // Aura puis capacités. Monstre doré : valeurs affichées doublées, comme elles se résolvent.
+    // Habiletés, puis aura, puis capacités. Monstre doré : valeurs affichées doublées, comme
+    // elles se résolvent (Portée n'est pas doublée mais gagne 1 dégât, `describeKeywordEffect`).
     const multiplier = golden ? GOLDEN_MULTIPLIER : 1;
     const paragraphs: TextRun[][] = (def.abilities ?? []).map((ability) =>
       abilityRuns({ ...ability, effect: scaleAbilityEffect(ability.effect, multiplier) }),
     );
+    for (const keyword of [...(def.keywords ?? [])].reverse()) {
+      paragraphs.unshift(keywordRuns(keyword, golden));
+    }
     if (def.aura) {
       paragraphs.unshift([
         { text: 'Aura :', bold: true },

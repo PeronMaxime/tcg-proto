@@ -36,6 +36,17 @@ export interface CardAbility {
 // bonus de dégât contre l'élément qu'il domine (roue `ELEMENT_BEATS` dans cards.ts).
 export type CardElement = 'fire' | 'water' | 'air' | 'earth';
 
+// Habileté (demande utilisateur) : mot-clé porté par certains monstres, qui modifie une
+// règle du jeu au lieu de déclencher un effet ponctuel comme `CardAbility`. Les valeurs
+// chiffrées vivent dans cards.ts (`KEYWORD_*`), les règles dans rules.ts :
+// - `reach`    Portée : le coup touche aussi les monstres voisins de la cible ;
+// - `taunt`    Provocation : doit être attaqué en priorité tant qu'il est debout ;
+// - `protection` Protection : encaisse une attaque sans prendre de dégât (1× par combat) ;
+// - `merchant` Négociant : rapporte une pièce de plus à la vente ;
+// - `fury`     Furie : les dégâts en excès sur un défenseur tué passent au suivant ;
+// - `toxic`    Toxic : le moindre dégât infligé tue son opposant.
+export type Keyword = 'reach' | 'taunt' | 'protection' | 'merchant' | 'fury' | 'toxic';
+
 interface CardDefBase {
   id: string;
   name: string;
@@ -52,6 +63,8 @@ export interface MonsterDef extends CardDefBase {
   // AUTRES monstres de son propriétaire, y compris ceux posés après lui — comme un
   // enchantement `monsterBuff` sur 'all' (doublée si le monstre est doré). Absent = pas d'aura.
   aura?: { attack: number; defense: number };
+  // Habiletés (mots-clés) du monstre, dans l'ordre d'affichage sur la face. Absent = aucune.
+  keywords?: Keyword[];
 }
 
 export interface EnchantmentDef extends CardDefBase {
@@ -124,6 +137,15 @@ export interface CombatStep {
   // l'animation « Efficace ! ». Toujours `false` en percée.
   effective: boolean;
   retaliationEffective: boolean;
+  // Habiletés (K1-K6, voir `Keyword`). Toutes absentes sur un évènement écrit avant les
+  // habiletés, et sur un coup qui n'en déclenche aucune : à lire avec `?? []` / `?? null`.
+  // Portée : dégâts collatéraux aux voisins de la cible, dans l'ordre des emplacements.
+  splash?: { uid: string; damage: number; remaining: number; effective: boolean }[];
+  // Furie : dégâts en excès reportés sur le défenseur suivant après un défenseur tué.
+  overflow?: { uid: string; damage: number; remaining: number } | null;
+  // Protection : monstres dont la protection a absorbé les dégâts de ce coup — attaque,
+  // riposte, mais aussi dégâts collatéraux de Portée ou de Furie, qui la cassent eux aussi.
+  absorbedUids?: string[];
   effects: EffectLog[]; // effets résolus pendant l'échange, dans l'ordre (E5)
   hp: Record<Seat, number>; // PV des deux joueurs après l'échange, effets compris
 }

@@ -4,7 +4,18 @@
 // Module pur : pas d'accès réseau, pas de React, pas de Date.now(). Le seul hasard
 // (mélange des decks) passe par le paramètre `random` pour rester testable.
 
-import { buildStarterDeck, getCardDef, isElementEffective, isMonster, scaleAbilityEffect } from './cards';
+import {
+  buildStarterDeck,
+  getCardDef,
+  isElementEffective,
+  isMonster,
+  hasKeywordDef,
+  KEYWORD_MERCHANT_BONUS,
+  KEYWORD_PROTECTION_USES,
+  KEYWORD_REACH_DAMAGE,
+  KEYWORD_REACH_GOLDEN_BONUS,
+  scaleAbilityEffect,
+} from './cards';
 import type {
   Action,
   AbilityEffect,
@@ -12,6 +23,7 @@ import type {
   CombatStep,
   EffectLog,
   GameState,
+  Keyword,
   MonsterZone,
   PlayerState,
   Seat,
@@ -20,7 +32,7 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 11;
+export const RULES_VERSION = 13;
 export const STARTING_HP = 10;
 // Pièces en stock au début de la partie (demande utilisateur), avant le gain du 1er tour.
 export const STARTING_COINS = 2;
@@ -38,6 +50,11 @@ export const ZONE_SIZES: Record<Zone, number> = { attack: 5, defense: 5, enchant
 // multipliées par GOLDEN_MULTIPLIER.
 export const FUSION_COUNT = 3;
 export const GOLDEN_MULTIPLIER = 2;
+// Vente d'une carte posée (action `sell`) : une carte dorée vaut plus cher qu'une normale
+// (demande utilisateur), ce qui laisse une porte de sortie en pièces à une fusion devenue
+// inutile.
+export const SELL_COINS = 1;
+export const SELL_GOLDEN_COINS = 3;
 // E16 : l'attaque effective d'un monstre vaut au moins 1 (c'est la stat qui est plancher,
 // pas les dégâts — un `shield` peut encore réduire un coup à 0).
 export const MIN_ATTACK = 1;
@@ -61,6 +78,21 @@ function shuffle<T>(items: T[], random: () => number): T[] {
 
 export function opponentOf(seat: Seat): Seat {
   return seat === 'p1' ? 'p2' : 'p1';
+}
+
+// Habiletés (mots-clés, K1-K6, demande utilisateur) : portées par la définition de la carte,
+// jamais par l'instance — une carte dorée garde donc exactement les mêmes habiletés (seule
+// Portée compte un dégât de plus, voir `KEYWORD_REACH_GOLDEN_BONUS`).
+export function hasKeyword(card: CardInstance, keyword: Keyword): boolean {
+  return hasKeywordDef(getCardDef(card.cardId), keyword);
+}
+
+// Pièces rendues par la vente d'une carte posée : dorée = `SELL_GOLDEN_COINS`, et K4
+// Négociant ajoute `KEYWORD_MERCHANT_BONUS` dans les deux cas. Partagé avec l'interface,
+// qui affiche le montant sur le bouton « Vendre ».
+export function sellValue(card: CardInstance): number {
+  const base = card.golden ? SELL_GOLDEN_COINS : SELL_COINS;
+  return base + (hasKeyword(card, 'merchant') ? KEYWORD_MERCHANT_BONUS : 0);
 }
 
 function emptyZones(): Record<Zone, Slot[]> {
@@ -348,8 +380,9 @@ function applyFuse(next: GameState, seat: Seat, uid: string): void {
 }
 
 // Vente d'une carte posée : elle quitte son emplacement, rejoint la défausse (jamais
-// mélangée au deck) et rapporte 1 pièce à son propriétaire (ajouté à la demande explicite
-// de l'utilisateur, voir la note sur H10 plus haut).
+// mélangée au deck) et rapporte 1 pièce à son propriétaire, 3 si elle est dorée et 1 de plus
+// si elle est Négociante (K4) — voir `sellValue` (ajouté à la demande explicite de
+// l'utilisateur, voir la note sur H10 plus haut).
 function applySell(next: GameState, seat: Seat, uid: string): void {
   const player = next.players[seat];
   for (const zone of ['attack', 'defense', 'enchant'] as Zone[]) {
@@ -359,7 +392,7 @@ function applySell(next: GameState, seat: Seat, uid: string): void {
     player.zones[zone][slot] = null;
     clearBuff(card); // E9 : le buff disparaît, la carte quitte le board (vente)
     player.discard.push(card);
-    player.coins += 1;
+    player.coins += sellValue(card); // K4 Négociant : +1 pièce
     // E4 : Vendu se déclenche après que la carte a quitté le board, la pièce versée, en défausse.
     const effects = fireTrigger(next, seat, card, 'sold');
     next.lastEvent = { id: next.eventSeq, type: 'sell', seat, uid, zone, slot, effects };
@@ -495,8 +528,11 @@ function fireTrigger(
 interface Fighter {
   card: CardInstance;
   seat: Seat;
+  slot: number; // emplacement dans sa zone : sert au voisinage de K1 Portée
   damageTaken: number;
   ko: boolean;
+  // K3 Protection : attaques encore absorbables pendant CE combat (0 pour les autres cartes).
+  protection: number;
 }
 
 // Défense restante = max(0, défense effective (relue à chaque fois, E9) − dégâts subis).
@@ -514,12 +550,54 @@ function standingFighters(state: GameState, fighters: Fighter[], zone: MonsterZo
 function buildFighters(state: GameState, seat: Seat, zone: MonsterZone): Fighter[] {
   const player = state.players[seat];
   const fighters: Fighter[] = [];
-  for (const slot of player.zones[zone]) {
-    if (!slot) continue;
-    const fighter: Fighter = { card: slot, seat, damageTaken: 0, ko: false };
+  player.zones[zone].forEach((card, slot) => {
+    if (!card) return;
+    const fighter: Fighter = {
+      card,
+      seat,
+      slot,
+      damageTaken: 0,
+      ko: false,
+      // K3 : la protection se recharge à chaque combat.
+      protection: hasKeyword(card, 'protection') ? KEYWORD_PROTECTION_USES : 0,
+    };
     if (currentDefense(state, fighter, zone) > 0) fighters.push(fighter);
-  }
+  });
   return fighters;
+}
+
+// K2 Provocation : parmi les défenseurs encore debout, ceux qui provoquent passent avant
+// tous les autres ; a egalite (ou sans provocation), le plus a gauche (R4).
+function pickTarget(standing: Fighter[]): Fighter | undefined {
+  return standing.find((f) => hasKeyword(f.card, 'taunt')) ?? standing[0];
+}
+
+// Dégâts collatéraux (K1 Portée, K5 Furie) : ce ne sont pas des attaques — pas de riposte ni
+// de bonus/bouclier de capacité — mais ils cassent bien une K3 Protection (demande
+// utilisateur) : la victime protégée ne prend aucun dégât et consomme sa protection, qui ne
+// la couvrira donc plus pour le coup suivant. Renvoie les dégâts réellement infligés et la
+// défense restante de la victime, et déclenche sa capacité KO si elle tombe.
+function dealCollateral(
+  state: GameState,
+  fighter: Fighter,
+  zone: MonsterZone,
+  amount: number,
+  effects: EffectLog[],
+  absorbedUids: string[],
+): { damage: number; remaining: number } {
+  let damage = amount;
+  if (damage > 0 && fighter.protection > 0) {
+    fighter.protection -= 1;
+    damage = 0;
+    absorbedUids.push(fighter.card.uid);
+  }
+  fighter.damageTaken += damage;
+  const remaining = currentDefense(state, fighter, zone);
+  if (remaining === 0 && !fighter.ko) {
+    fighter.ko = true;
+    if (state.winner === null) effects.push(...fireTrigger(state, fighter.seat, fighter.card, 'ko'));
+  }
+  return { damage, remaining };
 }
 
 // Bonus de dégât élémentaire de `from` quand il touche `against` (coup ou riposte).
@@ -590,7 +668,7 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
       // Le dernier défenseur est tombé en cours de cycle : la mêlée s'arrête immédiatement,
       // les attaquants suivants du cycle frapperont en percée (E14).
       if (remainingDefenders.length === 0) break;
-      const target = remainingDefenders[0];
+      const target = pickTarget(remainingDefenders)!;
 
       const hit: HitModifiers = { bonusDamage: 0, damageReduction: 0 };
       let effects = fireTrigger(state, attackerSeat, attacker.card, 'attack', hit, firedThisCombat);
@@ -602,6 +680,8 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
       let retaliation = 0;
       let effective = false;
       let retaliationEffective = false;
+      const absorbedUids: string[] = []; // K3 : protections consommées par cet échange
+      const targetDefenseBefore = currentDefense(state, target, 'defense');
       if (state.winner === null) {
         const attackerStats = getMonsterStats(state.players[attackerSeat], attacker.card, 'attack');
         const targetStats = getMonsterStats(state.players[defenderSeat], target.card, 'defense');
@@ -617,6 +697,33 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
         const retaliationBonus = elementBonus(target.card, attacker.card);
         retaliation = targetStats.attack + retaliationBonus;
         retaliationEffective = retaliationBonus > 0;
+
+        // K3 Protection : la cible encaisse l'attaque sans dégât et consomme sa protection.
+        // Elle riposte quand même — elle a encaissé, elle n'est pas neutralisée.
+        if (damage > 0 && target.protection > 0) {
+          target.protection -= 1;
+          damage = 0;
+          effective = false;
+          absorbedUids.push(target.card.uid);
+        }
+        // K6 Toxic : le moindre dégât infligé tue — sauf s'il vient d'être absorbé. On monte
+        // le coup jusqu'à la défense restante sans jamais le réduire (K5 Furie doit encore
+        // pouvoir déborder si l'attaque dépassait déjà cette défense).
+        if (damage > 0 && hasKeyword(attacker.card, 'toxic')) {
+          damage = Math.max(damage, targetDefenseBefore);
+        }
+
+        // Mêmes deux règles sur la riposte : la protection de l'attaquant l'absorbe, et un
+        // défenseur Toxic tue l'attaquant qu'il touche.
+        if (retaliation > 0 && attacker.protection > 0) {
+          attacker.protection -= 1;
+          retaliation = 0;
+          retaliationEffective = false;
+          absorbedUids.push(attacker.card.uid);
+        }
+        if (retaliation > 0 && hasKeyword(target.card, 'toxic')) {
+          retaliation = Math.max(retaliation, currentDefense(state, attacker, 'attack'));
+        }
       }
 
       // Dégâts simultanés (E5, E13) : un défenseur mis KO par la riposte quand même.
@@ -635,6 +742,40 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
         if (state.winner === null) effects = effects.concat(fireTrigger(state, attackerSeat, attacker.card, 'ko'));
       }
 
+      // K5 Furie : le défenseur est tombé et il restait des dégâts à infliger — ils passent
+      // au défenseur suivant (un seul report, choisi comme une cible normale, Provocation
+      // comprise). Pas de riposte : ce n'est pas une attaque.
+      let overflow: CombatStep['overflow'] = null;
+      const leftover = damage - targetDefenseBefore;
+      if (state.winner === null && target.ko && leftover > 0 && hasKeyword(attacker.card, 'fury')) {
+        const next = pickTarget(standingFighters(state, defenders, 'defense'));
+        if (next) {
+          const dealt = dealCollateral(state, next, 'defense', leftover, effects, absorbedUids);
+          overflow = { uid: next.card.uid, damage: dealt.damage, remaining: dealt.remaining };
+          damageThisCycle += dealt.damage;
+        }
+      }
+
+      // K1 Portée : les défenseurs encore debout dont l'emplacement touche celui de la cible
+      // prennent des dégâts collatéraux (+1 si l'attaquant est doré, +1 si son élément est
+      // efficace contre le voisin touché).
+      const splash: NonNullable<CombatStep['splash']> = [];
+      if (state.winner === null && hasKeyword(attacker.card, 'reach')) {
+        const base = KEYWORD_REACH_DAMAGE + (attacker.card.golden ? KEYWORD_REACH_GOLDEN_BONUS : 0);
+        for (const neighbor of standingFighters(state, defenders, 'defense')) {
+          if (Math.abs(neighbor.slot - target.slot) !== 1) continue;
+          const bonus = elementBonus(attacker.card, neighbor.card);
+          const dealt = dealCollateral(state, neighbor, 'defense', base + bonus, effects, absorbedUids);
+          splash.push({
+            uid: neighbor.card.uid,
+            damage: dealt.damage,
+            remaining: dealt.remaining,
+            effective: bonus > 0 && dealt.damage > 0,
+          });
+          damageThisCycle += dealt.damage;
+        }
+      }
+
       steps.push({
         cycle,
         attackerUid: attacker.card.uid,
@@ -645,6 +786,11 @@ export function resolveCombat(state: GameState, attackerSeat: Seat): CombatResul
         attackerRemaining,
         effective,
         retaliationEffective,
+        // Champs d'habileté omis quand rien ne s'est déclenché : un coup ordinaire produit
+        // exactement le même évènement qu'avant les habiletés.
+        ...(splash.length > 0 ? { splash } : {}),
+        ...(overflow ? { overflow } : {}),
+        ...(absorbedUids.length > 0 ? { absorbedUids } : {}),
         effects,
         hp: snapshotHp(state),
       });

@@ -1,7 +1,12 @@
 import { Canvas } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { describeAbility, getCardDef, isMonster } from '../game/cards';
-import { isActionLegal, isFirstTurnOfGame, nextTurnCoinGain } from '../game/rules';
+import {
+  isActionLegal,
+  isFirstTurnOfGame,
+  nextTurnCoinGain,
+  sellValue,
+} from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
 import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, requestRematch, sendAction } from '../net/rooms';
 import Board, { type DragState, type ScreenRect } from '../scene/Board';
@@ -590,7 +595,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
                 disabled={!canSell}
                 onClick={() => sellCard(zoomed.uid)}
               >
-                Vendre (+1 pièce)
+                Vendre (+{sellValue(zoomed.card)} pièce{sellValue(zoomed.card) > 1 ? 's' : ''})
               </button>
             )}
           </div>
