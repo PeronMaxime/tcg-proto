@@ -8,11 +8,20 @@ import {
   getBubbleTexture,
   getCardBackTexture,
   getCardFaceTexture,
+  getPadlockTexture,
   getShieldTexture,
   type MonsterFaceStats,
 } from './textures';
 
 export type HaloKind = 'none' | 'playable' | 'selected' | 'target';
+
+// Cadenas cliquable posé sur une carte du marché (demande utilisateur) : `locked` donne son
+// dessin (anse fermée et dorée = gardée pour le prochain marché), `onToggle` l'action à
+// envoyer. Absent sur toutes les autres cartes — c'est lui qui décide de l'affichage.
+export interface LockBadge {
+  locked: boolean;
+  onToggle: () => void;
+}
 
 export interface AttackTrigger {
   id: number;
@@ -28,6 +37,8 @@ interface CardProps {
   // `protectionBubble` = bulle de la Protection, qui éclate au coup qui la consomme.
   tauntShield?: boolean;
   protectionBubble?: boolean;
+  // Cadenas du marché, affiché et cliquable seulement si la prop est présente.
+  lockBadge?: LockBadge;
   pose: Pose;
   spawnPose?: Pose; // pose de départ si la carte apparaît pour la première fois (D6)
   hidden: boolean;
@@ -51,6 +62,9 @@ const SHIELD_SIZE = 0.62; // côté du plan portant l'emblème de bouclier (K2 P
 // sur l'emplacement voisin (cartes espacées de 1.05 pour 1.2 de large, voir layout.ts).
 const BUBBLE_WIDTH_RATIO = 1.14;
 const BUBBLE_HEIGHT_RATIO = 1.1;
+// Côté du cadenas du marché : assez grand pour être visé au clic sur une carte agrandie du
+// marché (échelle ~1.6), assez petit pour ne pas masquer l'illustration.
+const LOCK_SIZE = 0.42;
 
 function haloColor(kind: HaloKind): string {
   switch (kind) {
@@ -71,6 +85,7 @@ function Card({
   ko,
   tauntShield = false,
   protectionBubble = false,
+  lockBadge,
   pose,
   spawnPose,
   hidden,
@@ -87,6 +102,9 @@ function Card({
   const backTexture = useMemo(() => getCardBackTexture(), []);
   const shieldTexture = useMemo(() => getShieldTexture(), []);
   const bubbleTexture = useMemo(() => getBubbleTexture(), []);
+  // Deux textures seulement (ouverte/fermée), déjà mises en cache par `getPadlockTexture` :
+  // pas de `useMemo` à tenir à jour ici.
+  const padlockTexture = lockBadge ? getPadlockTexture(lockBadge.locked) : null;
   const { width, height } = theme.card;
 
   const groupRef = useRef<THREE.Group>(null!);
@@ -109,6 +127,11 @@ function Card({
   const prevProtectionBubble = useRef(protectionBubble);
 
   const [hovered, setHovered] = useState(false);
+  // Survol du cadenas seul : il s'éclaircit et grossit un peu, pour se distinguer d'un clic
+  // sur la carte (qui, au marché, achète).
+  const [lockHovered, setLockHovered] = useState(false);
+  const lockGroupRef = useRef<THREE.Group>(null!);
+  const lockMaterialRef = useRef<THREE.MeshBasicMaterial>(null!);
 
   // Pose de départ : sur mount, `spawnPose` (deck du propriétaire) si la carte est neuve,
   // sinon directement la pose cible — pas d'animation surprise au premier rendu (§7.2).
@@ -248,6 +271,20 @@ function Card({
       bubbleGroupRef.current.visible = bubbleMaterialRef.current.opacity > 0.01;
     }
 
+    if (lockGroupRef.current && lockMaterialRef.current) {
+      // Un cadenas déjà fermé reste bien visible ; ouvert, il s'efface jusqu'au survol pour
+      // ne pas voler la vedette à la face de la carte.
+      const base = lockBadge?.locked ? 1 : 0.5;
+      lockMaterialRef.current.opacity = THREE.MathUtils.damp(
+        lockMaterialRef.current.opacity,
+        lockHovered ? 1 : base,
+        DAMP_LAMBDA,
+        delta,
+      );
+      const scale = THREE.MathUtils.damp(lockGroupRef.current.scale.x, lockHovered ? 1.18 : 1, DAMP_LAMBDA, delta);
+      lockGroupRef.current.scale.setScalar(scale);
+    }
+
     if (flipRef.current) {
       const targetY = hidden ? Math.PI : 0;
       flipRef.current.rotation.y = THREE.MathUtils.damp(flipRef.current.rotation.y, targetY, DAMP_LAMBDA, delta);
@@ -379,6 +416,41 @@ function Card({
           toneMapped={false}
         />
       </mesh>
+
+      {/* Cadenas du marché : coin haut gauche de la carte, au-dessus de la face et hors du
+          groupe qui pivote, avec sa propre zone de clic (il n'achète pas la carte). */}
+      {lockBadge && padlockTexture && (
+        <group
+          ref={lockGroupRef}
+          position={[-width / 2 + LOCK_SIZE * 0.55, height / 2 - LOCK_SIZE * 0.55, 0.06]}
+          onClick={(e) => {
+            e.stopPropagation();
+            lockBadge.onToggle();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerOver={(e) => {
+            e.stopPropagation();
+            setLockHovered(true);
+            document.body.style.cursor = 'pointer';
+          }}
+          onPointerOut={() => {
+            setLockHovered(false);
+            if (document.body.style.cursor === 'pointer') document.body.style.cursor = '';
+          }}
+        >
+          <mesh>
+            <planeGeometry args={[LOCK_SIZE, LOCK_SIZE]} />
+            <meshBasicMaterial
+              ref={lockMaterialRef}
+              map={padlockTexture}
+              transparent
+              opacity={0}
+              depthWrite={false}
+              toneMapped={false}
+            />
+          </mesh>
+        </group>
+      )}
 
       <group ref={flipRef}>
         <mesh castShadow>

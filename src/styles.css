@@ -545,6 +545,37 @@ button {
 /* -- Bouton d'affichage/masquage du marché (même style « ruban » que la bannière de combat,
    collé au bord droit, centré verticalement) -- */
 
+/* Relance du marché (demande utilisateur) : même plaque que le bouton d'affichage, posée
+   juste en dessous — les deux commandes du marché se lisent comme une seule pile. */
+.market-reroll-button {
+  position: absolute;
+  top: calc(50% + 2.7rem);
+  right: clamp(0.6rem, 2vw, 1.4rem);
+  transform: translateY(-50%);
+  padding: 0.45rem 1.6rem;
+  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
+  clip-path: polygon(4% 0%, 96% 0%, 100% 50%, 96% 100%, 4% 100%, 0% 50%);
+  border-top: 1px solid var(--hud-gold-dim);
+  border-bottom: 1px solid var(--hud-gold-dim);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  letter-spacing: 0.05rem;
+  color: var(--hud-ink);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  transition: border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+
+.market-reroll-button:hover:not(:disabled) {
+  border-top-color: var(--hud-gold);
+  border-bottom-color: var(--hud-gold);
+  color: var(--hud-gold-bright);
+}
+
+.market-reroll-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .market-toggle-button {
   position: absolute;
   top: 50%;

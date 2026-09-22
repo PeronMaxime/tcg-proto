@@ -68,8 +68,8 @@ le détail des décisions. Résumé :
   (`SECOND_PLAYER_BONUS_COINS`).
 - **Tour** : le joueur gagne `N` pièces (`N` = le n-ième tour **de ce joueur**, les pièces se
   cumulent) → **marché** : 3 cartes du dessus du deck, achetables, à la main ; les invendus
-  retournent au fond du deck → **phase principale** : poser gratuitement autant de cartes que
-  voulu → **combat automatique**. Exception : le joueur qui commence ne combat pas à son premier
+  retournent au fond du deck (sauf les cartes **verrouillées**, voir ci-dessous) → **phase
+  principale** : poser gratuitement autant de cartes que voulu → **combat automatique**. Exception : le joueur qui commence ne combat pas à son premier
   tour (`isFirstTurnOfGame` dans `rules.ts`), pour compenser l'avantage de jouer en premier.
 - **Combat** (voir `PLAN-effets-triggers.md` §1bis pour le détail des décisions E13-E17) : les
   monstres de la zone d'attaque du joueur actif frappent, de gauche à droite, le monstre de la
@@ -165,7 +165,21 @@ le détail des décisions. Résumé :
   main. Un monstre doré a son attaque et sa défense de base doublées (les
   bonus d'enchantement s'ajoutent ensuite, sans être doublés) et ne fusionne plus (action
   `fuse` dans `rules.ts`).
-- **Marché** : seul le joueur actif voit ses cartes ; l'adversaire les voit face cachée.
+- **Marché** : seul le joueur actif voit ses cartes ; l'adversaire les voit face cachée. Deux
+  options payantes pendant toute la phase principale (demande utilisateur) :
+  - **Relancer** (bouton HUD « Relancer », action `rerollMarket`, `MARKET_REROLL_COST` = 1
+    pièce) : les cartes **non verrouillées** retournent au fond du deck dans l'ordre du marché
+    (H5) et sont remplacées, **à leur place exacte**, par autant de cartes du dessus. Répétable
+    tant que le joueur paie — c'est le prix, pas un quota, qui limite les relances. Refusée
+    quand elle ne changerait rien (marché vide ou entièrement verrouillé, deck vide) : on ne
+    fait pas payer une relance sans effet.
+  - **Verrouiller** (cadenas au coin haut gauche d'une carte de son marché, action
+    `toggleMarketLock`, `MARKET_LOCK_COST` = 1 pièce) : la carte échappe aux relances **et** au
+    retour au deck en fin de tour (`PlayerState.lockedUids`), donc elle **ouvre le marché du
+    prochain tour**, complété ensuite depuis le deck jusqu'à `MARKET_SIZE`. `beginTurn` vide
+    `lockedUids` : garder la même carte un tour de plus se repaie. Déverrouiller est gratuit
+    mais **ne rembourse pas** (sinon on verrouillerait « pour voir ») ; acheter une carte
+    verrouillée libère simplement son verrou.
 - **Vendre une carte posée** (clic sur la carte → zoom → bouton « Vendre ») la retire
   définitivement du board vers une pile de défausse (jamais remélangée au deck) et rapporte
   1 pièce, 3 si la carte est dorée, +1 si elle est Négociante (`sellValue` dans `rules.ts`).

@@ -32,7 +32,7 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 14;
+export const RULES_VERSION = 15;
 export const STARTING_HP = 10;
 // Pièces en stock au début de la partie (demande utilisateur), avant le gain du 1er tour.
 export const STARTING_COINS = 2;
@@ -44,6 +44,15 @@ export const SECOND_PLAYER_BONUS_COINS = 2;
 // quelle que soit son attaque effective.
 export const BREAKTHROUGH_DAMAGE = 1;
 export const MARKET_SIZE = 3;
+// Relance du marché (demande utilisateur) : contre 1 pièce, les cartes non verrouillées
+// retournent au fond du deck et autant de cartes du dessus les remplacent. Répétable tant
+// que le joueur paie — c'est le prix, pas un quota, qui limite les relances.
+export const MARKET_REROLL_COST = 1;
+// Verrouillage d'une carte du marché (demande utilisateur) : contre 1 pièce, elle échappe à
+// la relance ET au retour au deck en fin de tour, donc elle ouvre le marché du prochain
+// tour. Déverrouiller est gratuit mais ne rembourse pas (sinon on verrouillerait « pour
+// voir »).
+export const MARKET_LOCK_COST = 1;
 export const ZONE_SIZES: Record<Zone, number> = { attack: 5, defense: 5, enchant: 3 };
 // Fusion dorée (ajoutée à la demande de l'utilisateur) : une carte en main fusionne avec
 // FUSION_COUNT - 1 exemplaires normaux du même monstre posés sur le board de son
@@ -126,6 +135,7 @@ export function createInitialState(random: () => number = Math.random): GameStat
       zones: emptyZones(),
       discard: [],
       extraMarketCards: 0,
+      lockedUids: [],
       movesUsed: { attack: false, defense: false },
     };
   }
@@ -245,6 +255,18 @@ export function canMoveInZone(player: PlayerState, zone: MonsterZone): boolean {
   return player.movesUsed?.[zone] !== true;
 }
 
+// Carte du marché verrouillée pour le prochain marché (action `toggleMarketLock`). Exporté
+// pour l'affichage du cadenas sur la carte. `lockedUids` peut manquer sur un état écrit
+// avant cette règle : absent = rien de verrouillé.
+export function isMarketCardLocked(player: PlayerState, uid: string): boolean {
+  return (player.lockedUids ?? []).includes(uid);
+}
+
+// Cartes du marché que la relance remplacerait : tout sauf les verrouillées.
+function rerollableMarket(player: PlayerState): CardInstance[] {
+  return player.market.filter((card) => !isMarketCardLocked(player, card.uid));
+}
+
 export function isActionLegal(state: GameState, seat: Seat, action: Action): boolean {
   if (state.winner !== null) return false;
   if (state.turn !== seat) return false;
@@ -298,6 +320,24 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
       return false;
     }
 
+    case 'rerollMarket': {
+      // Payante et répétable, pendant toute la phase principale comme les achats (demande
+      // utilisateur). Refusée quand elle ne changerait rien — marché vide ou entièrement
+      // verrouillé, ou deck vide : on ne fait pas payer une relance sans effet.
+      if (state.phase !== 'main') return false;
+      if (player.coins < MARKET_REROLL_COST) return false;
+      if (rerollableMarket(player).length === 0) return false;
+      return player.deck.length > 0;
+    }
+
+    case 'toggleMarketLock': {
+      if (state.phase !== 'main') return false;
+      if (!player.market.some((c) => c.uid === action.uid)) return false;
+      // Déverrouiller est toujours possible (et gratuit) ; verrouiller se paie.
+      if (isMarketCardLocked(player, action.uid)) return true;
+      return player.coins >= MARKET_LOCK_COST;
+    }
+
     case 'fuse': {
       // Ne demande pas d'emplacement libre : la carte dorée reste en main, à reposer ensuite
       // (on peut donc fusionner même avec un board plein).
@@ -324,14 +364,21 @@ function applyBeginTurn(next: GameState, seat: Seat): void {
   // Nouveau tour : les deux déplacements (un par zone) sont de nouveau disponibles.
   player.movesUsed = { attack: false, defense: false };
 
-  // H7, + cartes promises par un effet `extraMarketCard` joué depuis le tour précédent.
-  const drawCount = Math.min(MARKET_SIZE + player.extraMarketCards, player.deck.length);
+  // Les cartes verrouillées au tour précédent (action `toggleMarketLock`) sont restées dans
+  // `market` — `applyEndTurn` ne les a pas remises au deck — et ouvrent ce marché ; on le
+  // complète depuis le dessus du deck. H7, + cartes promises par un effet
+  // `extraMarketCard` joué depuis le tour précédent.
+  const retained = player.market;
+  const target = MARKET_SIZE + player.extraMarketCards;
+  const drawCount = Math.max(0, Math.min(target - retained.length, player.deck.length));
   player.extraMarketCards = 0;
-  const market = [];
+  const market = [...retained];
   for (let i = 0; i < drawCount; i++) {
     market.push(player.deck.pop()!);
   }
   player.market = market;
+  // Le verrou a servi : garder la même carte un tour de plus se repaie.
+  player.lockedUids = [];
 
   next.phase = 'main';
   next.lastEvent = { id: next.eventSeq, type: 'turnStart', seat, coinsGained: gain };
@@ -342,9 +389,62 @@ function applyBuy(next: GameState, seat: Seat, uid: string): void {
   const idx = player.market.findIndex((c) => c.uid === uid);
   const card = player.market[idx];
   player.market.splice(idx, 1);
+  // La carte achetée quitte le marché : son verrou n'a plus d'objet (pas de remboursement).
+  player.lockedUids = (player.lockedUids ?? []).filter((u) => u !== uid);
   player.coins -= getCardDef(card.cardId).cost;
   player.hand.push(card);
   next.lastEvent = { id: next.eventSeq, type: 'buy', seat, uid };
+}
+
+// Relance du marché (demande utilisateur) : les cartes non verrouillées retournent au fond
+// du deck dans l'ordre du marché (H5, comme les invendus de la fin du tour) et sont
+// remplacées, à leur place exacte, par autant de cartes du dessus. Les verrouillées ne
+// bougent pas — ni de position, ni de verrou : on peut relancer autant de fois qu'on paie
+// autour d'une carte gardée.
+function applyRerollMarket(next: GameState, seat: Seat): void {
+  const player = next.players[seat];
+  player.coins -= MARKET_REROLL_COST;
+
+  const refused = rerollableMarket(player);
+  player.deck = [...refused, ...player.deck];
+  // Les refusées viennent d'être remises au fond : le deck a forcément de quoi les
+  // remplacer une pour une.
+  const drawn = refused.map(() => player.deck.pop()!);
+  let drawnIndex = 0;
+  player.market = player.market.map((card) =>
+    isMarketCardLocked(player, card.uid) ? card : drawn[drawnIndex++],
+  );
+
+  next.lastEvent = {
+    id: next.eventSeq,
+    type: 'marketReroll',
+    seat,
+    uids: player.market.map((c) => c.uid),
+    cost: MARKET_REROLL_COST,
+  };
+}
+
+// Verrouille (contre `MARKET_LOCK_COST`) ou déverrouille (gratuitement, sans remboursement)
+// une carte du marché : verrouillée, elle survit aux relances et à la fin du tour pour
+// ouvrir le marché du prochain tour (`applyEndTurn` puis `applyBeginTurn`).
+function applyToggleMarketLock(next: GameState, seat: Seat, uid: string): void {
+  const player = next.players[seat];
+  const locked = player.lockedUids ?? [];
+  const wasLocked = locked.includes(uid);
+  if (wasLocked) {
+    player.lockedUids = locked.filter((u) => u !== uid);
+  } else {
+    player.lockedUids = [...locked, uid];
+    player.coins -= MARKET_LOCK_COST;
+  }
+  next.lastEvent = {
+    id: next.eventSeq,
+    type: 'marketLock',
+    seat,
+    uid,
+    locked: !wasLocked,
+    cost: wasLocked ? 0 : MARKET_LOCK_COST,
+  };
 }
 
 function applyPlace(next: GameState, seat: Seat, uid: string, zone: Zone, slot: number): void {
@@ -894,10 +994,13 @@ function applyEndTurn(next: GameState, seat: Seat): void {
   const player = next.players[seat];
   // Le marché reste ouvert jusqu'ici (achats possibles pendant toute la phase principale) :
   // les invendus retournent au fond du deck, dans l'ordre du marché (H5), juste avant le combat.
-  if (player.market.length > 0) {
-    player.deck = [...player.market, ...player.deck];
-    player.market = [];
+  // Exception : les cartes verrouillées (action `toggleMarketLock`) restent dans `market`
+  // jusqu'au prochain `beginTurn`, qui les sert en tête du nouveau marché.
+  const unsold = player.market.filter((card) => !isMarketCardLocked(player, card.uid));
+  if (unsold.length > 0) {
+    player.deck = [...unsold, ...player.deck];
   }
+  player.market = player.market.filter((card) => isMarketCardLocked(player, card.uid));
 
   const defenderSeat = opponentOf(seat);
   const hpBefore = snapshotHp(next);
@@ -927,6 +1030,12 @@ export function applyAction(state: GameState, seat: Seat, action: Action): GameS
       break;
     case 'buy':
       applyBuy(next, seat, action.uid);
+      break;
+    case 'rerollMarket':
+      applyRerollMarket(next, seat);
+      break;
+    case 'toggleMarketLock':
+      applyToggleMarketLock(next, seat, action.uid);
       break;
     case 'place':
       applyPlace(next, seat, action.uid, action.zone, action.slot);

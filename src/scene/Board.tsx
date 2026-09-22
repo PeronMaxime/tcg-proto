@@ -2,11 +2,18 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import { getCardDef, hasKeywordDef, isMonster } from '../game/cards';
-import { canMoveInZone, getBaseMonsterStats, isActionLegal, opponentOf, ZONE_SIZES } from '../game/rules';
+import {
+  canMoveInZone,
+  getBaseMonsterStats,
+  isActionLegal,
+  isMarketCardLocked,
+  opponentOf,
+  ZONE_SIZES,
+} from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Seat, Zone } from '../game/types';
 import type { ActiveCombatStep, CombatView } from '../ui/useCombatPlayback';
 import { computeMonsterFaceStats } from './cardFaceStats';
-import type { AttackTrigger, HaloKind } from './Card';
+import type { AttackTrigger, HaloKind, LockBadge } from './Card';
 import Card from './Card';
 import DragController, { type DropTarget } from './DragController';
 import AbilityPulses, { type AbilityTrigger } from './AbilityPulse';
@@ -51,6 +58,9 @@ interface BoardProps {
   // GameScreen pour fermer le marché au clic en dehors (demande utilisateur).
   marketZoneRectRef: RefObject<ScreenRect | null>;
   onBuy: (uid: string) => void;
+  // Clic sur le cadenas d'une carte de MON marché : verrouille ou déverrouille (demande
+  // utilisateur, action `toggleMarketLock`).
+  onToggleMarketLock: (uid: string) => void;
   // `origin` n'est présent que lorsqu'on saisit une carte déjà posée (pour la déplacer dans
   // sa zone), pas une carte de la main (pour la poser).
   onDragStart: (
@@ -137,6 +147,7 @@ interface RenderEntry {
   ko: boolean;
   tauntShield?: boolean; // K2 Provocation : bouclier affiché tant que le monstre est debout
   protectionBubble?: boolean; // K3 Protection encore intacte : bulle autour de la carte
+  lockBadge?: LockBadge; // cadenas cliquable, uniquement sur les cartes de MON marché
   pose: Pose;
   hidden: boolean;
   mine: boolean;
@@ -190,6 +201,7 @@ function Board({
   marketVisible,
   marketZoneRectRef,
   onBuy,
+  onToggleMarketLock,
   onDragStart,
   onDragHover,
   onDrop,
@@ -258,11 +270,17 @@ function Board({
     if (mine && !marketVisible) continue;
     const buyable =
       interactive && mine && state.phase === 'main' && isActionLegal(state, seat, { type: 'buy', uid: card.uid });
+    // Cadenas (demande utilisateur) : sur mes cartes seulement, et uniquement quand l'action
+    // est jouable — déjà verrouillée, il reste affiché pour pouvoir la libérer.
+    const locked = isMarketCardLocked(activePlayer, card.uid);
+    const lockable =
+      interactive && mine && isActionLegal(state, seat, { type: 'toggleMarketLock', uid: card.uid });
     entries.push({
       uid: card.uid,
       cardId: card.cardId,
       stats: mine ? unplacedStats(card) : null,
       ko: false,
+      lockBadge: lockable ? { locked, onToggle: () => onToggleMarketLock(card.uid) } : undefined,
       pose: marketCardPose(index, activePlayer.market.length, mine, aspect),
       hidden: !mine,
       mine,
@@ -547,6 +565,7 @@ function Board({
           ko={entry.ko}
           tauntShield={entry.tauntShield}
           protectionBubble={entry.protectionBubble}
+          lockBadge={entry.lockBadge}
           pose={entry.pose}
           spawnPose={spawnPoseFor(entry.uid, entry.mine)}
           hidden={entry.hidden}

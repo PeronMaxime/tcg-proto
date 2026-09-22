@@ -99,6 +99,12 @@ export interface PlayerState {
   // Cartes en plus à révéler au marché du prochain tour (effet `extraMarketCard`), remis à 0
   // dès que ce marché est tiré.
   extraMarketCards: number;
+  // Cartes du marché en cours verrouillées (demande utilisateur, action `lockMarketCard`) :
+  // elles ne partent pas au rebut à la fin du tour et ne sont pas remplacées par une
+  // relance, elles ouvrent le marché du prochain tour. Uids présents dans `market` ;
+  // remis à `[]` par `beginTurn`, qui vient de les servir (les garder un tour de plus se
+  // repaie). Absent sur un état écrit avant cette règle : à lire via `?? []`.
+  lockedUids: string[];
   // Déplacements déjà effectués pendant le tour en cours (demande utilisateur : un seul
   // déplacement par zone et par tour, donc au plus un en attaque et un en défense). Remis à
   // `{ attack: false, defense: false }` au début de chaque tour de CE joueur (`beginTurn`).
@@ -115,6 +121,14 @@ export type Action =
   // zone et par tour (`PlayerState.movesUsed`) : un échange compte pour un déplacement de la
   // zone concernée, pas deux.
   | { type: 'move'; uid: string; slot: number }
+  // Relance le marché contre `MARKET_REROLL_COST` pièce (demande utilisateur) : les cartes
+  // non verrouillées repartent au fond du deck et sont remplacées par autant de cartes du
+  // dessus. Répétable tant que le joueur paie.
+  | { type: 'rerollMarket' }
+  // Verrouille/déverrouille une carte du marché (demande utilisateur) : verrouiller coûte
+  // `MARKET_LOCK_COST` pièce et met la carte de côté pour le marché du prochain tour,
+  // déverrouiller est gratuit mais ne rembourse rien.
+  | { type: 'toggleMarketLock'; uid: string }
   | { type: 'fuse'; uid: string } // uid : la carte en main qui devient dorée
   | { type: 'sell'; uid: string }
   | { type: 'endTurn' };
@@ -177,6 +191,11 @@ export interface CombatStep {
 export type GameEvent =
   | { id: number; type: 'turnStart'; seat: Seat; coinsGained: number }
   | { id: number; type: 'buy'; seat: Seat; uid: string }
+  // `uids` : le marché tel qu'il ressort de la relance (cartes verrouillées comprises, dans
+  // l'ordre) ; `cost` : les pièces dépensées.
+  | { id: number; type: 'marketReroll'; seat: Seat; uids: string[]; cost: number }
+  // `locked` : l'état de la carte APRÈS l'action ; `cost` : 0 au déverrouillage.
+  | { id: number; type: 'marketLock'; seat: Seat; uid: string; locked: boolean; cost: number }
   | { id: number; type: 'place'; seat: Seat; uid: string; zone: Zone; slot: number; effects: EffectLog[] }
   // `swappedUid` : la carte qui occupait `to` et part en `from` (échange), null si `to` était libre.
   | {

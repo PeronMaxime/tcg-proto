@@ -25,6 +25,8 @@ const SECTIONS: RulesSection[] = [
     lines: [
       "1. Tu gagnes des pièces : 1 à ton 1er tour, 2 au 2e, 3 au 3e… elles se cumulent.",
       "2. Le marché te propose 3 cartes de ton deck : achète celles que tu peux payer, elles partent dans ta main.",
+      "Le marché ne te plaît pas ? « Relancer » remplace les cartes pour 1 pièce, autant de fois que tu peux payer.",
+      "Le cadenas en haut à gauche d'une carte du marché la garde pour ton prochain marché, pour 1 pièce : elle échappe aux relances et ne retourne pas dans le deck en fin de tour (le déverrouiller est gratuit, mais ne rembourse pas).",
       "3. Pose autant de cartes que tu veux depuis ta main : poser ne coûte rien.",
       "4. Clique sur « Combat ! » : les monstres s'affrontent tout seuls, puis c'est au tour de l'adversaire.",
     ],

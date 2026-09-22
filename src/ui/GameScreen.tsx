@@ -4,6 +4,8 @@ import { describeAbility, describeKeywordTrigger, getCardDef, isMonster } from '
 import {
   isActionLegal,
   isFirstTurnOfGame,
+  MARKET_LOCK_COST,
+  MARKET_REROLL_COST,
   nextTurnCoinGain,
   sellValue,
 } from '../game/rules';
@@ -142,7 +144,8 @@ function hintText(
   if (playing) return '';
   if (!isMyTurn) return "En attente de l'adversaire…";
   if (fusable) return 'Relâche la carte dans la zone de fusion pour créer un monstre doré';
-  if (phase === 'main') return `Achète, pose ou déplace tes cartes, puis lance le combat${movesHint(movesUsed)}`;
+  if (phase === 'main')
+    return `Achète, pose ou déplace tes cartes, puis lance le combat${movesHint(movesUsed)} · cadenas sur une carte du marché : la garder pour le prochain tour`;
   return '';
 }
 
@@ -356,15 +359,22 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   // déclenche que sur la transition achetable → plus achetable (ex. juste après un achat qui
   // épuise les pièces), pas à chaque rendu : sinon rouvrir manuellement le marché alors que
   // rien n'est toujours achetable le refermerait aussitôt (bug corrigé ici).
-  const canBuyAnything = me.market.some((card) => isActionLegal(state, seat, { type: 'buy', uid: card.uid }));
-  const prevCanBuyAnythingRef = useRef(canBuyAnything);
+  // « Plus rien à faire au marché » couvre aussi la relance et le verrouillage (demande
+  // utilisateur) : tant qu'une de ces trois actions est payable, le marché reste ouvert.
+  const canActOnMarket =
+    me.market.some(
+      (card) =>
+        isActionLegal(state, seat, { type: 'buy', uid: card.uid }) ||
+        isActionLegal(state, seat, { type: 'toggleMarketLock', uid: card.uid }),
+    ) || isActionLegal(state, seat, { type: 'rerollMarket' });
+  const prevCanActOnMarketRef = useRef(canActOnMarket);
   useEffect(() => {
-    const wasBuyable = prevCanBuyAnythingRef.current;
-    prevCanBuyAnythingRef.current = canBuyAnything;
-    if (wasBuyable && !canBuyAnything && marketVisible && isMyTurn && state.phase === 'main') {
+    const wasActionable = prevCanActOnMarketRef.current;
+    prevCanActOnMarketRef.current = canActOnMarket;
+    if (wasActionable && !canActOnMarket && marketVisible && isMyTurn && state.phase === 'main') {
       setMarketVisible(false);
     }
-  }, [canBuyAnything, marketVisible, isMyTurn, state.phase]);
+  }, [canActOnMarket, marketVisible, isMyTurn, state.phase]);
 
   // Clic en dehors du rectangle du marché (calculé à chaque frame par `MarketZoneTracker` côté
   // 3D, lu ici au clic) : referme le marché, sauf clic sur son propre bouton d'affichage qui
@@ -373,7 +383,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     if (!marketVisible || !isMyTurn || state.phase !== 'main') return;
     function onPointerDown(e: PointerEvent) {
       const target = e.target as HTMLElement | null;
-      if (target?.closest('.market-toggle-button')) return;
+      if (target?.closest('.market-toggle-button') || target?.closest('.market-reroll-button')) return;
       const rect = marketZoneRectRef.current;
       const inside = rect && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
       if (!inside) setMarketVisible(false);
@@ -396,6 +406,19 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
 
   async function buy(uid: string) {
     await sendAction(room, seat, { type: 'buy', uid });
+  }
+
+  // Relance du marché contre 1 pièce (demande utilisateur). Le marché masqué se rouvre :
+  // relancer sans voir le résultat n'aurait pas de sens.
+  async function rerollMarket() {
+    setMarketVisible(true);
+    await sendAction(room, seat, { type: 'rerollMarket' });
+  }
+
+  // Cadenas d'une carte du marché : la garder pour le prochain marché contre 1 pièce, ou la
+  // libérer (sans remboursement).
+  async function toggleMarketLock(uid: string) {
+    await sendAction(room, seat, { type: 'toggleMarketLock', uid });
   }
 
   function cancelDrag() {
@@ -463,6 +486,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     setCodeCopied(true);
   }
 
+  const canRerollMarket = interactive && isActionLegal(state, seat, { type: 'rerollMarket' });
   const showVictory = Boolean(state.winner) && !playing;
   const rematchReady = room.rematchReady ?? { p1: false, p2: false };
   const iAmReadyForRematch = rematchReady[seat];
@@ -512,6 +536,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           marketVisible={marketVisible}
           marketZoneRectRef={marketZoneRectRef}
           onBuy={buy}
+          onToggleMarketLock={toggleMarketLock}
           onDragStart={(uid, x, y, origin) => {
             setZoomedUid(null);
             setDrag({ uid, start: { x, y }, origin });
@@ -574,13 +599,24 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           </button>
 
           {isMyTurn && state.phase === 'main' && (
-            <button
-              className="market-toggle-button"
-              onClick={() => setMarketVisible((v) => !v)}
-              title={marketVisible ? 'Masquer le marché' : 'Afficher le marché'}
-            >
-              {marketVisible ? 'Masquer le marché' : 'Afficher le marché'}
-            </button>
+            <>
+              <button
+                className="market-toggle-button"
+                onClick={() => setMarketVisible((v) => !v)}
+                title={marketVisible ? 'Masquer le marché' : 'Afficher le marché'}
+              >
+                {marketVisible ? 'Masquer le marché' : 'Afficher le marché'}
+              </button>
+
+              <button
+                className="market-reroll-button"
+                disabled={!canRerollMarket}
+                onClick={rerollMarket}
+                title={`Remplacer les cartes non verrouillées du marché pour ${MARKET_REROLL_COST} pièce — cadenas sur une carte : la garder pour le prochain marché pour ${MARKET_LOCK_COST} pièce`}
+              >
+                Relancer ({MARKET_REROLL_COST} pièce)
+              </button>
+            </>
           )}
 
           {abandonCountdown !== null && (

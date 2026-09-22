@@ -776,3 +776,64 @@ export function getBubbleTexture(): THREE.CanvasTexture {
   bubbleTextureCache = texture;
   return texture;
 }
+
+// ---------------------------------------------------------------------------------------
+// Cadenas du marché (demande utilisateur) : marque cliquable posée sur une carte du marché
+// pour la garder au prochain marché. Deux variantes en cache — anse fermée en or quand la
+// carte est verrouillée, anse ouverte en gris quand le verrou est juste proposé.
+// ---------------------------------------------------------------------------------------
+
+const PADLOCK_TEXTURE_SIZE = 256;
+const padlockTextureCache = new Map<boolean, THREE.CanvasTexture>();
+
+export function getPadlockTexture(locked: boolean): THREE.CanvasTexture {
+  const cached = padlockTextureCache.get(locked);
+  if (cached) return cached;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = PADLOCK_TEXTURE_SIZE;
+  canvas.height = PADLOCK_TEXTURE_SIZE;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D indisponible');
+
+  // Pastille sombre : le cadenas doit rester lisible quelle que soit la couleur de la face
+  // qu'il recouvre (les 4 éléments vont du rouge au vert).
+  ctx.beginPath();
+  ctx.arc(128, 128, 118, 0, Math.PI * 2);
+  ctx.fillStyle = locked ? 'rgba(28, 22, 8, 0.92)' : 'rgba(14, 16, 24, 0.82)';
+  ctx.fill();
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = locked ? theme.colors.goldLight : 'rgba(210, 218, 232, 0.6)';
+  ctx.stroke();
+
+  const metal = locked ? theme.colors.goldLight : 'rgba(226, 232, 244, 0.85)';
+
+  // Anse : fermée (demi-cercle posé sur le corps) quand la carte est gardée, entrouverte
+  // (arc décalé vers la droite) quand le cadenas n'est qu'une proposition.
+  ctx.lineWidth = 20;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = metal;
+  ctx.beginPath();
+  if (locked) {
+    ctx.arc(128, 104, 42, Math.PI, 0);
+  } else {
+    ctx.arc(150, 100, 42, Math.PI * 1.05, Math.PI * 0.1);
+  }
+  ctx.stroke();
+
+  // Corps du cadenas, avec son trou de serrure.
+  ctx.fillStyle = metal;
+  roundedRectPath(ctx, 70, 104, 116, 92, 16);
+  ctx.fill();
+  ctx.fillStyle = locked ? 'rgba(40, 30, 6, 0.9)' : 'rgba(18, 20, 30, 0.9)';
+  ctx.beginPath();
+  ctx.arc(128, 140, 16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(120, 140, 16, 38);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  padlockTextureCache.set(locked, texture);
+  return texture;
+}

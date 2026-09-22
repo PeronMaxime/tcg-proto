@@ -21,6 +21,9 @@ import {
   getMonsterStats,
   GOLDEN_MULTIPLIER,
   isFirstTurnOfGame,
+  isMarketCardLocked,
+  MARKET_LOCK_COST,
+  MARKET_REROLL_COST,
   MARKET_SIZE,
   MIN_ATTACK,
   nextTurnCoinGain,
@@ -84,6 +87,7 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
     zones: emptyZones(),
     discard: [],
     extraMarketCards: 0,
+    lockedUids: [],
     movesUsed: { attack: false, defense: false },
     ...overrides,
   };
@@ -154,7 +158,7 @@ describe('createInitialState', () => {
     expect(state.phase).toBe('start');
     expect(state.turn).toBe(state.starter);
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(14);
+    expect(state.rulesVersion).toBe(15);
   });
 
   it('tire au sort le joueur qui commence (lancer de pièce) et compense celui qui suit', () => {
@@ -336,6 +340,168 @@ describe('applyAction - buy', () => {
     expect(next).not.toBeNull();
     expect(next!.players.p1.deck.map((c) => c.uid)).toEqual(['m1', 'm2', 'rest']);
     expect(next!.players.p1.market).toEqual([]);
+  });
+});
+
+describe('applyAction - rerollMarket', () => {
+  it('remplace les cartes du marché par le dessus du deck et coûte 1 pièce', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.coins = 3;
+    state.players.p1.market = [makeCard('rampart', 'm1'), makeCard('banner', 'm2')];
+    state.players.p1.deck = [makeCard('archer', 'd1'), makeCard('titan', 'd2'), makeCard('knight', 'd3')];
+
+    const next = applyAction(state, 'p1', { type: 'rerollMarket' })!;
+
+    expect(next.players.p1.coins).toBe(3 - MARKET_REROLL_COST);
+    // Les deux refusées repartent au fond, les deux cartes du dessus les remplacent.
+    expect(next.players.p1.market.map((c) => c.uid)).toEqual(['d3', 'd2']);
+    expect(next.players.p1.deck.map((c) => c.uid)).toEqual(['m1', 'm2', 'd1']);
+    expect(next.lastEvent).toEqual({
+      id: 1,
+      type: 'marketReroll',
+      seat: 'p1',
+      uids: ['d3', 'd2'],
+      cost: MARKET_REROLL_COST,
+    });
+  });
+
+  it('garde les cartes verrouillées, à leur place, et ne relance que les autres', () => {
+    let state = baseState({ phase: 'main' });
+    state.players.p1.coins = 5;
+    state.players.p1.market = [makeCard('rampart', 'm1'), makeCard('banner', 'm2'), makeCard('blessing', 'm3')];
+    state.players.p1.deck = [makeCard('archer', 'd1'), makeCard('titan', 'd2')];
+
+    state = applyAction(state, 'p1', { type: 'toggleMarketLock', uid: 'm2' })!;
+    const next = applyAction(state, 'p1', { type: 'rerollMarket' })!;
+
+    expect(next.players.p1.market.map((c) => c.uid)).toEqual(['d2', 'm2', 'd1']);
+    expect(next.players.p1.lockedUids).toEqual(['m2']);
+    expect(next.players.p1.coins).toBe(5 - MARKET_LOCK_COST - MARKET_REROLL_COST);
+  });
+
+  it('refuse sans pièce, sans deck, hors phase main et marché tout verrouillé', () => {
+    const broke = baseState({ phase: 'main' });
+    broke.players.p1.coins = 0;
+    broke.players.p1.market = [makeCard('rampart', 'm1')];
+    broke.players.p1.deck = [makeCard('archer', 'd1')];
+    expect(applyAction(broke, 'p1', { type: 'rerollMarket' })).toBeNull();
+
+    const noDeck = baseState({ phase: 'main' });
+    noDeck.players.p1.market = [makeCard('rampart', 'm1')];
+    noDeck.players.p1.deck = [];
+    expect(applyAction(noDeck, 'p1', { type: 'rerollMarket' })).toBeNull();
+
+    const notMain = baseState({ phase: 'start' });
+    notMain.players.p1.market = [makeCard('rampart', 'm1')];
+    notMain.players.p1.deck = [makeCard('archer', 'd1')];
+    expect(applyAction(notMain, 'p1', { type: 'rerollMarket' })).toBeNull();
+
+    const allLocked = baseState({ phase: 'main' });
+    allLocked.players.p1.market = [makeCard('rampart', 'm1')];
+    allLocked.players.p1.lockedUids = ['m1'];
+    allLocked.players.p1.deck = [makeCard('archer', 'd1')];
+    expect(applyAction(allLocked, 'p1', { type: 'rerollMarket' })).toBeNull();
+  });
+});
+
+describe('applyAction - toggleMarketLock', () => {
+  it('verrouiller coûte 1 pièce, déverrouiller est gratuit et ne rembourse pas', () => {
+    let state = baseState({ phase: 'main' });
+    state.players.p1.coins = 2;
+    state.players.p1.market = [makeCard('rampart', 'm1')];
+
+    state = applyAction(state, 'p1', { type: 'toggleMarketLock', uid: 'm1' })!;
+    expect(state.players.p1.coins).toBe(2 - MARKET_LOCK_COST);
+    expect(isMarketCardLocked(state.players.p1, 'm1')).toBe(true);
+    expect(state.lastEvent).toEqual({
+      id: 1,
+      type: 'marketLock',
+      seat: 'p1',
+      uid: 'm1',
+      locked: true,
+      cost: MARKET_LOCK_COST,
+    });
+
+    state = applyAction(state, 'p1', { type: 'toggleMarketLock', uid: 'm1' })!;
+    expect(state.players.p1.coins).toBe(2 - MARKET_LOCK_COST); // pas de remboursement
+    expect(state.players.p1.lockedUids).toEqual([]);
+    expect(state.lastEvent).toMatchObject({ type: 'marketLock', locked: false, cost: 0 });
+  });
+
+  it('refuse sans pièce, sur une carte hors marché et hors phase main', () => {
+    const broke = baseState({ phase: 'main' });
+    broke.players.p1.coins = 0;
+    broke.players.p1.market = [makeCard('rampart', 'm1')];
+    expect(applyAction(broke, 'p1', { type: 'toggleMarketLock', uid: 'm1' })).toBeNull();
+
+    const absent = baseState({ phase: 'main' });
+    absent.players.p1.market = [makeCard('rampart', 'm1')];
+    expect(applyAction(absent, 'p1', { type: 'toggleMarketLock', uid: 'nope' })).toBeNull();
+
+    const notMain = baseState({ phase: 'start' });
+    notMain.players.p1.market = [makeCard('rampart', 'm1')];
+    expect(applyAction(notMain, 'p1', { type: 'toggleMarketLock', uid: 'm1' })).toBeNull();
+  });
+
+  it('déverrouiller reste possible sans pièce', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.coins = 0;
+    state.players.p1.market = [makeCard('rampart', 'm1')];
+    state.players.p1.lockedUids = ['m1'];
+
+    const next = applyAction(state, 'p1', { type: 'toggleMarketLock', uid: 'm1' })!;
+
+    expect(next.players.p1.lockedUids).toEqual([]);
+    expect(next.players.p1.coins).toBe(0);
+  });
+
+  it('acheter une carte verrouillée libère son verrou sans rembourser', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.coins = 5;
+    state.players.p1.market = [makeCard('rampart', 'm1')];
+    state.players.p1.lockedUids = ['m1'];
+
+    const next = applyAction(state, 'p1', { type: 'buy', uid: 'm1' })!;
+
+    expect(next.players.p1.lockedUids).toEqual([]);
+    expect(next.players.p1.market).toEqual([]);
+    expect(next.players.p1.hand.map((c) => c.uid)).toEqual(['m1']);
+  });
+
+  it('une carte verrouillée traverse la fin du tour et ouvre le marché suivant', () => {
+    let state = baseState({ phase: 'main' });
+    state.players.p1.coins = 5;
+    state.players.p1.market = [makeCard('rampart', 'm1'), makeCard('banner', 'm2')];
+    state.players.p1.deck = [makeCard('archer', 'd1'), makeCard('titan', 'd2'), makeCard('knight', 'd3')];
+
+    state = applyAction(state, 'p1', { type: 'toggleMarketLock', uid: 'm1' })!;
+    state = applyAction(state, 'p1', { type: 'endTurn' })!;
+
+    // L'invendue non verrouillée est repartie au fond du deck, la verrouillée attend.
+    expect(state.players.p1.market.map((c) => c.uid)).toEqual(['m1']);
+    expect(state.players.p1.deck.map((c) => c.uid)).toEqual(['m2', 'd1', 'd2', 'd3']);
+
+    // Tour suivant de p1 : la carte gardée ouvre le marché, complété à MARKET_SIZE, et le
+    // verrou est consommé (le garder encore se repaie).
+    state.turn = 'p1';
+    state.phase = 'start';
+    state = applyAction(state, 'p1', { type: 'beginTurn' })!;
+
+    expect(state.players.p1.market.map((c) => c.uid)).toEqual(['m1', 'd3', 'd2']);
+    expect(state.players.p1.market).toHaveLength(MARKET_SIZE);
+    expect(state.players.p1.lockedUids).toEqual([]);
+  });
+
+  it('un marché entièrement verrouillé ne pioche rien au tour suivant', () => {
+    const state = baseState({ phase: 'start' });
+    state.players.p1.market = [makeCard('rampart', 'm1'), makeCard('banner', 'm2'), makeCard('blessing', 'm3')];
+    state.players.p1.lockedUids = ['m1', 'm2', 'm3'];
+    state.players.p1.deck = [makeCard('archer', 'd1')];
+
+    const next = applyAction(state, 'p1', { type: 'beginTurn' })!;
+
+    expect(next.players.p1.market.map((c) => c.uid)).toEqual(['m1', 'm2', 'm3']);
+    expect(next.players.p1.deck.map((c) => c.uid)).toEqual(['d1']);
   });
 });
 
@@ -1696,6 +1862,19 @@ describe('partie simulée (invariants)', () => {
         state = applyAction(state, seat, { type: 'beginTurn' })!;
       } else {
         // Phase main : le marché reste ouvert tout du long, le bot achète d'abord si possible.
+        // Une fois sur deux (parité de l'itération), le bot tente une relance puis un verrou
+        // avant d'acheter : les deux actions payantes du marché passent ainsi sous les
+        // invariants (60 cartes, uids uniques, pièces >= 0).
+        if (iterations % 2 === 0) {
+          const rerolled = applyAction(state, seat, { type: 'rerollMarket' });
+          if (rerolled) state = rerolled;
+          const first = state.players[seat].market[0];
+          if (first) {
+            const locked = applyAction(state, seat, { type: 'toggleMarketLock', uid: first.uid });
+            if (locked) state = locked;
+          }
+          checkInvariants(state);
+        }
         const affordable = state.players[seat].market.find((c) => getCardDef(c.cardId).cost <= state.players[seat].coins);
         if (affordable) {
           state = applyAction(state, seat, { type: 'buy', uid: affordable.uid })!;
