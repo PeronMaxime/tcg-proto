@@ -72,6 +72,11 @@ export const CARD_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9]*$/;
 // c'est ainsi qu'on déclare qu'une habileté ou un effet ne pèse rien dans l'équilibrage.
 export const MAX_POWER_WEIGHT = 99;
 
+// Plafond du coefficient de valeur d'un effet de capacité. Contrairement aux valeurs du
+// barème, il admet des décimales (un demi-point, une fois et demie) : c'est tout son intérêt
+// face au champ de puissance, qui ne prend que des entiers. 0 annule la capacité.
+export const MAX_POWER_COEFFICIENT = 9;
+
 export const MAX_COST = 99;
 export const MAX_STAT = 99;
 export const MAX_COPIES = 99;
@@ -93,6 +98,26 @@ function checkInt(
 ): number | null {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     errors.push(`${path} : entier attendu.`);
+    return null;
+  }
+  if (value < min || value > max) {
+    errors.push(`${path} : doit être compris entre ${min} et ${max}.`);
+    return null;
+  }
+  return value;
+}
+
+// Comme `checkInt`, mais pour une valeur qui admet des décimales (le coefficient de valeur).
+// On refuse quand même `NaN` et l'infini, qui contamineraient toute puissance calculée.
+function checkNumber(
+  value: unknown,
+  path: string,
+  min: number,
+  max: number,
+  errors: string[],
+): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    errors.push(`${path} : nombre attendu.`);
     return null;
   }
   if (value < min || value > max) {
@@ -346,6 +371,25 @@ function parsePowerWeights(raw: unknown, errors: string[]): PowerWeights | null 
         const weight = checkInt(value, `powerWeights.abilities.${key}`, 0, MAX_POWER_WEIGHT, errors);
         if (weight !== null) weights.abilities[effect] = weight;
       }
+    }
+  }
+
+  // `abilityCoefficients` reste absent tant qu'aucun coefficient n'a été réglé : un barème
+  // écrit avant cette fonctionnalité se relit tel quel, et on n'écrit pas une clé de plus
+  // dans le catalogue pour y stocker le coefficient neutre.
+  if (raw.abilityCoefficients !== undefined) {
+    if (!isRecord(raw.abilityCoefficients)) {
+      errors.push('powerWeights.abilityCoefficients : objet attendu.');
+    } else {
+      const coefficients: Partial<Record<AbilityEffect['type'], number>> = {};
+      for (const [key, value] of Object.entries(raw.abilityCoefficients)) {
+        const path = `powerWeights.abilityCoefficients.${key}`;
+        const effect = checkEnum(key, path, ABILITY_EFFECT_TYPES, errors);
+        if (effect === null) continue;
+        const coefficient = checkNumber(value, path, 0, MAX_POWER_COEFFICIENT, errors);
+        if (coefficient !== null) coefficients[effect] = coefficient;
+      }
+      if (Object.keys(coefficients).length > 0) weights.abilityCoefficients = coefficients;
     }
   }
 

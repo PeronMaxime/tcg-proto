@@ -93,6 +93,12 @@ export type CardDef = MonsterDef | EnchantmentDef;
 export interface PowerWeights {
   keywords: Partial<Record<Keyword, number>>;
   abilities: Partial<Record<AbilityEffect['type'], number>>;
+  // Coefficient de valeur d'un effet de capacité (demande utilisateur) : ce qui compte dans la
+  // puissance, c'est la valeur de l'effet MULTIPLIÉE par ce coefficient. Il donne un réglage
+  // fin là où la valeur entière ne suffit pas — un demi-point pour un effet à peine notable,
+  // le double pour un effet qui pèse plus que son barème ne le dit. Absent (ou barème
+  // d'avant cette fonctionnalité) = `POWER_COEFFICIENT`, c'est-à-dire 1 : neutre.
+  abilityCoefficients?: Partial<Record<AbilityEffect['type'], number>>;
 }
 
 // Catalogue complet : les cartes existantes et la composition du deck de départ. Éditable

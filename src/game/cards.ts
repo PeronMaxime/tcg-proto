@@ -331,12 +331,15 @@ export function isAbilityAllowed(def: CardDef, ability: CardAbility): boolean {
 // Barème : attaque + défense, plus la valeur de chaque habileté (mot-clé), de chaque
 // capacité et de l'aura. Les valeurs des habiletés et des capacités viennent du barème du
 // catalogue (`Catalog.powerWeights`, éditable dans l'onglet « Puissances » de l'admin) ; une
-// entrée absente vaut la valeur fixe ci-dessous, celle d'avant le barème.
+// entrée absente vaut la valeur fixe ci-dessous, celle d'avant le barème. Une capacité pèse
+// en plus son coefficient de valeur (`abilityPower`), neutre à 1 par défaut.
 // ---------------------------------------------------------------------------------------
 
 export const POWER_PER_KEYWORD = 2;
 export const POWER_PER_ABILITY = 1;
 export const POWER_PER_AURA = 1;
+// Coefficient neutre : un effet sans coefficient réglé pèse exactement sa valeur.
+export const POWER_COEFFICIENT = 1;
 
 // Valeur d'une habileté et d'un type d'effet de capacité selon un barème. `weights` absent
 // (catalogue d'avant le barème, ou barème incomplet) = valeur fixe historique.
@@ -346,6 +349,18 @@ export function keywordWeight(keyword: Keyword, weights?: PowerWeights): number 
 
 export function abilityWeight(effect: AbilityEffect['type'], weights?: PowerWeights): number {
   return weights?.abilities?.[effect] ?? POWER_PER_ABILITY;
+}
+
+export function abilityCoefficient(effect: AbilityEffect['type'], weights?: PowerWeights): number {
+  return weights?.abilityCoefficients?.[effect] ?? POWER_COEFFICIENT;
+}
+
+// Ce que pèse UNE capacité : sa valeur multipliée par son coefficient. Le coefficient admet
+// des décimales, pas la puissance affichée — un demi-point ne se lit pas sur une face de
+// carte : on arrondit donc capacité par capacité, et non sur le total, pour que le chiffre
+// annoncé pour une capacité reste le même quelles que soient les autres capacités de la carte.
+export function abilityPower(effect: AbilityEffect['type'], weights?: PowerWeights): number {
+  return Math.round(abilityWeight(effect, weights) * abilityCoefficient(effect, weights));
 }
 
 export interface CardPower {
@@ -366,7 +381,7 @@ export function cardPower(def: CardDef, weights: PowerWeights | undefined = acti
     ? (def.keywords ?? []).reduce((sum, keyword) => sum + keywordWeight(keyword, weights), 0)
     : 0;
   const abilities = (def.abilities ?? []).reduce(
-    (sum, ability) => sum + abilityWeight(ability.effect.type, weights),
+    (sum, ability) => sum + abilityPower(ability.effect.type, weights),
     0,
   );
   const aura = isMonster(def) && def.aura ? POWER_PER_AURA : 0;
