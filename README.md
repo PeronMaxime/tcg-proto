@@ -145,6 +145,15 @@ le détail des décisions. Résumé :
   l'élément d'un enchantement est purement visuel. Pendant la lecture du combat, un texte
   « Efficace ! » aux couleurs de l'élément qui frappe jaillit au-dessus du monstre qui encaisse
   un dégât augmenté (`EffectiveBurst.tsx`).
+- **Rareté** : chaque carte porte une rareté — commune, peu commune, rare ou légendaire
+  (`rarity` d'un `CardDef`, `CardRarity` dans `types.ts`). Elle n'entre dans **aucune règle**
+  (ni prix, ni tirage, ni combat) : c'est un repère de valeur, affiché sur la face par une
+  **gemme** taillée dans le coin haut-gauche de l'illustration et par le nom de la rareté
+  ajouté au bandeau de type (« Monstre · Rare »), aux couleurs de `theme.rarities`. Elle se
+  choisit carte par carte dans le panneau `/admin` (§4), qui permet aussi de filtrer la liste
+  par rareté. Une carte enregistrée avant cette fonctionnalité (catalogue figé dans une room
+  plus ancienne) n'en a pas : tout l'affichage passe par `cardRarity()` (`game/cards.ts`),
+  qui la range alors en commune.
 - Les enchantements posés appliquent un effet permanent à **tout le board de leur
   propriétaire** (`getMonsterStats` dans `rules.ts`) tant qu'ils restent en jeu.
 - **Capacités** (voir `PLAN-effets-triggers.md` pour le détail des décisions E1-E12) : certaines

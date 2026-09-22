@@ -38,6 +38,15 @@ export const theme = {
     air: { light: '#dff2ea', base: '#9ccbbd', badge: '#2f6c61', icon: '#f2fffb' },
     earth: { light: '#c9a877', base: '#96723f', badge: '#4a3416', icon: '#f0dcb0' },
   },
+  // Raretés (demande utilisateur) : couleurs de la gemme posée sur la face de la carte et du
+  // bandeau de type qui porte le nom de la rareté. `light`/`base`/`dark` sont les trois
+  // arrêts du dégradé de la gemme, `ink` le texte du bandeau sur fond sombre.
+  rarities: {
+    common: { light: '#eef2f7', base: '#aab4c2', dark: '#5d6674', ink: '#e4eaf2' },
+    uncommon: { light: '#c9f7cf', base: '#4fd67a', dark: '#1d6b39', ink: '#bdf3c9' },
+    rare: { light: '#cfe1ff', base: '#4f8cff', dark: '#1b3f8f', ink: '#cfe1ff' },
+    legendary: { light: '#fff1a8', base: '#f0a63c', dark: '#8a4a08', ink: '#ffdf9a' },
+  },
   // Illustrations des cartes (cardArt.ts) : décor et silhouettes selon l'élément.
   art: {
     fire: {

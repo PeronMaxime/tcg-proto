@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildStarterDeck,
+  cardRarity,
   findCardDef,
   getActiveCatalog,
   getCardDef,
@@ -81,5 +82,20 @@ describe('catalogue actif', () => {
     setActiveCatalog(CUSTOM);
     setActiveCatalog(DEFAULT_CATALOG);
     expect(getCardDef('squire').name).toBe('Écuyer');
+  });
+});
+
+describe('rareté', () => {
+  it('donne la rareté de la carte, « commune » quand elle n’en porte pas', () => {
+    expect(cardRarity(getCardDef('titan'))).toBe('legendary');
+    // `CUSTOM` est écrit sans `rarity`, comme un catalogue d'avant cette fonctionnalité.
+    setActiveCatalog(CUSTOM);
+    expect(cardRarity(getCardDef('testMonster'))).toBe('common');
+  });
+
+  it('chaque carte livrée avec le jeu porte une rareté explicite', () => {
+    for (const card of DEFAULT_CATALOG.cards) {
+      expect(card.rarity, card.id).toBeDefined();
+    }
   });
 });

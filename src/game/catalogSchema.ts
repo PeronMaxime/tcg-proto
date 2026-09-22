@@ -13,6 +13,7 @@ import type {
   CardAbility,
   CardDef,
   CardElement,
+  CardRarity,
   Catalog,
   EnchantmentEffect,
   Keyword,
@@ -23,6 +24,13 @@ import type {
 // TypeScript n'existe pas à l'exécution — mais `satisfies` garantit qu'elles restent en phase :
 // ajouter un membre à l'union sans l'ajouter ici ne compile pas.
 export const CARD_ELEMENTS = ['fire', 'water', 'air', 'earth'] as const satisfies readonly CardElement[];
+// Raretés, de la plus commune à la plus rare : cet ordre est celui des listes de l'admin.
+export const CARD_RARITIES = [
+  'common',
+  'uncommon',
+  'rare',
+  'legendary',
+] as const satisfies readonly CardRarity[];
 export const KEYWORDS = [
   'reach',
   'taunt',
@@ -221,6 +229,10 @@ export function parseCardDef(raw: unknown, path = 'carte'): ParseResult<CardDef>
   const name = checkName(raw.name, `${path}.name`, errors);
   const cost = checkInt(raw.cost, `${path}.cost`, 0, MAX_COST, errors);
   const element = checkEnum(raw.element, `${path}.element`, CARD_ELEMENTS, errors);
+  // Rareté absente = carte écrite avant les raretés (ou catalogue importé à la main) : on la
+  // range en « commune » plutôt que de refuser le catalogue, et on l'écrit explicitement pour
+  // que la carte ressorte complète de la validation.
+  const rarity = raw.rarity === undefined ? 'common' : checkEnum(raw.rarity, `${path}.rarity`, CARD_RARITIES, errors);
 
   const abilities: CardAbility[] = [];
   if (raw.abilities !== undefined) {
@@ -234,14 +246,14 @@ export function parseCardDef(raw: unknown, path = 'carte'): ParseResult<CardDef>
     }
   }
 
-  if (kind === null || id === null || name === null || cost === null || element === null) {
+  if (kind === null || id === null || name === null || cost === null || element === null || rarity === null) {
     return { ok: false, errors };
   }
 
   if (kind === 'enchantment') {
     const effect = parseEnchantmentEffect(raw.effect, `${path}.effect`, errors);
     if (effect === null || errors.length > 0) return { ok: false, errors };
-    const def: CardDef = { kind, id, name, cost, element, effect };
+    const def: CardDef = { kind, id, name, cost, element, rarity, effect };
     if (abilities.length > 0) def.abilities = abilities;
     checkAbilitiesAllowed(def, path, errors);
     if (errors.length > 0) return { ok: false, errors };
@@ -287,7 +299,7 @@ export function parseCardDef(raw: unknown, path = 'carte'): ParseResult<CardDef>
 
   if (attack === null || defense === null || errors.length > 0) return { ok: false, errors };
 
-  const def: CardDef = { kind, id, name, cost, element, attack, defense };
+  const def: CardDef = { kind, id, name, cost, element, rarity, attack, defense };
   if (aura) def.aura = aura;
   if (keywords.length > 0) def.keywords = keywords;
   if (abilities.length > 0) def.abilities = abilities;

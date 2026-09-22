@@ -75,6 +75,16 @@ describe('parseCardDef', () => {
     );
   });
 
+  it('range en « commune » une carte écrite avant les raretés, et refuse une rareté inconnue', () => {
+    // Une room ou un catalogue enregistré avant cette fonctionnalité n'a pas de `rarity` : la
+    // refuser rendrait ces cartes injouables, alors que la rareté n'entre dans aucune règle.
+    const parsed = parseCardDef(monster({ element: 'fire' }));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.rarity).toBe('common');
+    expect(parseCardDef(monster({ element: 'fire', rarity: 'mythique' })).ok).toBe(false);
+  });
+
   it("n'écrit pas les clés optionnelles vides, pour que Firestore ne stocke pas d'undefined", () => {
     const parsed = parseCardDef(monster({ element: 'fire', keywords: [], abilities: [] }));
     expect(parsed.ok).toBe(true);

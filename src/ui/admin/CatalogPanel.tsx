@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ELEMENT_LABELS, isMonster } from '../../game/cards';
-import type { CardDef, CardElement } from '../../game/types';
+import { ELEMENT_LABELS, RARITY_LABELS, cardRarity, isMonster } from '../../game/cards';
+import { CARD_RARITIES } from '../../game/catalogSchema';
+import type { CardDef, CardElement, CardRarity } from '../../game/types';
 import { hasCardArt } from '../../scene/cardArt';
 import CardEditor, { freshCard } from './CardEditor';
 import type { CatalogAdmin } from './useCatalogAdmin';
@@ -9,6 +10,7 @@ import type { CatalogAdmin } from './useCatalogAdmin';
 
 type KindFilter = 'all' | CardDef['kind'];
 type ElementFilter = 'all' | CardElement;
+type RarityFilter = 'all' | CardRarity;
 
 // Identifiant libre pour une carte neuve : `carte1`, `carte2`… Le format est contraint
 // (`CARD_ID_PATTERN`) parce que l'id sert aussi de clé dans le registre d'illustrations.
@@ -28,6 +30,7 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [elementFilter, setElementFilter] = useState<ElementFilter>('all');
+  const [rarityFilter, setRarityFilter] = useState<RarityFilter>('all');
 
   const catalog = admin.draft;
   const cards = catalog?.cards ?? [];
@@ -37,9 +40,10 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
       cards.filter(
         (card) =>
           (kindFilter === 'all' || card.kind === kindFilter) &&
-          (elementFilter === 'all' || card.element === elementFilter),
+          (elementFilter === 'all' || card.element === elementFilter) &&
+          (rarityFilter === 'all' || cardRarity(card) === rarityFilter),
       ),
-    [cards, kindFilter, elementFilter],
+    [cards, kindFilter, elementFilter, rarityFilter],
   );
 
   // La carte sélectionnée peut avoir été supprimée ou renommée : on retombe sur la première
@@ -116,6 +120,14 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
                 </option>
               ))}
             </select>
+            <select value={rarityFilter} onChange={(e) => setRarityFilter(e.target.value as RarityFilter)}>
+              <option value="all">Toutes les raretés</option>
+              {CARD_RARITIES.map((rarity) => (
+                <option key={rarity} value={rarity}>
+                  {RARITY_LABELS[rarity]}
+                </option>
+              ))}
+            </select>
           </div>
 
           <ul>
@@ -128,7 +140,7 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
                 >
                   <span className="admin-list-name">{card.name || '(sans nom)'}</span>
                   <span className="admin-list-meta">
-                    {ELEMENT_LABELS[card.element]} · {card.cost} ¤
+                    {ELEMENT_LABELS[card.element]} · {RARITY_LABELS[cardRarity(card)]} · {card.cost} ¤
                     {isMonster(card) ? ` · ${card.attack}/${card.defense}` : ' · ench.'}
                     {` · ×${catalog.starterCounts[card.id] ?? 0}`}
                   </span>

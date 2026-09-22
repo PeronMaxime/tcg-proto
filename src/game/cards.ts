@@ -5,6 +5,7 @@ import type {
   CardDef,
   CardElement,
   CardInstance,
+  CardRarity,
   Catalog,
   EnchantmentEffect,
   Keyword,
@@ -85,6 +86,25 @@ export const ELEMENT_LABELS: Record<CardElement, string> = {
 
 export function isElementEffective(from: CardElement, against: CardElement): boolean {
   return ELEMENT_BEATS[from] === against;
+}
+
+// ---------------------------------------------------------------------------------------
+// Raretés (demande utilisateur). Aucune règle de jeu n'en dépend : c'est une indication de
+// valeur affichée sur la face de la carte (gemme + bandeau de type) et dans l'admin.
+// ---------------------------------------------------------------------------------------
+
+export const RARITY_LABELS: Record<CardRarity, string> = {
+  common: 'Commune',
+  uncommon: 'Peu commune',
+  rare: 'Rare',
+  legendary: 'Légendaire',
+};
+
+// Rareté d'une carte, « commune » par défaut : `CardDef.rarity` est absente des cartes
+// écrites avant cette fonctionnalité (catalogue figé dans une room plus ancienne). Tout le
+// code d'affichage passe par ici plutôt que de lire `def.rarity` directement.
+export function cardRarity(def: CardDef): CardRarity {
+  return def.rarity ?? 'common';
 }
 
 // ---------------------------------------------------------------------------------------

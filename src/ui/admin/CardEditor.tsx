@@ -2,12 +2,15 @@ import {
   ELEMENT_LABELS,
   isMonster,
   KEYWORD_LABELS,
+  RARITY_LABELS,
   TRIGGER_LABELS,
+  cardRarity,
   describeKeywordEffect,
 } from '../../game/cards';
 import {
   ABILITY_EFFECT_TYPES,
   CARD_ELEMENTS,
+  CARD_RARITIES,
   ENCHANTMENT_EFFECT_TYPES,
   KEYWORDS,
   MAX_COPIES,
@@ -21,6 +24,7 @@ import type {
   CardAbility,
   CardDef,
   CardElement,
+  CardRarity,
   EnchantmentEffect,
   Keyword,
   MonsterDef,
@@ -72,7 +76,13 @@ function freshEnchantmentEffect(type: EnchantmentEffect['type']): EnchantmentEff
 }
 
 export function freshCard(kind: CardDef['kind'], id: string): CardDef {
-  const base = { id, name: 'Nouvelle carte', cost: 2, element: 'fire' as CardElement };
+  const base = {
+    id,
+    name: 'Nouvelle carte',
+    cost: 2,
+    element: 'fire' as CardElement,
+    rarity: 'common' as CardRarity,
+  };
   return kind === 'monster'
     ? { kind, ...base, attack: 1, defense: 1 }
     : { kind, ...base, effect: freshEnchantmentEffect('monsterBuff') };
@@ -258,7 +268,7 @@ function CardEditor({ def, copies, onChange, onCopiesChange, onRemove }: CardEdi
     // On repart d'une carte neuve du bon type en gardant l'identité et le coût : les champs
     // d'un monstre et d'un enchantement n'ont presque rien en commun.
     const fresh = freshCard(kind, def.id);
-    onChange({ ...fresh, name: def.name, cost: def.cost, element: def.element });
+    onChange({ ...fresh, name: def.name, cost: def.cost, element: def.element, rarity: cardRarity(def) });
   }
 
   function toggleKeyword(keyword: Keyword, on: boolean) {
@@ -312,6 +322,23 @@ function CardEditor({ def, copies, onChange, onCopiesChange, onRemove }: CardEdi
               {CARD_ELEMENTS.map((element) => (
                 <option key={element} value={element}>
                   {ELEMENT_LABELS[element]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label
+            className="admin-field"
+            title="Indication de valeur affichée sur la carte : elle n’entre dans aucune règle"
+          >
+            <span>Rareté</span>
+            <select
+              value={cardRarity(def)}
+              onChange={(e) => onChange({ ...def, rarity: e.target.value as CardRarity })}
+            >
+              {CARD_RARITIES.map((rarity) => (
+                <option key={rarity} value={rarity}>
+                  {RARITY_LABELS[rarity]}
                 </option>
               ))}
             </select>

@@ -38,6 +38,11 @@ import type { CardDef, Catalog } from './types';
 // des cartes existantes (Portée/Provocation/Protection/Négociant/Furie) et sur 5 nouvelles
 // cartes, deck porté à 60. Coûts ajustés par simulation (bots gloutons) pour que chaque
 // habileté reste payante sans dominer : voir le commentaire de chaque carte touchée.
+//
+// v13 : rareté (`CardRarity`) — demande utilisateur. Elle n'entre dans aucune règle : elle
+// s'affiche sur la face (gemme + bandeau de type) et sert de repère de valeur. Les raretés
+// livrées suivent la puissance/le coût : commune pour les petites cartes sans habileté,
+// légendaire pour le Titan et le Drake.
 
 const DEFAULT_CARDS: CardDef[] = [
   {
@@ -48,6 +53,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 1,
     defense: 2,
     element: 'air',
+    rarity: 'common',
     abilities: [{ trigger: 'summon', effect: { type: 'gainCoins', amount: 1 } }],
   },
   {
@@ -58,6 +64,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 3,
     defense: 1,
     element: 'earth',
+    rarity: 'common',
     abilities: [
       { trigger: 'attack', effect: { type: 'bonusDamage', amount: 2 } },
       { trigger: 'sold', effect: { type: 'healSelf', amount: 1 } },
@@ -71,6 +78,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 1,
     defense: 4,
     element: 'water',
+    rarity: 'uncommon',
     keywords: ['taunt'],
     abilities: [{ trigger: 'defend', effect: { type: 'shield', amount: 1 } }],
   },
@@ -82,6 +90,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 3,
     defense: 1,
     element: 'air',
+    rarity: 'uncommon',
     keywords: ['reach'], // v12 : sa flèche éclabousse les voisins de sa cible
     abilities: [{ trigger: 'summon', effect: { type: 'damageOpponent', amount: 1 } }],
   },
@@ -93,6 +102,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 4,
     defense: 4,
     element: 'fire',
+    rarity: 'rare',
     abilities: [
       { trigger: 'attack', effect: { type: 'buff', target: 'self', attack: 1, defense: 0 }, oncePerCombat: true },
     ],
@@ -105,6 +115,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 1,
     defense: 8,
     element: 'earth',
+    rarity: 'rare',
     keywords: ['protection'],
     abilities: [{ trigger: 'defend', effect: { type: 'damageOpponent', amount: 1 }, oncePerCombat: true }],
   },
@@ -116,6 +127,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 5,
     defense: 4,
     element: 'fire',
+    rarity: 'legendary',
     keywords: ['fury'], // v12 : 5 d'attaque déborde souvent sur le défenseur suivant
     abilities: [{ trigger: 'ko', effect: { type: 'healSelf', amount: 2 } }],
   },
@@ -127,6 +139,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 7,
     defense: 7,
     element: 'water',
+    rarity: 'legendary',
     aura: { attack: 1, defense: 1 }, // continu, comme un enchantement (demande utilisateur)
   },
   // Début du combat : ne se déclenche que si la carte combat (en attaque à ton tour, en défense
@@ -139,6 +152,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 1,
     defense: 3,
     element: 'earth',
+    rarity: 'uncommon',
     abilities: [{ trigger: 'combatStart', effect: { type: 'healSelf', amount: 1 } }],
   },
   {
@@ -149,6 +163,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 2,
     defense: 2,
     element: 'air',
+    rarity: 'rare',
     abilities: [{ trigger: 'combatStart', effect: { type: 'damageOpponent', amount: 1 } }],
   },
 
@@ -160,6 +175,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 2,
     defense: 2,
     element: 'water',
+    rarity: 'uncommon',
     keywords: ['merchant'], // v12 : revendu 2 pièces, il ne coûte que 1 pièce nette
     abilities: [{ trigger: 'summon', effect: { type: 'extraMarketCard', count: 1 } }],
   },
@@ -173,6 +189,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 2,
     defense: 2,
     element: 'water',
+    rarity: 'common',
     keywords: ['reach'],
   },
   {
@@ -183,6 +200,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 4,
     defense: 2,
     element: 'fire',
+    rarity: 'uncommon',
     keywords: ['fury'], // grosse attaque, peu de défense : il déborde une fois puis tombe
   },
   {
@@ -193,6 +211,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 2,
     defense: 5,
     element: 'water',
+    rarity: 'rare',
     keywords: ['taunt', 'protection'], // mur pur : il encaisse le premier coup puis bloque la file
   },
   {
@@ -203,6 +222,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 1,
     defense: 4,
     element: 'earth',
+    rarity: 'uncommon',
     keywords: ['toxic'],
   },
   {
@@ -213,6 +233,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 1,
     defense: 1,
     element: 'air',
+    rarity: 'common',
     keywords: ['toxic'], // échange à sens unique : elle tue une grosse carte et meurt à la riposte
   },
   {
@@ -223,6 +244,7 @@ const DEFAULT_CARDS: CardDef[] = [
     attack: 1,
     defense: 3,
     element: 'earth',
+    rarity: 'common',
     keywords: ['merchant'], // acheté 2, revendu 2 : un mur que l'on recycle sans perte
   },
 
@@ -232,6 +254,7 @@ const DEFAULT_CARDS: CardDef[] = [
     name: 'Étendard de guerre',
     cost: 2,
     element: 'fire',
+    rarity: 'common',
     effect: { type: 'monsterBuff', zone: 'attack', attack: 1, defense: 1 },
   },
   {
@@ -240,6 +263,7 @@ const DEFAULT_CARDS: CardDef[] = [
     name: 'Rempart',
     cost: 1, // riposte renforcée ; +1 défense (même à 2 ou 3 +1/+1) ne valait jamais son prix
     element: 'earth',
+    rarity: 'common',
     effect: { type: 'monsterBuff', zone: 'defense', attack: 1, defense: 0 },
   },
   {
@@ -248,6 +272,7 @@ const DEFAULT_CARDS: CardDef[] = [
     name: 'Trésorerie',
     cost: 2, // les parties sont courtes : à 3, elle n'était presque jamais rentabilisée
     element: 'water',
+    rarity: 'uncommon',
     effect: { type: 'coinsPerTurn', amount: 1 },
   },
   {
@@ -256,6 +281,7 @@ const DEFAULT_CARDS: CardDef[] = [
     name: 'Bénédiction',
     cost: 4,
     element: 'water',
+    rarity: 'rare',
     effect: { type: 'monsterBuff', zone: 'all', attack: 1, defense: 1 },
   },
 ];

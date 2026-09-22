@@ -47,11 +47,20 @@ export type CardElement = 'fire' | 'water' | 'air' | 'earth';
 // - `toxic`    Toxic : le moindre dégât infligé tue son opposant.
 export type Keyword = 'reach' | 'taunt' | 'protection' | 'merchant' | 'fury' | 'toxic';
 
+// Rareté d'une carte (demande utilisateur) : purement indicative pour l'instant — elle
+// n'entre dans aucune règle, elle se lit sur la face (gemme et bandeau de type) et sert à
+// ranger le catalogue dans le panneau d'administration.
+export type CardRarity = 'common' | 'uncommon' | 'rare' | 'legendary';
+
 interface CardDefBase {
   id: string;
   name: string;
   cost: number;
   element: CardElement; // détermine aussi la couleur de fond de la face (theme.elements)
+  // Rareté. Absente sur une carte écrite avant cette fonctionnalité (catalogue figé dans une
+  // room, document Firestore plus ancien) : à lire via `cardRarity()` de `cards.ts`, qui
+  // retombe sur « commune ». `catalogSchema.ts` l'écrit toujours à l'enregistrement.
+  rarity?: CardRarity;
   abilities?: CardAbility[]; // absent = pas de capacité (E1-E17)
 }
 

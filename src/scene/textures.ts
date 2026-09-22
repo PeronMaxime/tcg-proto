@@ -1,15 +1,17 @@
 import * as THREE from 'three';
 import {
+  cardRarity,
   describeAbility,
   describeAura,
   describeEffect,
   describeKeywordEffect,
   KEYWORD_LABELS,
+  RARITY_LABELS,
   scaleAbilityEffect,
   TRIGGER_LABELS,
 } from '../game/cards';
 import { GOLDEN_MULTIPLIER } from '../game/rules';
-import type { CardAbility, CardDef, CardElement, Keyword } from '../game/types';
+import type { CardAbility, CardDef, CardElement, CardRarity, Keyword } from '../game/types';
 import { ART_HEIGHT, ART_WIDTH, drawCardArt } from './cardArt';
 import { theme } from './theme';
 
@@ -349,22 +351,86 @@ function drawArtWindow(ctx: CanvasRenderingContext2D, def: CardDef): void {
   ctx.stroke();
 }
 
-// Petit bandeau de type (« Monstre », « Enchantement »…) à cheval sur le bas de l'illustration.
-function drawTypeBanner(ctx: CanvasRenderingContext2D, label: string, w: number, golden: boolean): void {
+// Petit bandeau de type (« Monstre · Rare », « Enchantement · Commune »…) à cheval sur le bas
+// de l'illustration : il porte aussi le nom de la rareté (demande utilisateur), et sa bordure
+// en prend la couleur. Un monstre doré garde ses ors, qui sont la marque de la fusion.
+function drawTypeBanner(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  w: number,
+  golden: boolean,
+  rarity: CardRarity,
+): void {
+  const palette = theme.rarities[rarity];
+  const text = `${label} · ${RARITY_LABELS[rarity]}`;
   const y = ART_Y + ART_HEIGHT - 11;
   ctx.font = `700 11px ${DISPLAY_FONT}`;
-  const width = Math.max(110, ctx.measureText(label).width + 36);
+  const width = Math.max(110, ctx.measureText(text).width + 36);
   roundedRectPath(ctx, w / 2 - width / 2, y, width, 20, 10);
   ctx.fillStyle = golden ? theme.colors.goldDark : 'rgba(15, 12, 10, 0.85)';
   ctx.fill();
   ctx.lineWidth = 1.5;
-  ctx.strokeStyle = golden ? theme.colors.goldLight : theme.colors.gold;
+  ctx.strokeStyle = golden ? theme.colors.goldLight : palette.base;
   ctx.stroke();
-  ctx.fillStyle = golden ? theme.colors.goldLight : '#f3e6c8';
+  ctx.fillStyle = golden ? theme.colors.goldLight : palette.ink;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, w / 2, y + 10.5);
+  ctx.fillText(text, w / 2, y + 10.5);
   ctx.textBaseline = 'alphabetic';
+}
+
+// Gemme de rareté (demande utilisateur), posée dans le coin haut-gauche de l'illustration :
+// elle donne la rareté d'un coup d'œil, de loin, quand le bandeau n'est plus lisible. Taillée
+// en losange à facettes, dans les couleurs de `theme.rarities` ; la légendaire rayonne. Ce
+// coin plutôt que le bas de l'illustration : le bandeau de type s'y étale jusqu'aux bords
+// quand le libellé est long (« ★ Monstre doré ★ · Légendaire ») et recouvrirait la gemme.
+function drawRarityGem(ctx: CanvasRenderingContext2D, rarity: CardRarity, cx: number, cy: number): void {
+  const palette = theme.rarities[rarity];
+  const halfWidth = 10;
+  const halfHeight = 13;
+  const shoulder = 5; // hauteur de la table, au-dessus de la ligne la plus large
+
+  if (rarity === 'legendary') {
+    const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, 26);
+    glow.addColorStop(0, 'rgba(255, 210, 110, 0.55)');
+    glow.addColorStop(1, 'rgba(255, 210, 110, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 26, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const gem = () => {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - halfHeight);
+    ctx.lineTo(cx + halfWidth, cy - shoulder);
+    ctx.lineTo(cx, cy + halfHeight);
+    ctx.lineTo(cx - halfWidth, cy - shoulder);
+    ctx.closePath();
+  };
+
+  const body = ctx.createLinearGradient(cx - halfWidth, cy - halfHeight, cx + halfWidth, cy + halfHeight);
+  body.addColorStop(0, palette.light);
+  body.addColorStop(0.5, palette.base);
+  body.addColorStop(1, palette.dark);
+  gem();
+  ctx.fillStyle = body;
+  ctx.fill();
+
+  // Facette claire de la moitié gauche : sans elle, la gemme est un simple losange plat.
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - halfHeight);
+  ctx.lineTo(cx, cy + halfHeight);
+  ctx.lineTo(cx - halfWidth, cy - shoulder);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+  ctx.fill();
+
+  gem();
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(20, 16, 10, 0.75)';
+  ctx.stroke();
 }
 
 // Petit logo vectoriel de l'élément (tracés Canvas, aucune police ni image : D5), centré sur
@@ -535,6 +601,7 @@ export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null)
   const cached = faceCache.get(key);
   if (cached) return cached;
 
+  const rarity = cardRarity(def);
   const texture = makeTexture((ctx, w, h) => {
     if (def.kind === 'enchantment') {
       drawFrame(ctx, def.element, w, h, false);
@@ -542,7 +609,8 @@ export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null)
       drawNamePlate(ctx, def.name, w);
       drawCostCoin(ctx, 32, 34, def.cost);
       drawElementBadge(ctx, def.element, w - 32, 34);
-      drawTypeBanner(ctx, 'Enchantement', w, false);
+      drawTypeBanner(ctx, 'Enchantement', w, false, rarity);
+      drawRarityGem(ctx, rarity, ART_X + 18, ART_Y + 20);
 
       // Effet permanent, puis capacités (déclencheur → effet) (§6.1).
       const paragraphs: TextRun[][] = [
@@ -559,7 +627,8 @@ export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null)
     drawNamePlate(ctx, def.name, w);
     drawCostCoin(ctx, 32, 34, def.cost);
     drawElementBadge(ctx, def.element, w - 32, 34);
-    drawTypeBanner(ctx, golden ? '★ Monstre doré ★' : 'Monstre', w, golden);
+    drawTypeBanner(ctx, golden ? '★ Monstre doré ★' : 'Monstre', w, golden, rarity);
+    drawRarityGem(ctx, rarity, ART_X + 18, ART_Y + 20);
 
     // Habiletés, puis aura, puis capacités. Monstre doré : valeurs affichées doublées, comme
     // elles se résolvent (Portée n'est pas doublée mais gagne 1 dégât, `describeKeywordEffect`).
