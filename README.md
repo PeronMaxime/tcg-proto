@@ -148,8 +148,11 @@ le détail des décisions. Résumé :
 - **Rareté** : chaque carte porte une rareté — commune, peu commune, rare ou légendaire
   (`rarity` d'un `CardDef`, `CardRarity` dans `types.ts`). Elle n'entre dans **aucune règle**
   (ni prix, ni tirage, ni combat) : c'est un repère de valeur, affiché sur la face par une
-  **gemme** taillée dans le coin haut-gauche de l'illustration et par le nom de la rareté
-  ajouté au bandeau de type (« Monstre · Rare »), aux couleurs de `theme.rarities`. Elle se
+  **gemme** taillée, posée en bas au centre de la carte, et par le **cadre de l'illustration**,
+  de plus en plus travaillé à mesure que la rareté monte — commune : le filet d'or d'origine ;
+  peu commune : un liseré intérieur vert ; rare : un cadre métallique bleu clouté aux quatre
+  coins ; légendaire : un cadre d'or épais qui rayonne, doublé de deux filets et serti de
+  gemmes (`drawArtBorder` et `theme.rarities`). Le bandeau de type n'en porte pas le nom. Elle se
   choisit carte par carte dans le panneau `/admin` (§4), qui permet aussi de filtrer la liste
   par rareté. Une carte enregistrée avant cette fonctionnalité (catalogue figé dans une room
   plus ancienne) n'en a pas : tout l'affichage passe par `cardRarity()` (`game/cards.ts`),
