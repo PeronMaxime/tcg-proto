@@ -321,3 +321,32 @@ export function isAbilityAllowed(def: CardDef, ability: CardAbility): boolean {
       return true;
   }
 }
+
+// ---------------------------------------------------------------------------------------
+// Puissance d'une carte (demande utilisateur). Indicateur d'équilibrage affiché dans le
+// panneau d'administration UNIQUEMENT : aucune règle de jeu ne le lit, rien n'est stocké
+// dans le catalogue — il se recalcule depuis la définition à chaque affichage.
+//
+// Barème : attaque + défense, une habileté (mot-clé) vaut 2 points, une capacité ou une
+// aura en vaut 1.
+// ---------------------------------------------------------------------------------------
+
+export const POWER_PER_KEYWORD = 2;
+export const POWER_PER_ABILITY = 1;
+export const POWER_PER_AURA = 1;
+
+export interface CardPower {
+  total: number;
+  stats: number; // attaque + défense (0 pour un enchantement, qui ne combat pas)
+  keywords: number;
+  abilities: number;
+  aura: number;
+}
+
+export function cardPower(def: CardDef): CardPower {
+  const stats = isMonster(def) ? def.attack + def.defense : 0;
+  const keywords = isMonster(def) ? (def.keywords?.length ?? 0) * POWER_PER_KEYWORD : 0;
+  const abilities = (def.abilities?.length ?? 0) * POWER_PER_ABILITY;
+  const aura = isMonster(def) && def.aura ? POWER_PER_AURA : 0;
+  return { total: stats + keywords + abilities + aura, stats, keywords, abilities, aura };
+}

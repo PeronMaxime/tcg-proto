@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildStarterDeck,
+  cardPower,
   cardRarity,
   findCardDef,
   getActiveCatalog,
@@ -97,5 +98,48 @@ describe('rareté', () => {
     for (const card of DEFAULT_CATALOG.cards) {
       expect(card.rarity, card.id).toBeDefined();
     }
+  });
+});
+
+describe('puissance', () => {
+  it('additionne attaque et défense, 2 points par habileté, 1 par capacité', () => {
+    // Golem de pierre : 1/8, habileté Protection, une capacité → 9 + 2 + 1 = 12.
+    expect(cardPower(getCardDef('golem'))).toEqual({
+      total: 12,
+      stats: 9,
+      keywords: 2,
+      abilities: 1,
+      aura: 0,
+    });
+  });
+
+  it('compte l’aura pour un point', () => {
+    setActiveCatalog({
+      ...CUSTOM,
+      cards: [
+        {
+          kind: 'monster',
+          id: 'aurique',
+          name: 'Aurique',
+          cost: 3,
+          element: 'air',
+          attack: 2,
+          defense: 3,
+          aura: { attack: 1, defense: 1 },
+        },
+      ],
+    });
+    expect(cardPower(getCardDef('aurique'))).toMatchObject({ total: 6, stats: 5, aura: 1 });
+  });
+
+  it('un enchantement n’a ni stats ni habileté : seules ses capacités comptent', () => {
+    // Étendard de guerre : son effet continu n'est pas une capacité, il ne vaut donc rien ici.
+    expect(cardPower(getCardDef('banner'))).toEqual({
+      total: 0,
+      stats: 0,
+      keywords: 0,
+      abilities: 0,
+      aura: 0,
+    });
   });
 });

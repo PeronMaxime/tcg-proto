@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ELEMENT_LABELS, RARITY_LABELS, cardRarity, isMonster } from '../../game/cards';
+import { ELEMENT_LABELS, RARITY_LABELS, cardPower, cardRarity, isMonster } from '../../game/cards';
 import { CARD_RARITIES } from '../../game/catalogSchema';
 import type { CardDef, CardElement, CardRarity } from '../../game/types';
 import { hasCardArt } from '../../scene/cardArt';
@@ -142,7 +142,7 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
                   <span className="admin-list-meta">
                     {ELEMENT_LABELS[card.element]} · {RARITY_LABELS[cardRarity(card)]} · {card.cost} ¤
                     {isMonster(card) ? ` · ${card.attack}/${card.defense}` : ' · ench.'}
-                    {` · ×${catalog.starterCounts[card.id] ?? 0}`}
+                    {` · ×${catalog.starterCounts[card.id] ?? 0} · P${cardPower(card).total}`}
                   </span>
                   {!hasCardArt(card.id) && <span className="admin-list-badge">sans illustration</span>}
                 </button>

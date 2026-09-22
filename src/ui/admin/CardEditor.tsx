@@ -2,8 +2,12 @@ import {
   ELEMENT_LABELS,
   isMonster,
   KEYWORD_LABELS,
+  POWER_PER_ABILITY,
+  POWER_PER_AURA,
+  POWER_PER_KEYWORD,
   RARITY_LABELS,
   TRIGGER_LABELS,
+  cardPower,
   cardRarity,
   describeKeywordEffect,
 } from '../../game/cards';
@@ -240,6 +244,35 @@ function AbilityRow({ ability, kind, onChange, onRemove }: AbilityRowProps) {
           Une seule fois par combat
         </label>
       </div>
+    </div>
+  );
+}
+
+// Puissance de la carte en cours d'édition, avec le détail du calcul. Purement indicatif :
+// c'est un repère d'équilibrage pour l'admin, rien n'est stocké et aucune règle ne le lit
+// (le barème vit dans `cards.ts`, `cardPower`).
+function PowerSummary({ def }: { def: CardDef }) {
+  const power = cardPower(def);
+  const parts: string[] = [];
+  if (isMonster(def)) parts.push(`${def.attack} attaque + ${def.defense} défense`);
+  if (power.keywords > 0) {
+    const count = power.keywords / POWER_PER_KEYWORD;
+    parts.push(`${count} ${count > 1 ? 'habiletés' : 'habileté'} × ${POWER_PER_KEYWORD}`);
+  }
+  if (power.abilities > 0) {
+    const count = power.abilities / POWER_PER_ABILITY;
+    parts.push(`${count} ${count > 1 ? 'capacités' : 'capacité'} × ${POWER_PER_ABILITY}`);
+  }
+  if (power.aura > 0) parts.push(`aura × ${POWER_PER_AURA}`);
+
+  return (
+    <div
+      className="admin-power"
+      title="Attaque + défense, 2 points par habileté, 1 point par capacité ou aura. Indicatif : aucune règle ne s’en sert."
+    >
+      <span className="admin-power-label">Puissance</span>
+      <span className="admin-power-value">{power.total}</span>
+      <span className="admin-power-detail">{parts.length > 0 ? parts.join(' + ') : 'aucun point'}</span>
     </div>
   );
 }
@@ -526,6 +559,7 @@ function CardEditor({ def, copies, onChange, onCopiesChange, onRemove }: CardEdi
 
       <div className="admin-editor-side">
         <CardPreview def={def} />
+        <PowerSummary def={def} />
       </div>
     </div>
   );
