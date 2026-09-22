@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ELEMENT_LABELS,
   KEYWORD_LABELS,
@@ -18,7 +18,11 @@ import type { CatalogAdmin } from './useCatalogAdmin';
 // Récapitulatif de tout le catalogue en un tableau : une ligne par carte, une colonne par
 // caractéristique. Onglet de LECTURE — on ne modifie rien ici, c'est la vue d'ensemble qui
 // manque à l'onglet « Cartes », où l'on ne voit qu'une carte à la fois. Filtres en haut, tri
-// en cliquant sur un en-tête.
+// en cliquant sur un en-tête, et colonnes réordonnables en les faisant glisser.
+//
+// L'ordre des colonnes est une préférence d'affichage, pas une donnée du catalogue : il vit
+// dans le `localStorage` du navigateur (`COLUMN_ORDER_KEY`) et non dans le catalogue partagé,
+// pour que chacun garde sa disposition sans la pousser aux autres au prochain enregistrement.
 
 type KindFilter = 'all' | CardDef['kind'];
 type ElementFilter = 'all' | CardElement;
@@ -40,7 +44,16 @@ type SortKey =
   | 'abilities'
   | 'power';
 
-const COLUMNS: { key: SortKey; label: string; numeric?: true }[] = [
+interface Column {
+  key: SortKey;
+  label: string;
+  numeric?: true;
+}
+
+// Ordre par défaut, et seule source des colonnes qui existent : une disposition relue du
+// stockage est filtrée contre ces clés, donc renommer ou retirer une colonne ici suffit — les
+// dispositions enregistrées s'y recalent d'elles-mêmes.
+const COLUMNS: Column[] = [
   { key: 'name', label: 'Nom' },
   { key: 'cost', label: 'Coût', numeric: true },
   { key: 'kind', label: 'Type' },
@@ -53,6 +66,53 @@ const COLUMNS: { key: SortKey; label: string; numeric?: true }[] = [
   { key: 'abilities', label: 'Capacités' },
   { key: 'power', label: 'Puissance', numeric: true },
 ];
+
+const DEFAULT_ORDER: SortKey[] = COLUMNS.map((column) => column.key);
+const COLUMN_ORDER_KEY = 'tcg-admin:cards-table-columns';
+
+// Une disposition relue doit rester utilisable telle quelle : on ne garde que des clés
+// connues, sans doublon, puis on ajoute à la fin les colonnes apparues depuis. Une valeur
+// illisible (ou un `localStorage` indisponible) retombe donc sur l'ordre par défaut complet.
+function normalizeOrder(raw: unknown): SortKey[] {
+  const known = new Set<string>(DEFAULT_ORDER);
+  const seen = new Set<SortKey>();
+  const order: SortKey[] = [];
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      if (typeof entry !== 'string' || !known.has(entry)) continue;
+      const key = entry as SortKey;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      order.push(key);
+    }
+  }
+  for (const key of DEFAULT_ORDER) if (!seen.has(key)) order.push(key);
+  return order;
+}
+
+function readStoredOrder(): SortKey[] {
+  try {
+    const raw = localStorage.getItem(COLUMN_ORDER_KEY);
+    return normalizeOrder(raw === null ? null : JSON.parse(raw));
+  } catch {
+    return [...DEFAULT_ORDER];
+  }
+}
+
+// Déplace la colonne `from` à la place de celle sur laquelle on l'a lâchée (`to`), en gardant
+// tout le reste dans l'ordre. Le côté dépend du sens du geste : glisser vers la droite dépose
+// APRÈS la colonne visée, vers la gauche AVANT. Sans ça, tirer une colonne jusqu'au bout du
+// tableau la laisserait en avant-dernière position, ce qui rend le déplacement impossible à
+// terminer. Lâcher une colonne sur elle-même ne change rien.
+function moveColumn(order: SortKey[], from: SortKey, to: SortKey): SortKey[] {
+  if (from === to) return order;
+  const rightwards = order.indexOf(from) < order.indexOf(to);
+  const next = order.filter((key) => key !== from);
+  const at = next.indexOf(to);
+  if (at === -1) return order;
+  next.splice(rightwards ? at + 1 : at, 0, from);
+  return next;
+}
 
 function sortValue(card: CardDef, key: SortKey): string | number {
   switch (key) {
@@ -90,6 +150,55 @@ function abilityLines(card: CardDef): string[] {
   return lines;
 }
 
+// Contenu d'une cellule, par colonne. Séparé du rendu du tableau parce que l'ordre des
+// colonnes n'est plus connu à l'écriture : chaque `<td>` demande ici quoi afficher au lieu
+// d'être écrit en dur à sa place.
+function renderCell(card: CardDef, key: SortKey) {
+  const empty = <span className="admin-table-empty">—</span>;
+  switch (key) {
+    case 'name':
+      return card.name || '(sans nom)';
+    case 'cost':
+      return card.cost;
+    case 'kind':
+      return isMonster(card) ? 'Monstre' : 'Enchantement';
+    case 'element':
+      return ELEMENT_LABELS[card.element];
+    case 'attack':
+      return isMonster(card) ? card.attack : '—';
+    case 'defense':
+      return isMonster(card) ? card.defense : '—';
+    case 'rarity':
+      return RARITY_LABELS[cardRarity(card)];
+    case 'keywords': {
+      const keywords = isMonster(card) ? (card.keywords ?? []) : [];
+      if (keywords.length === 0) return empty;
+      return (
+        <ul className="admin-table-list">
+          {keywords.map((keyword) => (
+            <li key={keyword}>{KEYWORD_LABELS[keyword]}</li>
+          ))}
+        </ul>
+      );
+    }
+    case 'aura':
+      return isMonster(card) && card.aura ? describeAura(card.aura) : empty;
+    case 'abilities': {
+      const lines = abilityLines(card);
+      if (lines.length === 0) return empty;
+      return (
+        <ul className="admin-table-list">
+          {lines.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      );
+    }
+    case 'power':
+      return cardPower(card).total;
+  }
+}
+
 interface CardsTableProps {
   admin: CatalogAdmin;
 }
@@ -101,6 +210,27 @@ function CardsTable({ admin }: CardsTableProps) {
   const [rarityFilter, setRarityFilter] = useState<RarityFilter>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [ascending, setAscending] = useState(true);
+  const [order, setOrder] = useState<SortKey[]>(readStoredOrder);
+  // Colonne en cours de déplacement, et celle survolée : elles ne servent qu'au retour visuel
+  // pendant le glisser, l'ordre réel ne change qu'au lâcher.
+  const [dragged, setDragged] = useState<SortKey | null>(null);
+  const [dropTarget, setDropTarget] = useState<SortKey | null>(null);
+
+  // L'ordre se réenregistre à chaque changement : rouvrir l'onglet (ou l'appli) retrouve la
+  // disposition. Un stockage refusé (navigation privée) ne doit pas casser la vue.
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLUMN_ORDER_KEY, JSON.stringify(order));
+    } catch {
+      // Pas de stockage : la disposition ne vivra que le temps de la session.
+    }
+  }, [order]);
+
+  const columns = useMemo(
+    () => order.map((key) => COLUMNS.find((column) => column.key === key)!),
+    [order],
+  );
+  const isDefaultOrder = order.every((key, at) => key === DEFAULT_ORDER[at]);
 
   const cards = admin.draft?.cards ?? [];
 
@@ -118,11 +248,11 @@ function CardsTable({ admin }: CardsTableProps) {
       const left = sortValue(a, sortKey);
       const right = sortValue(b, sortKey);
       if (left === right) return a.name.localeCompare(b.name);
-      const order =
+      const direction =
         typeof left === 'number' && typeof right === 'number'
           ? left - right
           : String(left).localeCompare(String(right));
-      return ascending ? order : -order;
+      return ascending ? direction : -direction;
     });
   }, [cards, search, kindFilter, elementFilter, rarityFilter, sortKey, ascending]);
 
@@ -135,15 +265,30 @@ function CardsTable({ admin }: CardsTableProps) {
     }
   }
 
+  // Glisser-déposer des en-têtes : l'ordre ne bouge qu'au lâcher, sur la colonne survolée.
+  function dropOn(target: SortKey) {
+    if (dragged) setOrder((current) => moveColumn(current, dragged, target));
+    setDragged(null);
+    setDropTarget(null);
+  }
+
   if (!admin.draft) return null;
 
   return (
     <div className="admin-panel">
       <AdminHeader
         title="Récapitulatif"
-        summary={`${rows.length} carte${rows.length > 1 ? 's' : ''} affichée${rows.length > 1 ? 's' : ''} sur ${cards.length} · clique un en-tête pour trier`}
+        summary={`${rows.length} carte${rows.length > 1 ? 's' : ''} affichée${rows.length > 1 ? 's' : ''} sur ${cards.length} · clique un en-tête pour trier, glisse-le pour déplacer la colonne`}
         admin={admin}
-      />
+      >
+        <button
+          type="button"
+          disabled={isDefaultOrder}
+          onClick={() => setOrder([...DEFAULT_ORDER])}
+        >
+          Rétablir l’ordre des colonnes
+        </button>
+      </AdminHeader>
 
       <div className="admin-filters admin-filters-bar">
         <input
@@ -179,13 +324,54 @@ function CardsTable({ admin }: CardsTableProps) {
         <table className="admin-table">
           <thead>
             <tr>
-              {COLUMNS.map((column) => (
+              {columns.map((column) => (
                 <th
                   key={column.key}
-                  className={column.numeric ? 'is-numeric' : undefined}
+                  className={[
+                    column.numeric ? 'is-numeric' : '',
+                    'is-draggable',
+                    dragged === column.key ? 'is-dragging' : '',
+                    dragged && dropTarget === column.key && dragged !== column.key
+                      ? order.indexOf(dragged) < order.indexOf(column.key)
+                        ? 'is-drop-after'
+                        : 'is-drop-before'
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   aria-sort={sortKey === column.key ? (ascending ? 'ascending' : 'descending') : 'none'}
+                  draggable
+                  onDragStart={(e) => {
+                    setDragged(column.key);
+                    // Firefox n'émet pas de `dragstart` utilisable sans charge utile.
+                    e.dataTransfer.setData('text/plain', column.key);
+                    e.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onDragOver={(e) => {
+                    if (!dragged) return;
+                    e.preventDefault(); // sans ça le navigateur refuse le lâcher
+                    e.dataTransfer.dropEffect = 'move';
+                    setDropTarget(column.key);
+                  }}
+                  onDragLeave={() => setDropTarget((current) => (current === column.key ? null : current))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    dropOn(column.key);
+                  }}
+                  onDragEnd={() => {
+                    setDragged(null);
+                    setDropTarget(null);
+                  }}
                 >
-                  <button type="button" className="admin-table-sort" onClick={() => toggleSort(column.key)}>
+                  <button
+                    type="button"
+                    className="admin-table-sort"
+                    title={`${column.label} — clique pour trier, glisse pour déplacer la colonne`}
+                    onClick={() => toggleSort(column.key)}
+                  >
+                    <span className="admin-table-grip" aria-hidden="true">
+                      ⠿
+                    </span>
                     {column.label}
                     {sortKey === column.key && <span aria-hidden="true">{ascending ? ' ▲' : ' ▼'}</span>}
                   </button>
@@ -194,54 +380,18 @@ function CardsTable({ admin }: CardsTableProps) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((card) => {
-              const keywords = isMonster(card) ? (card.keywords ?? []) : [];
-              const abilities = abilityLines(card);
-              return (
-                <tr key={card.id}>
-                  <td>{card.name || '(sans nom)'}</td>
-                  <td className="is-numeric">{card.cost}</td>
-                  <td>{isMonster(card) ? 'Monstre' : 'Enchantement'}</td>
-                  <td>{ELEMENT_LABELS[card.element]}</td>
-                  <td className="is-numeric">{isMonster(card) ? card.attack : '—'}</td>
-                  <td className="is-numeric">{isMonster(card) ? card.defense : '—'}</td>
-                  <td>{RARITY_LABELS[cardRarity(card)]}</td>
-                  <td>
-                    {keywords.length === 0 ? (
-                      <span className="admin-table-empty">—</span>
-                    ) : (
-                      <ul className="admin-table-list">
-                        {keywords.map((keyword) => (
-                          <li key={keyword}>{KEYWORD_LABELS[keyword]}</li>
-                        ))}
-                      </ul>
-                    )}
+            {rows.map((card) => (
+              <tr key={card.id}>
+                {columns.map((column) => (
+                  <td key={column.key} className={column.numeric ? 'is-numeric' : undefined}>
+                    {renderCell(card, column.key)}
                   </td>
-                  <td>
-                    {isMonster(card) && card.aura ? (
-                      describeAura(card.aura)
-                    ) : (
-                      <span className="admin-table-empty">—</span>
-                    )}
-                  </td>
-                  <td>
-                    {abilities.length === 0 ? (
-                      <span className="admin-table-empty">—</span>
-                    ) : (
-                      <ul className="admin-table-list">
-                        {abilities.map((line) => (
-                          <li key={line}>{line}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </td>
-                  <td className="is-numeric">{cardPower(card).total}</td>
-                </tr>
-              );
-            })}
+                ))}
+              </tr>
+            ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={COLUMNS.length} className="admin-table-empty">
+                <td colSpan={columns.length} className="admin-table-empty">
                   Aucune carte pour ce filtre.
                 </td>
               </tr>

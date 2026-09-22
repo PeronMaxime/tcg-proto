@@ -77,47 +77,46 @@ function CatalogStats({ admin }: CatalogStatsProps) {
 
         <section>
           <h2>Raretés, élément par élément</h2>
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Élément</th>
-                {CARD_RARITIES.map((rarity) => (
-                  <th key={rarity} className="is-numeric">
-                    {RARITY_LABELS[rarity]}
-                  </th>
-                ))}
-                <th className="is-numeric">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {CARD_ELEMENTS.map((element) => (
-                <tr key={element}>
-                  <td>{ELEMENT_LABELS[element]}</td>
+          {/* Une carte par élément plutôt qu'un tableau croisé (demande utilisateur) : chaque
+              élément porte son propre décompte de raretés, ce qui se lit d'un bloc au lieu de
+              suivre une ligne du regard. La dernière carte totalise tout le catalogue. */}
+          <div className="admin-stat-cards">
+            {CARD_ELEMENTS.map((element) => (
+              <div key={element} className="admin-rarity-card">
+                <div className="admin-rarity-card-head">
+                  <span className="admin-stat-label">{ELEMENT_LABELS[element]}</span>
+                  <span className="admin-rarity-card-total">{counts.byElement[element]}</span>
+                </div>
+                <dl className="admin-rarity-list">
                   {CARD_RARITIES.map((rarity) => (
-                    <td key={rarity} className="is-numeric">
-                      {counts.grid[element][rarity] === 0 ? (
-                        <span className="admin-table-empty">0</span>
-                      ) : (
-                        counts.grid[element][rarity]
-                      )}
-                    </td>
+                    <div key={rarity} className={`admin-rarity-row is-${rarity}`}>
+                      <dt>{RARITY_LABELS[rarity]}</dt>
+                      <dd className={counts.grid[element][rarity] === 0 ? 'admin-table-empty' : undefined}>
+                        {counts.grid[element][rarity]}
+                      </dd>
+                    </div>
                   ))}
-                  <td className="is-numeric">{counts.byElement[element]}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td>Toutes</td>
+                </dl>
+              </div>
+            ))}
+
+            <div className="admin-rarity-card is-total">
+              <div className="admin-rarity-card-head">
+                <span className="admin-stat-label">Tous éléments</span>
+                <span className="admin-rarity-card-total">{counts.total}</span>
+              </div>
+              <dl className="admin-rarity-list">
                 {CARD_RARITIES.map((rarity) => (
-                  <td key={rarity} className="is-numeric">
-                    {counts.byRarity[rarity]}
-                  </td>
+                  <div key={rarity} className={`admin-rarity-row is-${rarity}`}>
+                    <dt>{RARITY_LABELS[rarity]}</dt>
+                    <dd className={counts.byRarity[rarity] === 0 ? 'admin-table-empty' : undefined}>
+                      {counts.byRarity[rarity]}
+                    </dd>
+                  </div>
                 ))}
-                <td className="is-numeric">{counts.total}</td>
-              </tr>
-            </tfoot>
-          </table>
+              </dl>
+            </div>
+          </div>
         </section>
       </div>
     </div>

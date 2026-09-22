@@ -1655,6 +1655,38 @@ button {
   color: var(--color-text);
 }
 
+/* Colonnes déplaçables du récapitulatif : l'en-tête entier est la poignée, le bouton de tri
+   reste cliquable par-dessus. La poignée ⠿ ne s'affiche qu'au survol pour ne pas alourdir un
+   en-tête qu'on lit surtout, et la colonne visée pendant le glisser porte un trait d'accent
+   sur son bord gauche — c'est là que la colonne déplacée viendra s'insérer. */
+.admin-table th.is-draggable {
+  cursor: grab;
+}
+
+.admin-table th.is-draggable .admin-table-grip {
+  display: inline-block;
+  width: 0.9em;
+  margin-right: 0.15rem;
+  opacity: 0;
+  cursor: grab;
+}
+
+.admin-table th.is-draggable:hover .admin-table-grip {
+  opacity: 0.6;
+}
+
+.admin-table th.is-dragging {
+  opacity: 0.45;
+}
+
+.admin-table th.is-drop-before {
+  box-shadow: inset 2px 0 0 0 var(--color-accent);
+}
+
+.admin-table th.is-drop-after {
+  box-shadow: inset -2px 0 0 0 var(--color-accent);
+}
+
 .admin-table-list {
   margin: 0;
   padding-left: 1rem;
@@ -1721,6 +1753,92 @@ button {
 .admin-stat-detail {
   font-size: 0.72rem;
   color: var(--color-text-dim);
+}
+
+/* Une carte par élément, avec son décompte de raretés à l'intérieur : même gabarit que
+   `.admin-stat-card` (bordure, coins, largeur mini) pour que les deux rangées de l'onglet
+   « Chiffres » se lisent comme une seule famille de blocs. */
+.admin-rarity-card {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  min-width: 11rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* La carte du total se distingue par un fond, pas par une couleur de texte : elle reste
+   lisible à côté des autres sans les écraser. */
+.admin-rarity-card.is-total {
+  background: rgb(255 255 255 / 4%);
+}
+
+.admin-rarity-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.3rem;
+}
+
+.admin-rarity-card-total {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--hud-gold-bright);
+}
+
+.admin-rarity-list {
+  margin: 0;
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.82rem;
+}
+
+.admin-rarity-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+/* La rareté se reconnaît à sa pastille, aux mêmes couleurs que la gemme de la carte en jeu
+   (`theme.ts`) : on retrouve d'un coup d'œil de quelle rareté on parle. */
+.admin-rarity-row dt {
+  color: var(--color-text-dim);
+}
+
+.admin-rarity-row dt::before {
+  content: '';
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+  background: var(--rarity-dot, var(--color-text-dim));
+}
+
+.admin-rarity-row.is-common {
+  --rarity-dot: #aab4c2;
+}
+
+.admin-rarity-row.is-uncommon {
+  --rarity-dot: #4fd67a;
+}
+
+.admin-rarity-row.is-rare {
+  --rarity-dot: #4f8cff;
+}
+
+.admin-rarity-row.is-legendary {
+  --rarity-dot: #f0a63c;
+}
+
+.admin-rarity-row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .admin-footer {

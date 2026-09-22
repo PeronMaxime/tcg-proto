@@ -4,13 +4,11 @@ import {
   POWER_PER_ABILITY,
   POWER_PER_AURA,
   POWER_PER_KEYWORD,
-  abilityWeight,
   describeKeywordEffect,
   isMonster,
-  keywordWeight,
 } from '../../game/cards';
 import { ABILITY_EFFECT_TYPES, KEYWORDS, MAX_POWER_WEIGHT } from '../../game/catalogSchema';
-import type { AbilityEffect, Keyword, PowerWeights } from '../../game/types';
+import type { PowerWeights } from '../../game/types';
 import AdminHeader from './AdminHeader';
 import { ABILITY_EFFECT_LABELS } from './CardEditor';
 import type { CatalogAdmin } from './useCatalogAdmin';
@@ -23,20 +21,6 @@ import type { CatalogAdmin } from './useCatalogAdmin';
 // Le barème vit dans le catalogue (`Catalog.powerWeights`) et s'enregistre avec lui : la
 // puissance reste un indicateur d'équilibrage pour l'admin, aucune règle de jeu ne la lit.
 
-type AbilityEffectType = AbilityEffect['type'];
-
-// Une ligne par habileté / par effet : combien de cartes la portent, et combien de points
-// elle leur apporte au total. Ce sont ces deux chiffres qui disent si une valeur est lourde
-// de conséquences ou anecdotique.
-interface Usage {
-  cards: number;
-  occurrences: number;
-}
-
-function emptyUsage(): Usage {
-  return { cards: 0, occurrences: 0 };
-}
-
 interface PowerWeightsPanelProps {
   admin: CatalogAdmin;
 }
@@ -45,42 +29,13 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
   const cards = admin.draft?.cards ?? [];
   const weights = admin.draft?.powerWeights;
 
-  const usage = useMemo(() => {
-    const keywords = new Map<Keyword, Usage>(KEYWORDS.map((keyword) => [keyword, emptyUsage()]));
-    const abilities = new Map<AbilityEffectType, Usage>(
-      ABILITY_EFFECT_TYPES.map((effect) => [effect, emptyUsage()]),
-    );
-    let auras = 0;
-
-    for (const card of cards) {
-      if (isMonster(card)) {
-        if (card.aura) auras += 1;
-        // Une habileté ne peut pas être répétée sur une carte (`catalogSchema`) : une
-        // occurrence = une carte.
-        for (const keyword of card.keywords ?? []) {
-          const entry = keywords.get(keyword);
-          if (entry) {
-            entry.cards += 1;
-            entry.occurrences += 1;
-          }
-        }
-      }
-      // Une carte peut porter plusieurs capacités du même effet (deux déclencheurs
-      // différents) : on compte les deux, et la carte une seule fois.
-      const seen = new Set<AbilityEffectType>();
-      for (const ability of card.abilities ?? []) {
-        const entry = abilities.get(ability.effect.type);
-        if (!entry) continue;
-        entry.occurrences += 1;
-        if (!seen.has(ability.effect.type)) {
-          seen.add(ability.effect.type);
-          entry.cards += 1;
-        }
-      }
-    }
-
-    return { keywords, abilities, auras };
-  }, [cards]);
+  // Seul chiffre du catalogue encore utile ici : combien de cartes portent une aura, pour
+  // situer le forfait d'aura rappelé sous le titre. Les colonnes d'usage ont été retirées des
+  // tableaux (demande utilisateur) : on ne compte donc plus habileté par habileté.
+  const auras = useMemo(
+    () => cards.filter((card) => isMonster(card) && card.aura).length,
+    [cards],
+  );
 
   if (!admin.draft) return null;
 
@@ -131,7 +86,7 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
       <p className="admin-summary">
         La puissance d’une carte vaut son attaque plus sa défense, plus la valeur de chacune de ses
         habiletés et de chacune de ses capacités, plus {POWER_PER_AURA} si elle porte une aura
-        {usage.auras > 0 ? ` (${usage.auras} carte${usage.auras > 1 ? 's' : ''} concernée${usage.auras > 1 ? 's' : ''})` : ''}.
+        {auras > 0 ? ` (${auras} carte${auras > 1 ? 's' : ''} concernée${auras > 1 ? 's' : ''})` : ''}.
         Laisse une case vide pour garder la valeur par défaut. C’est un repère d’équilibrage :
         aucune règle du jeu ne s’en sert.
       </p>
@@ -144,19 +99,16 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
               <tr>
                 <th>Habileté</th>
                 <th>Effet en jeu</th>
-                <th className="is-numeric">Cartes</th>
                 <th className="is-numeric">Puissance</th>
               </tr>
             </thead>
             <tbody>
               {KEYWORDS.map((keyword) => {
-                const entry = usage.keywords.get(keyword) ?? emptyUsage();
                 const value = weights?.keywords?.[keyword];
                 return (
                   <tr key={keyword}>
                     <td>{KEYWORD_LABELS[keyword]}</td>
                     <td className="admin-table-note">{describeKeywordEffect(keyword)}</td>
-                    <td className="is-numeric">{entry.cards}</td>
                     <td className="is-numeric">
                       <input
                         type="number"
@@ -168,11 +120,6 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
                         placeholder={String(POWER_PER_KEYWORD)}
                         onChange={(e) => setWeight('keywords', keyword, readInput(e.target.value))}
                       />
-                      <span className="admin-table-note">
-                        {' '}
-                        ×{entry.occurrences} ={' '}
-                        {keywordWeight(keyword, admin.draft?.powerWeights) * entry.occurrences} pts
-                      </span>
                     </td>
                   </tr>
                 );
@@ -187,20 +134,15 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
             <thead>
               <tr>
                 <th>Effet</th>
-                <th className="is-numeric">Cartes</th>
-                <th className="is-numeric">Capacités</th>
                 <th className="is-numeric">Puissance</th>
               </tr>
             </thead>
             <tbody>
               {ABILITY_EFFECT_TYPES.map((effect) => {
-                const entry = usage.abilities.get(effect) ?? emptyUsage();
                 const value = weights?.abilities?.[effect];
                 return (
                   <tr key={effect}>
                     <td>{ABILITY_EFFECT_LABELS[effect]}</td>
-                    <td className="is-numeric">{entry.cards}</td>
-                    <td className="is-numeric">{entry.occurrences}</td>
                     <td className="is-numeric">
                       <input
                         type="number"
@@ -212,11 +154,6 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
                         placeholder={String(POWER_PER_ABILITY)}
                         onChange={(e) => setWeight('abilities', effect, readInput(e.target.value))}
                       />
-                      <span className="admin-table-note">
-                        {' '}
-                        ×{entry.occurrences} ={' '}
-                        {abilityWeight(effect, admin.draft?.powerWeights) * entry.occurrences} pts
-                      </span>
                     </td>
                   </tr>
                 );
