@@ -3,6 +3,7 @@ import { ELEMENT_LABELS, RARITY_LABELS, cardPower, cardRarity, isMonster } from 
 import { CARD_RARITIES } from '../../game/catalogSchema';
 import type { CardDef, CardElement, CardRarity } from '../../game/types';
 import { hasCardArt } from '../../scene/cardArt';
+import AdminHeader from './AdminHeader';
 import CardEditor, { freshCard } from './CardEditor';
 import type { CatalogAdmin } from './useCatalogAdmin';
 
@@ -63,46 +64,24 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
 
   return (
     <div className="admin-panel">
-      <header className="admin-header">
-        <div>
-          <h1>Cartes</h1>
-          <p className="admin-summary">
+      <AdminHeader
+        title="Cartes"
+        summary={
+          <>
             {cards.length} cartes · {totalCopies} exemplaires dans le deck de départ · version{' '}
             {catalog.version}
             {missingArt > 0 && ` · ${missingArt} sans illustration`}
-          </p>
-        </div>
-
-        <div className="admin-actions">
-          <button type="button" onClick={() => addCard('monster')}>
-            + Monstre
-          </button>
-          <button type="button" onClick={() => addCard('enchantment')}>
-            + Enchantement
-          </button>
-          <button
-            type="button"
-            className="admin-save"
-            onClick={() => void admin.save()}
-            disabled={!admin.dirty || admin.saving || admin.errors.length > 0}
-          >
-            {admin.saving ? 'Enregistrement…' : admin.dirty ? 'Enregistrer' : 'À jour'}
-          </button>
-        </div>
-      </header>
-
-      {admin.failure && <p className="error">{admin.failure}</p>}
-
-      {admin.errors.length > 0 && (
-        <div className="admin-errors-block">
-          <p className="error">Le catalogue ne peut pas être enregistré tant que ceci n’est pas corrigé :</p>
-          <ul className="admin-errors">
-            {admin.errors.slice(0, 10).map((error) => (
-              <li key={error}>{error}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+          </>
+        }
+        admin={admin}
+      >
+        <button type="button" onClick={() => addCard('monster')}>
+          + Monstre
+        </button>
+        <button type="button" onClick={() => addCard('enchantment')}>
+          + Enchantement
+        </button>
+      </AdminHeader>
 
       <div className="admin-body">
         <aside className="admin-list">

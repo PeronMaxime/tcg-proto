@@ -10,6 +10,7 @@ import type {
   EnchantmentEffect,
   Keyword,
   MonsterDef,
+  PowerWeights,
   Trigger,
 } from './types';
 
@@ -327,13 +328,25 @@ export function isAbilityAllowed(def: CardDef, ability: CardAbility): boolean {
 // panneau d'administration UNIQUEMENT : aucune règle de jeu ne le lit, rien n'est stocké
 // dans le catalogue — il se recalcule depuis la définition à chaque affichage.
 //
-// Barème : attaque + défense, une habileté (mot-clé) vaut 2 points, une capacité ou une
-// aura en vaut 1.
+// Barème : attaque + défense, plus la valeur de chaque habileté (mot-clé), de chaque
+// capacité et de l'aura. Les valeurs des habiletés et des capacités viennent du barème du
+// catalogue (`Catalog.powerWeights`, éditable dans l'onglet « Puissances » de l'admin) ; une
+// entrée absente vaut la valeur fixe ci-dessous, celle d'avant le barème.
 // ---------------------------------------------------------------------------------------
 
 export const POWER_PER_KEYWORD = 2;
 export const POWER_PER_ABILITY = 1;
 export const POWER_PER_AURA = 1;
+
+// Valeur d'une habileté et d'un type d'effet de capacité selon un barème. `weights` absent
+// (catalogue d'avant le barème, ou barème incomplet) = valeur fixe historique.
+export function keywordWeight(keyword: Keyword, weights?: PowerWeights): number {
+  return weights?.keywords?.[keyword] ?? POWER_PER_KEYWORD;
+}
+
+export function abilityWeight(effect: AbilityEffect['type'], weights?: PowerWeights): number {
+  return weights?.abilities?.[effect] ?? POWER_PER_ABILITY;
+}
 
 export interface CardPower {
   total: number;
@@ -343,10 +356,19 @@ export interface CardPower {
   aura: number;
 }
 
-export function cardPower(def: CardDef): CardPower {
+// `weights` par défaut : celui du catalogue actif. Le panneau d'administration installe son
+// brouillon comme catalogue actif à chaque frappe (`useCatalogAdmin`), donc l'affichage suit
+// le barème en cours d'édition sans avoir à le passer partout — mais on peut toujours le
+// donner explicitement, notamment pour comparer deux barèmes.
+export function cardPower(def: CardDef, weights: PowerWeights | undefined = activeCatalog.powerWeights): CardPower {
   const stats = isMonster(def) ? def.attack + def.defense : 0;
-  const keywords = isMonster(def) ? (def.keywords?.length ?? 0) * POWER_PER_KEYWORD : 0;
-  const abilities = (def.abilities?.length ?? 0) * POWER_PER_ABILITY;
+  const keywords = isMonster(def)
+    ? (def.keywords ?? []).reduce((sum, keyword) => sum + keywordWeight(keyword, weights), 0)
+    : 0;
+  const abilities = (def.abilities ?? []).reduce(
+    (sum, ability) => sum + abilityWeight(ability.effect.type, weights),
+    0,
+  );
   const aura = isMonster(def) && def.aura ? POWER_PER_AURA : 0;
   return { total: stats + keywords + abilities + aura, stats, keywords, abilities, aura };
 }

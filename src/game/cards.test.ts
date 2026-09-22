@@ -132,6 +132,31 @@ describe('puissance', () => {
     expect(cardPower(getCardDef('aurique'))).toMatchObject({ total: 6, stats: 5, aura: 1 });
   });
 
+  it('un barème pèse chaque habileté et chaque effet de capacité séparément', () => {
+    // Golem de pierre : 1/8, habileté Protection, capacité « Défend : dégâts au héros adverse ».
+    // Protection ne vaut plus que 1 point, les dégâts directs en valent 5 → 9 + 1 + 5 = 15.
+    const power = cardPower(getCardDef('golem'), {
+      keywords: { protection: 1 },
+      abilities: { damageOpponent: 5 },
+    });
+    expect(power).toMatchObject({ total: 15, stats: 9, keywords: 1, abilities: 5 });
+  });
+
+  it('une entrée absente du barème garde la valeur fixe', () => {
+    // Rien de pesé ici : on doit retrouver le calcul d'avant le barème.
+    expect(cardPower(getCardDef('golem'), { keywords: {}, abilities: {} })).toEqual(
+      cardPower(getCardDef('golem'), undefined),
+    );
+  });
+
+  it('un barème à zéro annule bien la valeur, il ne retombe pas sur le défaut', () => {
+    const power = cardPower(getCardDef('golem'), {
+      keywords: { protection: 0 },
+      abilities: { damageOpponent: 0 },
+    });
+    expect(power).toMatchObject({ total: 9, keywords: 0, abilities: 0 });
+  });
+
   it('un enchantement n’a ni stats ni habileté : seules ses capacités comptent', () => {
     // Étendard de guerre : son effet continu n'est pas une capacité, il ne vaut donc rien ici.
     expect(cardPower(getCardDef('banner'))).toEqual({

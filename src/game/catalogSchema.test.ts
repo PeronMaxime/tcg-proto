@@ -132,6 +132,29 @@ describe('parseCatalog', () => {
     expect(parsed.value.starterCounts).toEqual({ test: 3 });
   });
 
+  it('garde le barème de puissance et refuse ses valeurs invalides', () => {
+    const cards = [monster({ element: 'fire' })];
+    const withWeights = (powerWeights: unknown) => ({
+      ...(catalog(cards, { test: 3 }) as Record<string, unknown>),
+      powerWeights,
+    });
+
+    const parsed = parseCatalog(withWeights({ keywords: { toxic: 4 }, abilities: { drawCard: 0 } }));
+    if (!parsed.ok) throw new Error(parsed.errors.join('\n'));
+    expect(parsed.value.powerWeights).toEqual({ keywords: { toxic: 4 }, abilities: { drawCard: 0 } });
+
+    expect(parseCatalog(withWeights({ keywords: { volant: 2 } })).ok).toBe(false);
+    expect(parseCatalog(withWeights({ keywords: { toxic: -1 } })).ok).toBe(false);
+    expect(parseCatalog(withWeights({ keywords: { toxic: 1.5 } })).ok).toBe(false);
+    expect(parseCatalog(withWeights('barème')).ok).toBe(false);
+  });
+
+  it('un catalogue sans barème n’en invente pas un', () => {
+    const parsed = parseCatalog(catalog([monster({ element: 'fire' })], { test: 3 }));
+    if (!parsed.ok) throw new Error(parsed.errors.join('\n'));
+    expect(parsed.value.powerWeights).toBeUndefined();
+  });
+
   it('refuse un objet qui n’est pas un catalogue', () => {
     for (const raw of [null, 42, 'catalogue', [], { version: 1 }]) {
       expect(parseCatalog(raw).ok).toBe(false);

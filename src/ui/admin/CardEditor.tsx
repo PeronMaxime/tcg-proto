@@ -40,7 +40,8 @@ import CardPreview from './CardPreview';
 // déroulante est bâtie sur les constantes de `catalogSchema.ts`, donc ajouter un effet ou une
 // habileté au jeu le fait apparaître ici sans toucher à ce fichier.
 
-const ABILITY_EFFECT_LABELS: Record<AbilityEffect['type'], string> = {
+// Exporté : l'onglet « Puissances » nomme les mêmes effets.
+export const ABILITY_EFFECT_LABELS: Record<AbilityEffect['type'], string> = {
   gainCoins: 'Gagne des pièces',
   damageOpponent: 'Inflige des dégâts au héros adverse',
   healSelf: 'Soigne ton héros',

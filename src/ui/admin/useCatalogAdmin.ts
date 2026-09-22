@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseCatalog } from '../../game/catalogSchema';
-import type { CardDef, Catalog } from '../../game/types';
+import type { CardDef, Catalog, PowerWeights } from '../../game/types';
 import { catalogStore, seedCatalogFromDefaults } from '../../net/catalogStore';
 import { applyCatalog } from '../applyCatalog';
 
@@ -26,6 +26,7 @@ export interface CatalogAdmin {
   addCard: (card: CardDef) => void;
   removeCard: (id: string) => void;
   setCount: (id: string, count: number) => void;
+  setPowerWeights: (weights: PowerWeights) => void;
 }
 
 function message(e: unknown): string {
@@ -144,6 +145,15 @@ export function useCatalogAdmin(): CatalogAdmin {
     [mutate],
   );
 
+  // Barème de puissance (onglet « Puissances »). Remplacé en bloc : le panneau reconstruit
+  // l'objet entier à chaque frappe, ce qui garde le brouillon immuable comme le reste.
+  const setPowerWeights = useCallback(
+    (weights: PowerWeights) => {
+      mutate((current) => ({ ...current, powerWeights: weights }));
+    },
+    [mutate],
+  );
+
   const save = useCallback(async () => {
     if (!draft || errors.length > 0) return;
     setSaving(true);
@@ -193,5 +203,6 @@ export function useCatalogAdmin(): CatalogAdmin {
     addCard,
     removeCard,
     setCount,
+    setPowerWeights,
   };
 }

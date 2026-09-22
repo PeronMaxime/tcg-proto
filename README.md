@@ -70,6 +70,32 @@ Les cartes ne sont plus codées en dur : elles vivent dans un **catalogue** édi
 - Tout ce qui est lu depuis le stockage passe par `src/game/catalogSchema.ts`, qui refuse une
   carte malformée avant qu'elle n'atteigne le plateau.
 
+### Les quatre onglets
+
+Le panneau partage **un seul brouillon** entre ses onglets : changer d'onglet ne perd rien, et
+le bouton « Enregistrer » écrit le catalogue entier d'où qu'on clique.
+
+- **Cartes** — l'éditeur : la liste à gauche (filtrable par type, élément et rareté), le
+  formulaire de la carte sélectionnée à droite, avec son aperçu en direct.
+- **Récapitulatif** — tout le catalogue en un tableau (nom, coût, type, élément, attaque,
+  défense, rareté, habiletés, auras, capacités, puissance). Filtres en haut, tri en cliquant
+  sur un en-tête. Lecture seule.
+- **Chiffres** — le nombre de cartes par élément, puis le croisement élément × rareté.
+- **Puissances** — le **barème de puissance** (voir ci-dessous).
+
+### Le barème de puissance
+
+La puissance d'une carte est un repère d'équilibrage affiché dans l'admin : **aucune règle du
+jeu ne la lit**. Elle vaut l'attaque plus la défense, plus la valeur de chaque habileté et de
+chaque capacité, plus un point si la carte porte une aura.
+
+Par défaut, toutes les habiletés valent 2 points et toutes les capacités 1. L'onglet
+**Puissances** permet de peser chacune séparément — Provocation ne vaut pas Toxic, un soin ne
+vaut pas une pioche. Les valeurs choisies sont enregistrées avec le catalogue
+(`Catalog.powerWeights`) et remplacent le barème fixe partout où la puissance s'affiche. Une
+case laissée vide garde la valeur par défaut, et un catalogue sans barème calcule exactement
+comme avant cet onglet.
+
 ### Mise en place
 
 1. Dans la console Firebase, onglet **Authentication** → *Sign-in method*, activer

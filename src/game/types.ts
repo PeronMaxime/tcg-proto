@@ -83,6 +83,18 @@ export interface EnchantmentDef extends CardDefBase {
 
 export type CardDef = MonsterDef | EnchantmentDef;
 
+// Barème de puissance (demande utilisateur). La puissance d'une carte (`cardPower`) est un
+// indicateur d'équilibrage affiché dans le panneau d'administration : par défaut, une habileté
+// vaut `POWER_PER_KEYWORD` points et une capacité `POWER_PER_ABILITY`, quelles qu'elles soient.
+// Ce barème permet de peser chaque habileté et chaque type d'effet de capacité séparément —
+// Provocation ne vaut pas Toxic, un soin ne vaut pas une pioche. Les clés absentes gardent la
+// valeur fixe historique, si bien qu'un barème vide (ou absent, sur un catalogue écrit avant
+// cette fonctionnalité) se comporte exactement comme avant.
+export interface PowerWeights {
+  keywords: Partial<Record<Keyword, number>>;
+  abilities: Partial<Record<AbilityEffect['type'], number>>;
+}
+
 // Catalogue complet : les cartes existantes et la composition du deck de départ. Éditable
 // depuis le panneau d'administration (`ui/admin`), stocké dans `catalog/current`
 // (`net/catalogStore.ts`) et recopié tel quel dans chaque `Room` à la création d'une partie,
@@ -95,6 +107,9 @@ export interface Catalog {
   // Nombre d'exemplaires de chaque carte dans le deck de départ, indexé par `CardDef.id`.
   // Un id absent (ou à 0) veut dire que la carte existe mais n'est pas distribuée.
   starterCounts: Record<string, number>;
+  // Barème de puissance, éditable depuis l'admin. Absent sur un catalogue écrit avant cette
+  // fonctionnalité : à lire via `cardPower`, qui retombe sur les valeurs fixes.
+  powerWeights?: PowerWeights;
 }
 
 export interface CardInstance {

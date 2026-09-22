@@ -1352,6 +1352,18 @@ button {
   min-width: 0;
 }
 
+/* Barre de filtres d'un onglet pleine largeur (« Récapitulatif ») : contrairement à celle de
+   la liste des cartes, qui tient dans une colonne étroite, les listes déroulantes gardent
+   leur largeur naturelle et c'est le champ de recherche qui prend la place restante. */
+.admin-filters-bar select {
+  flex: 0 0 auto;
+}
+
+.admin-filters-bar input {
+  flex: 1;
+  min-width: 10rem;
+}
+
 .admin-list ul {
   list-style: none;
   margin: 0;
@@ -1549,6 +1561,164 @@ button {
 
 .admin-power-detail {
   grid-column: 1 / -1;
+  font-size: 0.72rem;
+  color: var(--color-text-dim);
+}
+
+/* Onglets du panneau (Cartes / Récapitulatif / Chiffres / Puissances). Un simple bandeau de
+   boutons : l'onglet actif est souligné à l'accent, les autres restent discrets. */
+.admin-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+
+.admin .admin-tab {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 4px 4px 0 0;
+  background: none;
+  color: var(--color-text-dim);
+  padding: 0.45rem 0.9rem;
+}
+
+.admin .admin-tab:hover:not(:disabled) {
+  color: var(--color-text);
+}
+
+.admin .admin-tab.is-active {
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent);
+}
+
+/* Tableaux des onglets « Récapitulatif », « Chiffres » et « Puissances ». Le conteneur porte
+   le défilement pour que les en-têtes restent collés en haut de la fenêtre du tableau. */
+.admin-table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.admin-table th,
+.admin-table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-panel);
+  color: var(--color-text-dim);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.admin-table .is-numeric {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.admin-table tbody tr:hover {
+  background: rgb(255 255 255 / 4%);
+}
+
+.admin-table tfoot td {
+  font-weight: 600;
+  border-bottom: none;
+}
+
+/* Le tri se déclenche sur l'en-tête entier : le bouton remplit la cellule et n'a pas de
+   décor propre, pour que l'en-tête reste un en-tête à l'œil. */
+.admin .admin-table-sort {
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.admin .admin-table-sort:hover:not(:disabled) {
+  color: var(--color-text);
+}
+
+.admin-table-list {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.admin-table-empty,
+.admin-table-note {
+  color: var(--color-text-dim);
+}
+
+.admin-table-note {
+  font-size: 0.78rem;
+}
+
+.admin .admin-weight-input {
+  width: 4rem;
+  text-align: right;
+}
+
+/* Onglet « Chiffres ». */
+.admin-stats {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.admin-stats h2 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  margin: 0 0 0.5rem;
+}
+
+.admin-stat-cards {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.admin-stat-card {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  min-width: 9rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-stat-label {
+  font-size: 0.8rem;
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.admin-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--hud-gold-bright);
+}
+
+.admin-stat-detail {
   font-size: 0.72rem;
   color: var(--color-text-dim);
 }

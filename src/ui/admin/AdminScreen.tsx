@@ -6,8 +6,11 @@ import {
   type AdminSession,
 } from '../../net/auth';
 import { catalogStore } from '../../net/catalogStore';
+import CardsTable from './CardsTable';
 import CatalogPanel from './CatalogPanel';
+import CatalogStats from './CatalogStats';
 import LoginForm from './LoginForm';
+import PowerWeightsPanel from './PowerWeightsPanel';
 import { useCatalogAdmin } from './useCatalogAdmin';
 
 // Panneau d'administration, servi sur `/admin` (voir `App.tsx`).
@@ -16,11 +19,24 @@ import { useCatalogAdmin } from './useCatalogAdmin';
 // vit dans le localStorage de cette machine et n'est visible que d'ici. La connexion n'apparaît
 // donc qu'en mode Firebase, où le catalogue est partagé entre tous les joueurs.
 
+// Onglets du panneau. Ils partagent tous LE MÊME brouillon (`useCatalogAdmin`) : changer
+// d'onglet ne perd rien, et le bouton « Enregistrer » de n'importe quel onglet écrit le
+// catalogue entier. L'ordre est celui du travail : éditer, relire, compter, peser.
+const TABS = [
+  { id: 'cards', label: 'Cartes' },
+  { id: 'table', label: 'Récapitulatif' },
+  { id: 'stats', label: 'Chiffres' },
+  { id: 'power', label: 'Puissances' },
+] as const;
+
+type TabId = (typeof TABS)[number]['id'];
+
 function AdminScreen() {
   // undefined = Firebase n'a pas encore tranché, null = personne n'est connecté.
   const [session, setSession] = useState<AdminSession | null | undefined>(
     isAuthAvailable ? undefined : null,
   );
+  const [tab, setTab] = useState<TabId>('cards');
   const admin = useCatalogAdmin();
 
   useEffect(() => subscribeToAdminSession(setSession), []);
@@ -90,7 +106,24 @@ function AdminScreen() {
         </p>
       )}
 
-      <CatalogPanel admin={admin} />
+      <nav className="admin-tabs">
+        {TABS.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            className={entry.id === tab ? 'admin-tab is-active' : 'admin-tab'}
+            aria-current={entry.id === tab ? 'page' : undefined}
+            onClick={() => setTab(entry.id)}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === 'cards' && <CatalogPanel admin={admin} />}
+      {tab === 'table' && <CardsTable admin={admin} />}
+      {tab === 'stats' && <CatalogStats admin={admin} />}
+      {tab === 'power' && <PowerWeightsPanel admin={admin} />}
 
       <footer className="admin-footer">
         <a href="/">← Retour au jeu</a>

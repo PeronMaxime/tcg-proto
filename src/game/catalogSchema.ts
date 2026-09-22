@@ -17,6 +17,7 @@ import type {
   Catalog,
   EnchantmentEffect,
   Keyword,
+  PowerWeights,
   Trigger,
 } from './types';
 
@@ -66,6 +67,10 @@ export const ENCHANTMENT_EFFECT_TYPES = [
 // d'illustrations (`scene/cardArt.ts`). On le contraint pour qu'il reste utilisable comme
 // identifiant de code quand une illustration sera ajoutée pour cette carte.
 export const CARD_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9]*$/;
+
+// Valeur maximale d'une entrée du barème de puissance (`Catalog.powerWeights`). 0 est admis :
+// c'est ainsi qu'on déclare qu'une habileté ou un effet ne pèse rien dans l'équilibrage.
+export const MAX_POWER_WEIGHT = 99;
 
 export const MAX_COST = 99;
 export const MAX_STAT = 99;
@@ -308,6 +313,45 @@ export function parseCardDef(raw: unknown, path = 'carte'): ParseResult<CardDef>
   return { ok: true, value: def };
 }
 
+// Barème de puissance. Chaque entrée est facultative : une clé absente garde la valeur fixe
+// historique (voir `cardPower`). On ne garde donc que les clés effectivement écrites, ce qui
+// évite de figer dans le catalogue des valeurs que personne n'a choisies.
+function parsePowerWeights(raw: unknown, errors: string[]): PowerWeights | null {
+  if (!isRecord(raw)) {
+    errors.push('Catalogue.powerWeights : objet attendu.');
+    return null;
+  }
+  const weights: PowerWeights = { keywords: {}, abilities: {} };
+
+  if (raw.keywords !== undefined) {
+    if (!isRecord(raw.keywords)) {
+      errors.push('powerWeights.keywords : objet attendu.');
+    } else {
+      for (const [key, value] of Object.entries(raw.keywords)) {
+        const keyword = checkEnum(key, `powerWeights.keywords.${key}`, KEYWORDS, errors);
+        if (keyword === null) continue;
+        const weight = checkInt(value, `powerWeights.keywords.${key}`, 0, MAX_POWER_WEIGHT, errors);
+        if (weight !== null) weights.keywords[keyword] = weight;
+      }
+    }
+  }
+
+  if (raw.abilities !== undefined) {
+    if (!isRecord(raw.abilities)) {
+      errors.push('powerWeights.abilities : objet attendu.');
+    } else {
+      for (const [key, value] of Object.entries(raw.abilities)) {
+        const effect = checkEnum(key, `powerWeights.abilities.${key}`, ABILITY_EFFECT_TYPES, errors);
+        if (effect === null) continue;
+        const weight = checkInt(value, `powerWeights.abilities.${key}`, 0, MAX_POWER_WEIGHT, errors);
+        if (weight !== null) weights.abilities[effect] = weight;
+      }
+    }
+  }
+
+  return weights;
+}
+
 export function parseCatalog(raw: unknown): ParseResult<Catalog> {
   if (!isRecord(raw)) return { ok: false, errors: ['Catalogue : objet attendu.'] };
 
@@ -357,6 +401,12 @@ export function parseCatalog(raw: unknown): ParseResult<Catalog> {
     errors.push('Catalogue : le deck de départ est vide, il faut au moins un exemplaire d’une carte.');
   }
 
+  // Barème absent = catalogue écrit avant cette fonctionnalité : la puissance retombe sur les
+  // valeurs fixes, et la clé n'est pas créée tant que l'admin n'a rien pesé.
+  const powerWeights = raw.powerWeights === undefined ? null : parsePowerWeights(raw.powerWeights, errors);
+
   if (version === null || errors.length > 0) return { ok: false, errors };
-  return { ok: true, value: { version, cards, starterCounts } };
+  const catalog: Catalog = { version, cards, starterCounts };
+  if (powerWeights) catalog.powerWeights = powerWeights;
+  return { ok: true, value: catalog };
 }
