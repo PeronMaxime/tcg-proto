@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CARD_CATALOG } from '../game/cards';
+import { DEFAULT_CATALOG } from '../game/defaultCatalog';
 import { drawCardArt, hasCardArt } from './cardArt';
 
 // Garde-fou : une carte ajoutée au catalogue sans silhouette n'affichait qu'un décor vide,
@@ -36,12 +36,12 @@ function fakeContext(): CanvasRenderingContext2D {
 
 describe('illustrations des cartes', () => {
   it('chaque carte du catalogue a sa propre illustration', () => {
-    const missing = CARD_CATALOG.filter((def) => !hasCardArt(def.id)).map((def) => def.id);
+    const missing = DEFAULT_CATALOG.cards.filter((def) => !hasCardArt(def.id)).map((def) => def.id);
     expect(missing).toEqual([]);
   });
 
   it('chaque illustration se dessine sans erreur', () => {
-    for (const def of CARD_CATALOG) {
+    for (const def of DEFAULT_CATALOG.cards) {
       expect(() => drawCardArt(fakeContext(), def.id, def.element, 0, 0)).not.toThrow();
     }
   });

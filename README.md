@@ -46,10 +46,59 @@ Le mode Firebase s'active automatiquement dès que `VITE_FIREBASE_PROJECT_ID` es
 2. Dans *Settings → Environment Variables*, ajouter les 4 variables `VITE_FIREBASE_*` (si le
    mode Firebase est utilisé) puis redéployer.
 
-Aucun `vercel.json` n'est nécessaire : il n'y a pas de routeur (une seule page, le code de
-room vit en `sessionStorage`).
+Le `vercel.json` du dépôt ne contient qu'une réécriture de `/admin` vers `index.html` (§4) :
+il n'y a pas de routeur, le code de room vit en `sessionStorage`.
 
-## 4. Modifier les règles et les cartes
+## 4. Créer et modifier les cartes (panneau `/admin`)
+
+Les cartes ne sont plus codées en dur : elles vivent dans un **catalogue** éditable depuis
+`/admin`, sans recompiler ni redéployer.
+
+### Comment ça s'articule
+
+- Le catalogue (`Catalog` dans `types.ts` : les cartes + le nombre d'exemplaires de chacune
+  dans le deck de départ) est enregistré dans le document Firestore `catalog/current`
+  (`src/net/catalogStore.ts`). Sans configuration Firebase, il vit dans le `localStorage` de la
+  machine, exactement comme les rooms (§1).
+- À la **création d'une partie**, le catalogue courant est **recopié dans la room**
+  (`Room.catalog`). Les deux joueurs jouent donc forcément avec les mêmes cartes, et une carte
+  modifiée dans l'admin **pendant** une partie ne change rien à celle-ci : elle entre en jeu à
+  la partie suivante (revanche comprise).
+- `src/game/defaultCatalog.ts` contient les cartes **livrées avec le code**. Elles servent de
+  point de départ à l'import initial, et de repli tant qu'aucun catalogue n'a été enregistré.
+  C'est aussi sur elles que portent les tests.
+- Tout ce qui est lu depuis le stockage passe par `src/game/catalogSchema.ts`, qui refuse une
+  carte malformée avant qu'elle n'atteigne le plateau.
+
+### Mise en place
+
+1. Dans la console Firebase, onglet **Authentication** → *Sign-in method*, activer
+   **E-mail/Mot de passe**, puis créer ton compte dans *Utilisateurs* (il n'y a pas
+   d'inscription dans l'application).
+2. Copier l'**UID** de ce compte.
+3. Le coller dans la liste de `firestore.rules` (bloc `match /catalog/{doc}`) et **publier les
+   règles**. C'est la seule vraie protection : l'écran de connexion ne fait que masquer
+   l'interface.
+4. Ajouter le même UID à `VITE_ADMIN_UIDS` (`.env.local`, et les variables d'environnement
+   Vercel) pour que le panneau s'affiche.
+5. Ouvrir `/admin`, se connecter, puis **« Importer les cartes livrées avec le jeu »** : c'est
+   la migration initiale, elle écrit les cartes de `defaultCatalog.ts` dans le catalogue
+   partagé. Rien n'est écrit automatiquement.
+
+En mode local (sans Firebase), il n'y a personne à authentifier : `/admin` s'ouvre directement
+et le catalogue reste dans ce navigateur.
+
+### Illustrations
+
+Les silhouettes des cartes sont dessinées en code (`src/scene/cardArt.ts`), indexées par
+**identifiant de carte**. Une carte créée depuis l'admin n'en a donc pas : elle s'affiche avec
+le seul décor de son élément, et le panneau la marque « sans illustration ».
+
+Pour lui en donner une, demande-la-moi en citant son identifiant : j'ajoute une fonction de
+dessin sous cette clé et l'illustration apparaît, sans autre changement. Tant que l'identifiant
+ne change pas, l'illustration suit la carte quelles que soient ses statistiques.
+
+## 5. Modifier les règles et les cartes
 
 Règles v1 (marché, zones fixes, combat automatique) — voir `PLAN-tcg-proto-regles-v1.md` pour
 le détail des décisions. Résumé :
@@ -88,8 +137,7 @@ le détail des décisions. Résumé :
   moins 1 ; un cycle qui n'inflige aucun dégât à personne (des deux côtés) termine le combat
   sur un **combat nul** (pas de percée, PV inchangés) — un filet de sécurité
   (`MAX_COMBAT_CYCLES`) fait de même si un combat s'éternisait.
-- **Éléments** : chaque carte a un élément — feu, eau, air ou terre (`element` dans
-  `CARD_CATALOG`) — qui fixe la couleur de sa face (`theme.elements`) et s'affiche en petit
+- **Éléments** : chaque carte a un élément — feu, eau, air ou terre (`element` d'un `CardDef`) — qui fixe la couleur de sa face (`theme.elements`) et s'affiche en petit
   logo en haut à droite. Roue des forces : **eau > feu > air > terre > eau**. En mêlée, un
   monstre dont l'élément domine celui du monstre qu'il touche lui inflige **1 dégât de plus**
   (`ELEMENT_ADVANTAGE_BONUS`), sur son coup comme sur sa riposte ; le bonus s'ajoute avant le
@@ -116,9 +164,10 @@ le détail des décisions. Résumé :
   (plafonné à 10 PV) sur un héros, pioche, buff permanent (sur soi ou sur les autres monstres du
   même propriétaire, cumulable, perdu si la carte quitte le board), bonus de dégâts (Attaque
   seulement) et bouclier (Défend seulement, peut absorber un coup entièrement). Pour ajouter une
-  capacité à une carte, éditer son `abilities` dans `CARD_CATALOG` (`src/game/cards.ts`) ;
+  capacité à une carte, l'ajouter dans le panneau `/admin` (§4) ;
   `isAbilityAllowed` vérifie qu'elle respecte les règles (bonus/bouclier sur le bon
-  déclencheur, pas de déclencheur de combat — Début du combat compris — sur un enchantement, valeurs ≥ 1). Un joueur voit un
+  déclencheur, pas de déclencheur de combat — Début du combat compris — sur un enchantement, valeurs ≥ 1),
+  aussi bien à l'enregistrement depuis `/admin` qu'à la lecture du catalogue. Un joueur voit un
   petit toast pour chaque capacité déclenchée (les siennes et celles de l'adversaire).
 - **Habiletés** (mots-clés, `Keyword` dans `types.ts`) : contrairement à une capacité, une
   habileté n'a pas de déclencheur — c'est une règle permanente portée par certains monstres,
@@ -195,18 +244,24 @@ traité).
 - `src/game/rules.ts` : logique de jeu (`createInitialState`, `applyAction`, `resolveCombat`,
   moteur des capacités déclenchées `fireTrigger`). Module pur, sans dépendance réseau ni React —
   modifiable et testable indépendamment du reste.
-- `src/game/cards.ts` : catalogue des cartes (`CARD_CATALOG`, avec leurs `abilities`) et
-  composition du deck de départ (`STARTER_COUNTS`) — c'est le seul endroit à modifier pour
-  changer une carte, sa capacité ou un deck.
+- `src/game/cards.ts` : accès au **catalogue actif** (`getCardDef`, `setActiveCatalog`) et
+  textes des cartes. Les cartes elles-mêmes s'éditent depuis `/admin` (§4) ; `cards.ts` ne les
+  contient plus.
+- `src/game/defaultCatalog.ts` : les cartes livrées avec le code, base de l'import initial et
+  repli quand aucun catalogue n'est enregistré. C'est ici qu'on modifie une carte « en dur »,
+  par exemple pour changer ce que verront les nouveaux projets.
+- `src/game/catalogSchema.ts` : ce qu'est un catalogue valide, partagé par l'admin et par la
+  lecture du stockage.
 
 Les tests correspondants sont dans `src/game/rules.test.ts` et
 `src/scene/combatPlayback.test.ts` (`npm run test`).
 
-## 5. Limites assumées
+## 6. Limites assumées
 
 Ce prototype privilégie la vitesse de développement, pas la robustesse :
-- les règles Firestore sont **ouvertes** (`allow read, write: if true`) : n'importe qui
-  connaissant un code de room peut lire ou écrire son document ;
+- les règles Firestore des **rooms** sont **ouvertes** (`allow read, write: if true`) :
+  n'importe qui connaissant un code de room peut lire ou écrire son document. Seul le
+  catalogue de cartes est protégé en écriture (§4) ;
 - le marché adverse et la main adverse sont affichés face cachée, mais restent
   **techniquement lisibles** par quiconque inspecte le trafic réseau ou
   le `localStorage` (pas de dissimulation côté serveur) ;

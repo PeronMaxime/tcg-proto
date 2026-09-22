@@ -43,8 +43,9 @@ export interface MonsterFaceStats {
 
 const faceCache = new Map<string, THREE.CanvasTexture>();
 let backTextureCache: THREE.CanvasTexture | null = null;
-// Redessine chaque texture créée (voir `watchFontLoading`).
-const redraws: (() => void)[] = [];
+// Redessine chaque texture vivante (voir `watchFontLoading`). Indexé par texture pour que
+// `invalidateCardTextures` puisse retirer celles qu'il vient de libérer.
+const redraws = new Map<THREE.CanvasTexture, () => void>();
 
 function roundedRectPath(
   ctx: CanvasRenderingContext2D,
@@ -492,9 +493,21 @@ function makeTexture(draw: (ctx: CanvasRenderingContext2D, w: number, h: number)
     texture.needsUpdate = true;
   };
   render();
-  redraws.push(render);
+  redraws.set(texture, render);
   watchFontLoading();
   return texture;
+}
+
+// Vide le cache des faces de cartes. À appeler après avoir installé un autre catalogue
+// (`game/cards.ts`, `setActiveCatalog`) : la clé de cache est l'id de la carte, donc une carte
+// dont le nom, le coût ou les capacités ont changé sans changer d'id servirait sa texture
+// périmée. Les faces sont redessinées à la demande au prochain rendu.
+export function invalidateCardTextures(): void {
+  for (const texture of faceCache.values()) {
+    redraws.delete(texture);
+    texture.dispose();
+  }
+  faceCache.clear();
 }
 
 // Les textures dessinées avant l'arrivée des polices web sont redessinées une fois chargées.

@@ -1,40 +1,7 @@
-import { initializeApp } from 'firebase/app';
-import {
-  deleteDoc,
-  doc,
-  initializeFirestore,
-  onSnapshot,
-  runTransaction,
-  setDoc,
-  type Firestore,
-} from 'firebase/firestore';
+import { deleteDoc, doc, onSnapshot, runTransaction, setDoc } from 'firebase/firestore';
 import type { Room } from '../game/types';
+import { getDb } from './firebase';
 import type { RoomStore } from './roomStore';
-
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-};
-
-let db: Firestore | null = null;
-
-function getDb(): Firestore {
-  if (!db) {
-    const app = initializeApp(firebaseConfig);
-    db = initializeFirestore(app, {
-      // Firestore refuse les valeurs `undefined` : le code utilise `null` partout,
-      // cette option n'est qu'un filet de sécurité.
-      ignoreUndefinedProperties: true,
-      // Certains réseaux mobiles/opérateurs bloquent le canal de streaming (WebChannel)
-      // utilisé par `onSnapshot` : les écritures/lectures ponctuelles passent, mais les
-      // mises à jour temps réel n'arrivent jamais. Le long-polling contourne le blocage.
-      experimentalAutoDetectLongPolling: true,
-    });
-  }
-  return db;
-}
 
 function roomRef(code: string) {
   return doc(getDb(), 'rooms', code);

@@ -1,7 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   buildStarterDeck,
-  CARD_CATALOG,
   describeKeyword,
   ELEMENT_BEATS,
   getCardDef,
@@ -10,8 +9,9 @@ import {
   isElementEffective,
   isMonster,
   KEYWORD_LABELS,
-  STARTER_COUNTS,
+  setActiveCatalog,
 } from './cards';
+import { DEFAULT_CATALOG } from './defaultCatalog';
 import {
   applyAction,
   BREAKTHROUGH_DAMAGE,
@@ -48,6 +48,12 @@ import type {
   Trigger,
   Zone,
 } from './types';
+
+// Ces tests portent sur le catalogue LIVRÉ avec le code, pas sur celui qu'un administrateur
+// aurait enregistré : ils vérifient que les cartes de référence sont cohérentes. On l'installe
+// explicitement, `cards.ts` gardant désormais un catalogue actif modifiable.
+beforeEach(() => setActiveCatalog(DEFAULT_CATALOG));
+
 
 // Déclencheur d'une ligne du journal d'effets, `null` pour une habileté (K1-K6), qui n'en a
 // pas : ces tests ne portent que sur les capacités.
@@ -123,12 +129,12 @@ describe('catalogue et deck de départ', () => {
     const uids = new Set(deck.map((c) => c.uid));
     expect(uids.size).toBe(60);
 
-    const total = Object.values(STARTER_COUNTS).reduce((a, b) => a + b, 0);
+    const total = Object.values(DEFAULT_CATALOG.starterCounts).reduce((a, b) => a + b, 0);
     expect(total).toBe(60);
   });
 
   it('tout monstre a une attaque de base >= 1 (cohérent avec le plancher MIN_ATTACK, E16)', () => {
-    for (const def of CARD_CATALOG) {
+    for (const def of DEFAULT_CATALOG.cards) {
       if (isMonster(def)) expect(def.attack).toBeGreaterThanOrEqual(1);
     }
   });
@@ -1142,7 +1148,7 @@ describe('éléments', () => {
   });
 
   it('chaque carte du catalogue a un élément de la roue', () => {
-    for (const def of CARD_CATALOG) {
+    for (const def of DEFAULT_CATALOG.cards) {
       expect(Object.keys(ELEMENT_BEATS)).toContain(def.element);
     }
   });
@@ -1212,12 +1218,12 @@ describe('éléments', () => {
 
 describe('effets déclenchés', () => {
   it('catalogue : toutes les capacités respectent isAbilityAllowed ; le deck fait toujours 60', () => {
-    for (const def of CARD_CATALOG) {
+    for (const def of DEFAULT_CATALOG.cards) {
       for (const ability of def.abilities ?? []) {
         expect(isAbilityAllowed(def, ability)).toBe(true);
       }
     }
-    const total = Object.values(STARTER_COUNTS).reduce((a, b) => a + b, 0);
+    const total = Object.values(DEFAULT_CATALOG.starterCounts).reduce((a, b) => a + b, 0);
     expect(total).toBe(60);
   });
 
@@ -1541,7 +1547,7 @@ describe('habiletés (mots-clés)', () => {
   }
 
   it('catalogue : les habiletés ne portent que sur des monstres et ont toutes un libellé', () => {
-    for (const def of CARD_CATALOG) {
+    for (const def of DEFAULT_CATALOG.cards) {
       for (const keyword of (isMonster(def) ? def.keywords : undefined) ?? []) {
         expect(KEYWORD_LABELS[keyword]).toBeTruthy();
         expect(describeKeyword(keyword)).toContain(KEYWORD_LABELS[keyword]);
@@ -1550,7 +1556,7 @@ describe('habiletés (mots-clés)', () => {
     }
     // Chaque habileté existe au moins une fois dans le catalogue : sinon elle n'est jouable nulle part.
     for (const keyword of Object.keys(KEYWORD_LABELS) as Keyword[]) {
-      expect(CARD_CATALOG.some((def) => hasKeywordDef(def, keyword))).toBe(true);
+      expect(DEFAULT_CATALOG.cards.some((def) => hasKeywordDef(def, keyword))).toBe(true);
     }
   });
 

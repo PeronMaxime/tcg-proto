@@ -1,5 +1,7 @@
+import { setActiveCatalog } from '../game/cards';
 import { applyAction, createInitialState } from '../game/rules';
-import type { Action, Room, Seat } from '../game/types';
+import type { Action, Catalog, GameState, Room, Seat } from '../game/types';
+import { loadPlayableCatalog } from './catalogStore';
 import { getPlayerId, getPlayerName } from './identity';
 import { generateRoomCode, normalizeRoomCode } from './roomCode';
 import { roomStore } from './roomStore';
@@ -22,6 +24,19 @@ function freshRematchReady(): Record<Seat, boolean> {
 }
 
 export class RoomError extends Error {}
+
+// Prépare une nouvelle partie : on lit le catalogue partagé, on l'installe comme catalogue
+// actif (`createInitialState` construit les decks avec, via `buildStarterDeck`) et on le rend
+// pour qu'il soit FIGÉ dans la room. Une carte modifiée dans l'admin après ce point ne touche
+// donc plus cette partie — elle s'appliquera à la suivante.
+//
+// Appelé avant d'ouvrir la transaction : le catalogue se lit de façon asynchrone, alors que
+// les callbacks de `roomStore.transact` sont synchrones.
+async function freshGame(): Promise<{ catalog: Catalog; state: GameState }> {
+  const catalog = await loadPlayableCatalog();
+  setActiveCatalog(catalog);
+  return { catalog, state: createInitialState() };
+}
 
 // Code de la room courante (D7) : reconnexion automatique après un rafraîchissement.
 export function getCurrentRoomCode(): string | null {
@@ -75,6 +90,8 @@ export async function createRoom(): Promise<string> {
 export async function joinRoom(rawCode: string): Promise<Room> {
   const code = normalizeRoomCode(rawCode);
   const player = { id: getPlayerId(), name: getPlayerName() };
+  // Préparé même en cas de reconnexion (où il ne servira pas) : la transaction est synchrone.
+  const game = await freshGame();
 
   const room = await roomStore.transact(code, (existing) => {
     if (!existing) throw new RoomError('Room introuvable.');
@@ -90,7 +107,8 @@ export async function joinRoom(rawCode: string): Promise<Room> {
     const joined: Room = {
       ...existing,
       players: { ...existing.players, p2: player },
-      state: createInitialState(),
+      state: game.state,
+      catalog: game.catalog,
       status: 'playing',
       leftAt: freshLeftAt(),
       rematchReady: freshRematchReady(),
@@ -125,11 +143,13 @@ export async function sendAction(room: Room, seat: Seat, action: Action): Promis
 // Redémarrage immédiat, sans attendre l'autre siège : réservé au cas où la partie reçue
 // utilise d'anciennes règles (RoomScreen, avant même que la partie ait vraiment commencé).
 export async function rematch(room: Room): Promise<void> {
+  const game = await freshGame();
   await roomStore.transact(room.code, (existing) => {
     if (!existing) return null;
     const restarted: Room = {
       ...existing,
-      state: createInitialState(),
+      state: game.state,
+      catalog: game.catalog,
       status: 'playing',
       leftAt: freshLeftAt(),
       rematchReady: freshRematchReady(),
@@ -143,13 +163,17 @@ export async function rematch(room: Room): Promise<void> {
 // marqué prêt ; dès que les deux le sont, une nouvelle partie démarre et les marques sont
 // remises à zéro.
 export async function requestRematch(room: Room, seat: Seat): Promise<void> {
+  // La revanche repart du catalogue COURANT : une carte éditée dans l'admin pendant la partie
+  // qui vient de se terminer entre en jeu à la manche suivante (demande utilisateur).
+  const game = await freshGame();
   await roomStore.transact(room.code, (existing) => {
     if (!existing) return null;
     const ready = { ...(existing.rematchReady ?? freshRematchReady()), [seat]: true };
     if (ready.p1 && ready.p2) {
       const restarted: Room = {
         ...existing,
-        state: createInitialState(),
+        state: game.state,
+        catalog: game.catalog,
         status: 'playing',
         leftAt: freshLeftAt(),
         rematchReady: freshRematchReady(),

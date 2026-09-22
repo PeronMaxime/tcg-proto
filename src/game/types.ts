@@ -74,6 +74,20 @@ export interface EnchantmentDef extends CardDefBase {
 
 export type CardDef = MonsterDef | EnchantmentDef;
 
+// Catalogue complet : les cartes existantes et la composition du deck de départ. Éditable
+// depuis le panneau d'administration (`ui/admin`), stocké dans `catalog/current`
+// (`net/catalogStore.ts`) et recopié tel quel dans chaque `Room` à la création d'une partie,
+// pour qu'une modification faite en cours de partie ne change pas les cartes sous les pieds
+// des joueurs. `version` est incrémentée à chaque enregistrement : elle sert de garde contre
+// l'écrasement d'une écriture plus récente (deux onglets d'admin ouverts en même temps).
+export interface Catalog {
+  version: number;
+  cards: CardDef[];
+  // Nombre d'exemplaires de chaque carte dans le deck de départ, indexé par `CardDef.id`.
+  // Un id absent (ou à 0) veut dire que la carte existe mais n'est pas distribuée.
+  starterCounts: Record<string, number>;
+}
+
 export interface CardInstance {
   uid: string; // unique dans la partie, stable : c'est la key React de la carte
   cardId: string;
@@ -259,4 +273,9 @@ export interface Room {
   // false }` dès qu'une nouvelle partie démarre. Absent sur les rooms créées avant cette
   // fonctionnalité (accès toujours via `?.`).
   rematchReady?: Record<Seat, boolean>;
+  // Catalogue figé à la création de la partie (voir `Catalog`) : les deux clients jouent
+  // forcément avec les mêmes cartes, et une édition faite dans l'admin pendant la partie ne
+  // s'applique qu'à la suivante. Absent sur les rooms créées avant le panneau
+  // d'administration : à lire via `room.catalog ?? DEFAULT_CATALOG`.
+  catalog?: Catalog;
 }

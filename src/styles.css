@@ -1243,3 +1243,307 @@ button {
     opacity: 1;
   }
 }
+
+/* ---------------------------------------------------------------------------------------
+   Panneau d'administration (/admin) — voir src/ui/admin. Écran de travail dense, à l'opposé
+   du HUD de jeu : pas d'or ni de parchemin, juste des champs lisibles sur fond sombre.
+   --------------------------------------------------------------------------------------- */
+
+.admin {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 0.75rem;
+  padding: 1rem;
+  overflow: hidden;
+}
+
+.admin-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  flex: 1;
+}
+
+.admin-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.admin-header h1 {
+  font-family: var(--font-display);
+  margin: 0;
+}
+
+.admin-summary {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-dim);
+  font-size: 0.85rem;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.admin button,
+.admin select,
+.admin input {
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-panel);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.admin button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.admin button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.admin-save:not(:disabled) {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.admin-remove:not(:disabled) {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+/* Liste à gauche, éditeur à droite : la liste garde une largeur fixe pour que l'éditeur ne
+   danse pas quand on filtre. */
+.admin-body {
+  display: flex;
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.admin-list {
+  width: 20rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.5rem;
+}
+
+.admin-filters {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.admin-filters select {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-list-item {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.admin-list-item.is-selected {
+  border-color: var(--color-accent);
+}
+
+.admin-list-name {
+  font-weight: 600;
+}
+
+.admin-list-meta {
+  font-size: 0.8rem;
+  color: var(--color-text-dim);
+}
+
+.admin-list-badge {
+  font-size: 0.7rem;
+  color: var(--hud-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-list-empty {
+  color: var(--color-text-dim);
+  font-size: 0.85rem;
+  padding: 0.5rem;
+}
+
+.admin-detail {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+.admin-editor {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.admin-editor-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.admin-editor-side {
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+}
+
+.admin-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 6rem;
+}
+
+.admin-field-wide {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.admin-field > span {
+  font-size: 0.8rem;
+  color: var(--color-text-dim);
+}
+
+.admin-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.admin-checkbox input {
+  width: auto;
+}
+
+.admin-fieldset {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-fieldset legend {
+  font-size: 0.8rem;
+  color: var(--color-text-dim);
+  padding: 0 0.35rem;
+}
+
+.admin-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.admin-ability {
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-errors {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--color-danger);
+  font-size: 0.85rem;
+}
+
+.admin-errors-block {
+  border: 1px solid var(--color-danger);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+}
+
+.admin-preview {
+  width: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-preview canvas {
+  border-radius: 10px;
+  display: block;
+}
+
+.admin-preview-note {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-dim);
+}
+
+.admin-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.85rem;
+}
+
+.admin-footer a {
+  color: var(--color-accent);
+}
+
+/* L'aperçu passe sous le formulaire quand la fenêtre est étroite. */
+@media (max-width: 1100px) {
+  .admin-body {
+    flex-direction: column;
+  }
+
+  .admin-list {
+    width: 100%;
+    max-height: 14rem;
+  }
+
+  .admin-editor {
+    flex-direction: column-reverse;
+  }
+}

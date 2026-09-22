@@ -1,4 +1,5 @@
 import type { Room } from '../game/types';
+import { hasFirebaseConfig } from './firebase';
 import { firebaseStore } from './firebaseStore';
 import { localStore } from './localStore';
 
@@ -15,8 +16,6 @@ export interface RoomStore {
   readonly isLocal: boolean;
 }
 
-// Le mode Firebase est actif si VITE_FIREBASE_PROJECT_ID est renseignée ; sinon, tout
-// passe par localStorage pour pouvoir jouer à deux onglets sans configuration.
-const hasFirebaseConfig = Boolean(import.meta.env.VITE_FIREBASE_PROJECT_ID);
-
+// Le mode Firebase est actif si VITE_FIREBASE_PROJECT_ID est renseignée (voir `firebase.ts`) ;
+// sinon, tout passe par localStorage pour pouvoir jouer à deux onglets sans configuration.
 export const roomStore: RoomStore = hasFirebaseConfig ? firebaseStore : localStore;

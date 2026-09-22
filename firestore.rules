@@ -1,8 +1,26 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Parties en cours. Ouvertes : la logique de jeu est entièrement côté client, deux
+    // joueurs qui ne se connaissent pas doivent pouvoir se rejoindre par un simple code, et
+    // il n'y a pas de compte joueur. Ce prototype ne cherche pas à empêcher la triche.
     match /rooms/{code} {
       allow read, write: if true;
+    }
+
+    // Catalogue de cartes, édité depuis /admin.
+    // Lecture ouverte : chaque joueur en a besoin pour démarrer une partie.
+    // Écriture réservée aux administrateurs. C'EST ICI QUE SE JOUE LA SÉCURITÉ : l'écran de
+    // connexion et VITE_ADMIN_UIDS ne font que masquer l'interface côté navigateur.
+    //
+    // Pour ajouter un administrateur : coller son uid (console Firebase → Authentication →
+    // Utilisateurs) dans la liste ci-dessous, puis republier ces règles. Le même uid doit
+    // figurer dans VITE_ADMIN_UIDS pour que le panneau s'affiche.
+    match /catalog/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid in [
+        'lMnvzOfTR8dKIo8o14iepGl7Oem1'
+      ];
     }
   }
 }
