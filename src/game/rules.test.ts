@@ -91,7 +91,6 @@ function freshPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
     market: [],
     hand: [],
     zones: emptyZones(),
-    discard: [],
     extraMarketCards: 0,
     lockedUids: [],
     movesUsed: { attack: false, defense: false },
@@ -158,7 +157,6 @@ describe('createInitialState', () => {
       expect(SECOND_PLAYER_BONUS_COINS).toBe(2);
       expect(player.hand).toEqual([]);
       expect(player.market).toEqual([]);
-      expect(player.discard).toEqual([]);
       expect(player.hp).toBe(10);
     }
     expect(state.phase).toBe('start');
@@ -353,22 +351,46 @@ describe('applyAction - rerollMarket', () => {
   it('remplace les cartes du marché par le dessus du deck et coûte 1 pièce', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.coins = 3;
-    state.players.p1.market = [makeCard('rampart', 'm1'), makeCard('banner', 'm2')];
+    state.players.p1.market = [makeCard('rampart', 'm1'), makeCard('banner', 'm2'), makeCard('wolf', 'm3')];
     state.players.p1.deck = [makeCard('archer', 'd1'), makeCard('titan', 'd2'), makeCard('knight', 'd3')];
 
     const next = applyAction(state, 'p1', { type: 'rerollMarket' })!;
 
     expect(next.players.p1.coins).toBe(3 - MARKET_REROLL_COST);
-    // Les deux refusées repartent au fond, les deux cartes du dessus les remplacent.
-    expect(next.players.p1.market.map((c) => c.uid)).toEqual(['d3', 'd2']);
-    expect(next.players.p1.deck.map((c) => c.uid)).toEqual(['m1', 'm2', 'd1']);
+    // Les trois refusées repartent au fond, les trois cartes du dessus les remplacent.
+    expect(next.players.p1.market.map((c) => c.uid)).toEqual(['d3', 'd2', 'd1']);
+    expect(next.players.p1.deck.map((c) => c.uid)).toEqual(['m1', 'm2', 'm3']);
     expect(next.lastEvent).toEqual({
       id: 1,
       type: 'marketReroll',
       seat: 'p1',
-      uids: ['d3', 'd2'],
+      uids: ['d3', 'd2', 'd1'],
       cost: MARKET_REROLL_COST,
     });
+  });
+
+  it('propose toujours MARKET_SIZE cartes, même après un achat', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.coins = 3;
+    // Il ne reste que deux cartes : la troisième a été achetée.
+    state.players.p1.market = [makeCard('rampart', 'm1'), makeCard('banner', 'm2')];
+    state.players.p1.deck = [makeCard('archer', 'd1'), makeCard('titan', 'd2'), makeCard('knight', 'd3')];
+
+    const next = applyAction(state, 'p1', { type: 'rerollMarket' })!;
+
+    expect(next.players.p1.market.map((c) => c.uid)).toEqual(['d3', 'd2', 'd1']);
+    expect(next.players.p1.deck.map((c) => c.uid)).toEqual(['m1', 'm2']);
+  });
+
+  it('complète un marché vidé par les achats', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.coins = 1;
+    state.players.p1.market = [];
+    state.players.p1.deck = [makeCard('archer', 'd1'), makeCard('titan', 'd2'), makeCard('knight', 'd3')];
+
+    const next = applyAction(state, 'p1', { type: 'rerollMarket' })!;
+
+    expect(next.players.p1.market.map((c) => c.uid)).toEqual(['d3', 'd2', 'd1']);
   });
 
   it('garde les cartes verrouillées, à leur place, et ne relance que les autres', () => {
@@ -403,8 +425,8 @@ describe('applyAction - rerollMarket', () => {
     expect(applyAction(notMain, 'p1', { type: 'rerollMarket' })).toBeNull();
 
     const allLocked = baseState({ phase: 'main' });
-    allLocked.players.p1.market = [makeCard('rampart', 'm1')];
-    allLocked.players.p1.lockedUids = ['m1'];
+    allLocked.players.p1.market = [makeCard('rampart', 'm1'), makeCard('banner', 'm2'), makeCard('wolf', 'm3')];
+    allLocked.players.p1.lockedUids = ['m1', 'm2', 'm3'];
     allLocked.players.p1.deck = [makeCard('archer', 'd1')];
     expect(applyAction(allLocked, 'p1', { type: 'rerollMarket' })).toBeNull();
   });
@@ -654,11 +676,12 @@ describe('applyAction - move', () => {
 });
 
 describe('fusion dorée', () => {
-  it('la carte en main devient dorée et reste en main, les 2 exemplaires posés partent en défausse', () => {
+  it('la carte en main devient dorée et reste en main, les 2 exemplaires posés retournent au fond du deck', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
     state.players.p1.zones.defense[3] = makeCard('wolf', 'w2');
     state.players.p1.hand = [makeCard('squire', 's1'), makeCard('wolf', 'w3')];
+    state.players.p1.deck = [makeCard('guard', 'd1')];
 
     const next = applyAction(state, 'p1', { type: 'fuse', uid: 'w3' })!;
 
@@ -666,7 +689,7 @@ describe('fusion dorée', () => {
     expect(p1.hand).toEqual([makeCard('squire', 's1'), { uid: 'w3', cardId: 'wolf', golden: true }]);
     expect(p1.zones.attack[0]).toBeNull();
     expect(p1.zones.defense[3]).toBeNull();
-    expect(p1.discard.map((c) => c.uid)).toEqual(['w1', 'w2']);
+    expect(p1.deck.map((c) => c.uid)).toEqual(['w1', 'w2', 'd1']);
     expect(next.lastEvent).toEqual({ id: 1, type: 'fuse', seat: 'p1', uid: 'w3', fusedUids: ['w1', 'w2'] });
   });
 
@@ -696,7 +719,7 @@ describe('fusion dorée', () => {
 
     const next = applyAction(state, 'p1', { type: 'fuse', uid: 'w4' })!;
 
-    expect(next.players.p1.discard.map((c) => c.uid)).toEqual(['w3', 'w2']);
+    expect(next.players.p1.deck.map((c) => c.uid)).toEqual(['w3', 'w2']);
     expect(next.players.p1.zones.defense[0]?.uid).toBe('w1');
   });
 
@@ -709,8 +732,8 @@ describe('fusion dorée', () => {
     const next = applyAction(state, 'p1', { type: 'fuse', uid: 'w3' })!;
     const golden = next.players.p1.hand.find((c) => c.uid === 'w3')!;
     expect(golden.buff).toEqual({ attack: 5, defense: 1 });
-    // Les exemplaires absorbés partent en défausse sans buff (E9).
-    expect(next.players.p1.discard.every((c) => c.buff === undefined)).toBe(true);
+    // Les exemplaires absorbés retournent au deck sans buff (E9).
+    expect(next.players.p1.deck.every((c) => c.buff === undefined)).toBe(true);
   });
 
   it('une carte dorée sans exemplaire buffé ne reçoit aucun champ buff', () => {
@@ -815,17 +838,18 @@ describe('fusion dorée', () => {
 });
 
 describe('applyAction - sell', () => {
-  it('retire une carte posée, la met en défausse, donne 1 pièce et déclenche Vendu (Loup : +1 PV)', () => {
+  it('retire une carte posée, la met au fond du deck, donne 1 pièce et déclenche Vendu (Loup : +1 PV)', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.coins = 2;
     state.players.p1.hp = 5;
     state.players.p1.zones.attack[3] = makeCard('wolf', 'w1');
+    state.players.p1.deck = [makeCard('guard', 'd1'), makeCard('archer', 'd2')];
 
     const next = applyAction(state, 'p1', { type: 'sell', uid: 'w1' });
 
     expect(next).not.toBeNull();
     expect(next!.players.p1.zones.attack[3]).toBeNull();
-    expect(next!.players.p1.discard.map((c) => c.uid)).toEqual(['w1']);
+    expect(next!.players.p1.deck.map((c) => c.uid)).toEqual(['w1', 'd1', 'd2']);
     expect(next!.players.p1.coins).toBe(3);
     expect(next!.players.p1.hp).toBe(6); // E8 : Loup - Vendu : +1 PV
     expect(next!.lastEvent).toEqual({
@@ -856,6 +880,8 @@ describe('applyAction - sell', () => {
 
     const next = applyAction(state, 'p1', { type: 'sell', uid: 'g1' })!;
     expect(next.players.p1.coins).toBe(before + 3);
+    // Elle redevient normale au fond du deck : ses exemplaires absorbés y sont déjà.
+    expect(next.players.p1.deck[0]).toEqual({ uid: 'g1', cardId: 'guard' });
   });
 
   it('efface le buff de la carte vendue (E9)', () => {
@@ -863,7 +889,7 @@ describe('applyAction - sell', () => {
     state.players.p1.zones.attack[0] = { uid: 'g1', cardId: 'guard', buff: { attack: 1, defense: 1 } };
 
     const next = applyAction(state, 'p1', { type: 'sell', uid: 'g1' })!;
-    expect(next.players.p1.discard[0].buff).toBeUndefined();
+    expect(next.players.p1.deck[0].buff).toBeUndefined();
   });
 
   it('fonctionne pour un monstre en défense et un enchantement', () => {
@@ -873,11 +899,11 @@ describe('applyAction - sell', () => {
 
     const afterDefense = applyAction(state, 'p1', { type: 'sell', uid: 'g1' });
     expect(afterDefense!.players.p1.zones.defense[1]).toBeNull();
-    expect(afterDefense!.players.p1.discard.map((c) => c.uid)).toEqual(['g1']);
+    expect(afterDefense!.players.p1.deck.map((c) => c.uid)).toEqual(['g1']);
 
     const afterEnchant = applyAction(afterDefense!, 'p1', { type: 'sell', uid: 'b1' });
     expect(afterEnchant!.players.p1.zones.enchant[2]).toBeNull();
-    expect(afterEnchant!.players.p1.discard.map((c) => c.uid)).toEqual(['g1', 'b1']);
+    expect(afterEnchant!.players.p1.deck.map((c) => c.uid)).toEqual(['b1', 'g1']);
   });
 
   it("refuse une carte qui n'est pas sur le board (main, marché) ou qui n'existe pas", () => {
@@ -1281,12 +1307,12 @@ describe('effets déclenchés', () => {
     expect(next.players.p1.hp).toBe(STARTING_HP); // plafonné, pas 21
   });
 
-  it('Vendu/fusion : le buff est supprimé sur la carte qui part en défausse', () => {
+  it('Vendu/fusion : le buff est supprimé sur la carte qui retourne au deck', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.attack[0] = { uid: 'g1', cardId: 'guard', buff: { attack: 2, defense: 2 } };
 
     const next = applyAction(state, 'p1', { type: 'sell', uid: 'g1' })!;
-    expect(next.players.p1.discard[0].buff).toBeUndefined();
+    expect(next.players.p1.deck[0].buff).toBeUndefined();
   });
 
   it('Attaque : Loup (3 atq) contre un monstre -> +2 dégâts (bonusDamage) sans changer la riposte', () => {
@@ -1833,12 +1859,11 @@ describe('partie simulée (invariants)', () => {
           p.zones.attack.filter(Boolean).length +
           p.zones.defense.filter(Boolean).length +
           p.zones.enchant.filter(Boolean).length;
-        expect(p.deck.length + p.market.length + p.hand.length + placed + p.discard.length).toBe(60);
+        expect(p.deck.length + p.market.length + p.hand.length + placed).toBe(60);
         const uids = new Set([
           ...p.deck.map((c) => c.uid),
           ...p.market.map((c) => c.uid),
           ...p.hand.map((c) => c.uid),
-          ...p.discard.map((c) => c.uid),
           ...p.zones.attack.filter((c): c is CardInstance => c !== null).map((c) => c.uid),
           ...p.zones.defense.filter((c): c is CardInstance => c !== null).map((c) => c.uid),
           ...p.zones.enchant.filter((c): c is CardInstance => c !== null).map((c) => c.uid),

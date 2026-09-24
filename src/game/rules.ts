@@ -133,7 +133,6 @@ export function createInitialState(random: () => number = Math.random): GameStat
       market: [],
       hand: [],
       zones: emptyZones(),
-      discard: [],
       extraMarketCards: 0,
       lockedUids: [],
       movesUsed: { attack: false, defense: false },
@@ -267,6 +266,14 @@ function rerollableMarket(player: PlayerState): CardInstance[] {
   return player.market.filter((card) => !isMarketCardLocked(player, card.uid));
 }
 
+// Nombre de nouvelles cartes qu'une relance tire (demande utilisateur) : le marché relancé
+// repart toujours à `MARKET_SIZE` cartes (verrouillées comprises), même après un achat —
+// sans jamais rétrécir un marché agrandi par `extraMarketCard`.
+function rerollDrawCount(player: PlayerState): number {
+  const lockedCount = player.market.length - rerollableMarket(player).length;
+  return Math.max(MARKET_SIZE, player.market.length) - lockedCount;
+}
+
 export function isActionLegal(state: GameState, seat: Seat, action: Action): boolean {
   if (state.winner !== null) return false;
   if (state.turn !== seat) return false;
@@ -322,11 +329,11 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
 
     case 'rerollMarket': {
       // Payante et répétable, pendant toute la phase principale comme les achats (demande
-      // utilisateur). Refusée quand elle ne changerait rien — marché vide ou entièrement
+      // utilisateur). Refusée quand elle ne changerait rien — marché plein et entièrement
       // verrouillé, ou deck vide : on ne fait pas payer une relance sans effet.
       if (state.phase !== 'main') return false;
       if (player.coins < MARKET_REROLL_COST) return false;
-      if (rerollableMarket(player).length === 0) return false;
+      if (rerollDrawCount(player) === 0) return false;
       return player.deck.length > 0;
     }
 
@@ -397,23 +404,26 @@ function applyBuy(next: GameState, seat: Seat, uid: string): void {
 }
 
 // Relance du marché (demande utilisateur) : les cartes non verrouillées retournent au fond
-// du deck dans l'ordre du marché (H5, comme les invendus de la fin du tour) et sont
-// remplacées, à leur place exacte, par autant de cartes du dessus. Les verrouillées ne
-// bougent pas — ni de position, ni de verrou : on peut relancer autant de fois qu'on paie
-// autour d'une carte gardée.
+// du deck dans l'ordre du marché (H5, comme les invendus de la fin du tour) et le marché est
+// complété depuis le dessus jusqu'à `MARKET_SIZE` cartes (`rerollDrawCount`) : les nouvelles
+// prennent la place exacte des refusées, puis s'ajoutent à la fin pour combler les achats.
+// Les verrouillées ne bougent pas — ni de position, ni de verrou : on peut relancer autant
+// de fois qu'on paie autour d'une carte gardée.
 function applyRerollMarket(next: GameState, seat: Seat): void {
   const player = next.players[seat];
   player.coins -= MARKET_REROLL_COST;
 
+  const drawCount = rerollDrawCount(player);
   const refused = rerollableMarket(player);
   player.deck = [...refused, ...player.deck];
-  // Les refusées viennent d'être remises au fond : le deck a forcément de quoi les
-  // remplacer une pour une.
-  const drawn = refused.map(() => player.deck.pop()!);
-  let drawnIndex = 0;
-  player.market = player.market.map((card) =>
-    isMarketCardLocked(player, card.uid) ? card : drawn[drawnIndex++],
-  );
+  const drawn = player.deck.splice(-Math.min(drawCount, player.deck.length)).reverse();
+  const market: CardInstance[] = [];
+  for (const card of player.market) {
+    if (isMarketCardLocked(player, card.uid)) market.push(card);
+    else if (drawn.length > 0) market.push(drawn.shift()!);
+  }
+  market.push(...drawn);
+  player.market = market;
 
   next.lastEvent = {
     id: next.eventSeq,
@@ -493,28 +503,30 @@ function applyMove(next: GameState, seat: Seat, uid: string, slot: number): void
 }
 
 // Fusion dorée : la carte en main devient dorée (elle reste en main) et absorbe les
-// FUSION_COUNT - 1 premiers exemplaires posés, qui partent en défausse (le total de 50
-// cartes par joueur reste donc intact). Un monstre doré ne fusionne plus. Exception à E9 :
+// FUSION_COUNT - 1 premiers exemplaires posés, qui retournent au fond du deck (demande
+// utilisateur : plus de défausse ; le total de 50 cartes par joueur reste donc intact). Un monstre doré ne fusionne plus. Exception à E9 :
 // les buffs permanents des exemplaires absorbés (attaque gagnée en attaquant, par exemple)
 // ne sont pas perdus, ils sont reportés sur la carte dorée.
 function applyFuse(next: GameState, seat: Seat, uid: string): void {
   const player = next.players[seat];
   const card = player.hand.find((c) => c.uid === uid)!;
-  const fusedUids: string[] = [];
+  const absorbedCards: CardInstance[] = [];
   for (const { zone, slot } of fusionPartners(player, card).slice(0, FUSION_COUNT - 1)) {
     const absorbed = player.zones[zone][slot]!;
     player.zones[zone][slot] = null;
     if (absorbed.buff) addBuff(card, absorbed.buff.attack, absorbed.buff.defense);
     clearBuff(absorbed); // E9 : le buff disparaît de l'exemplaire absorbé, il quitte le board
-    player.discard.push(absorbed);
-    fusedUids.push(absorbed.uid);
+    absorbedCards.push(absorbed);
   }
+  // Fond du deck, dans l'ordre d'absorption (comme les refusées d'une relance, H5).
+  player.deck = [...absorbedCards, ...player.deck];
+  const fusedUids = absorbedCards.map((c) => c.uid);
   card.golden = true;
   next.lastEvent = { id: next.eventSeq, type: 'fuse', seat, uid, fusedUids };
 }
 
-// Vente d'une carte posée : elle quitte son emplacement, rejoint la défausse (jamais
-// mélangée au deck) et rapporte 1 pièce à son propriétaire, 3 si elle est dorée et 1 de plus
+// Vente d'une carte posée : elle quitte son emplacement, retourne au fond du deck (demande
+// utilisateur : plus de défausse) et rapporte 1 pièce à son propriétaire, 3 si elle est dorée et 1 de plus
 // si elle est Négociante (K4) — voir `sellValue` (ajouté à la demande explicite de
 // l'utilisateur, voir la note sur H10 plus haut).
 function applySell(next: GameState, seat: Seat, uid: string): void {
@@ -525,11 +537,15 @@ function applySell(next: GameState, seat: Seat, uid: string): void {
     const card = player.zones[zone][slot]!;
     player.zones[zone][slot] = null;
     clearBuff(card); // E9 : le buff disparaît, la carte quitte le board (vente)
-    player.discard.push(card);
+    player.deck.unshift(card); // fond du deck
     player.coins += sellValue(card); // K4 Négociant : +1 pièce
-    // E4 : Vendu se déclenche après que la carte a quitté le board, la pièce versée, en défausse.
+    // E4 : Vendu se déclenche après que la carte a quitté le board, la pièce versée, au fond
+    // du deck.
     const effects = fireTrigger(next, seat, card, 'sold');
     if (hasKeyword(card, 'merchant')) effects.unshift(keywordLog(seat, card, 'merchant'));
+    // Une carte dorée redevient normale en retournant au deck : les exemplaires qu'elle avait
+    // absorbés y sont déjà. Après Vendu, qui a encore profité de son effet doublé.
+    delete card.golden;
     next.lastEvent = { id: next.eventSeq, type: 'sell', seat, uid, zone, slot, effects };
     return;
   }

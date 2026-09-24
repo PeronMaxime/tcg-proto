@@ -102,20 +102,6 @@ export function deckPose(mine: boolean): Pose {
   };
 }
 
-// Pile de défausse (cartes vendues) : juste à côté du deck, un peu plus loin du centre —
-// « en dessous » du deck vu de l'écran de son propriétaire.
-const DISCARD_OFFSET = 0.9;
-const DISCARD_MINE: [number, number, number] = [4.3, 0.1, 2.2 + DISCARD_OFFSET];
-const DISCARD_OPPONENT: [number, number, number] = [4.3, 0.1, -2.2 - DISCARD_OFFSET];
-
-export function discardPose(mine: boolean): Pose {
-  return {
-    position: mine ? DISCARD_MINE : DISCARD_OPPONENT,
-    rotation: [-Math.PI / 2, 0, 0],
-    scale: BOARD_CARD_SCALE,
-  };
-}
-
 // Mon marché : taille maximale des cartes, écart entre deux cartes (fraction de leur largeur)
 // et hauteur visible de l'écran à la distance du marché (caméra CAMERA, fov 45°), pour que
 // la rangée tienne en largeur quel que soit le ratio de l'écran.

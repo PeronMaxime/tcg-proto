@@ -21,7 +21,6 @@ import EffectiveBursts, { type EffectiveHit } from './EffectiveBurst';
 import Hero from './Hero';
 import {
   deckPose,
-  discardPose,
   handCardPose,
   marketCardPose,
   playerTokenPose,
@@ -371,20 +370,20 @@ function Board({
     }
   }
 
-  // --- Carte vendue qui vole vers la défausse ---
+  // --- Carte vendue qui vole vers le deck (elle est au fond du deck dans l'état) ---
   if (state.lastEvent?.type === 'sell') {
     const owner = state.lastEvent.seat;
     const ownerPlayer = state.players[owner];
     const mine = owner === seat;
     const uid = state.lastEvent.uid;
-    const card = ownerPlayer.discard.find((c) => c.uid === uid);
+    const card = ownerPlayer.deck.find((c) => c.uid === uid);
     if (card) {
       entries.push({
         uid: card.uid,
         cardId: card.cardId,
         stats: null,
         ko: false,
-        pose: discardPose(mine),
+        pose: deckPose(mine),
         hidden: true,
         mine,
         halo: 'none',
@@ -395,7 +394,7 @@ function Board({
   }
 
   // --- Fusion dorée : les 2 exemplaires absorbés quittent le board et se fondent dans la
-  // carte devenue dorée, dans la main (ils sont déjà en défausse dans l'état) ---
+  // carte devenue dorée, dans la main (ils sont déjà au fond du deck dans l'état) ---
   if (state.lastEvent?.type === 'fuse') {
     const { seat: owner, uid: goldenUid, fusedUids } = state.lastEvent;
     const ownerPlayer = state.players[owner];
@@ -404,7 +403,7 @@ function Board({
     if (handIndex !== -1) {
       const goldenPose = handCardPose(handIndex, ownerPlayer.hand.length, mine);
       for (const uid of fusedUids) {
-        const card = ownerPlayer.discard.find((c) => c.uid === uid);
+        const card = ownerPlayer.deck.find((c) => c.uid === uid);
         if (!card) continue;
         entries.push({
           uid: card.uid,
@@ -554,8 +553,6 @@ function Board({
 
       <DeckPile pose={deckPose(true)} count={me.deck.length} color={theme.colors.cardBack} />
       <DeckPile pose={deckPose(false)} count={opponent.deck.length} color={theme.colors.cardBack} />
-      <DeckPile pose={discardPose(true)} count={me.discard.length} color={theme.colors.discardPile} />
-      <DeckPile pose={discardPose(false)} count={opponent.discard.length} color={theme.colors.discardPile} />
 
       {entries.map((entry) => (
         <Card

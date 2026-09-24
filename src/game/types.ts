@@ -139,7 +139,6 @@ export interface PlayerState {
   market: CardInstance[]; // marché du tour en cours ; accessible tant que la phase 'main' dure, vidé à la fin du tour
   hand: CardInstance[];
   zones: Record<Zone, Slot[]>; // longueurs fixes 5 / 5 / 3 ; index 0 = emplacement de gauche
-  discard: CardInstance[]; // cartes vendues (`sell`), jamais retirées autrement
   // Cartes en plus à révéler au marché du prochain tour (effet `extraMarketCard`), remis à 0
   // dès que ce marché est tiré.
   extraMarketCards: number;
@@ -166,8 +165,8 @@ export type Action =
   // zone concernée, pas deux.
   | { type: 'move'; uid: string; slot: number }
   // Relance le marché contre `MARKET_REROLL_COST` pièce (demande utilisateur) : les cartes
-  // non verrouillées repartent au fond du deck et sont remplacées par autant de cartes du
-  // dessus. Répétable tant que le joueur paie.
+  // non verrouillées repartent au fond du deck et le marché est complété depuis le dessus
+  // jusqu'à `MARKET_SIZE` cartes, même après un achat. Répétable tant que le joueur paie.
   | { type: 'rerollMarket' }
   // Verrouille/déverrouille une carte du marché (demande utilisateur) : verrouiller coûte
   // `MARKET_LOCK_COST` pièce et met la carte de côté pour le marché du prochain tour,

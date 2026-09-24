@@ -245,7 +245,7 @@ le détail des décisions. Résumé :
 - **Fusion dorée** : quand on fait glisser une carte monstre alors que 2 exemplaires
   normaux (non dorés) du même monstre sont posés sur son board (attaque + défense
   confondues), une zone de fusion apparaît au milieu de l'écran. Relâcher la carte dedans
-  envoie les 2 exemplaires posés en défausse et transforme la carte en **monstre doré**, qui
+  renvoie les 2 exemplaires posés au fond du deck et transforme la carte en **monstre doré**, qui
   reste en main et se repose ensuite comme une autre carte — la fusion marche donc même
   avec un board plein. Tant que la fusion est possible, cette 3e carte ne peut **pas** être
   posée sur un emplacement : relâchée ailleurs que dans la zone de fusion, elle revient en
@@ -256,10 +256,12 @@ le détail des décisions. Résumé :
   options payantes pendant toute la phase principale (demande utilisateur) :
   - **Relancer** (bouton HUD « Relancer », action `rerollMarket`, `MARKET_REROLL_COST` = 1
     pièce) : les cartes **non verrouillées** retournent au fond du deck dans l'ordre du marché
-    (H5) et sont remplacées, **à leur place exacte**, par autant de cartes du dessus. Répétable
-    tant que le joueur paie — c'est le prix, pas un quota, qui limite les relances. Refusée
-    quand elle ne changerait rien (marché vide ou entièrement verrouillé, deck vide) : on ne
-    fait pas payer une relance sans effet.
+    (H5) et le marché est complété depuis le dessus du deck jusqu'à `MARKET_SIZE` cartes
+    (verrouillées comprises), **même après un achat** : les nouvelles prennent la place exacte
+    des refusées, puis comblent les places libérées par les achats. Répétable tant que le
+    joueur paie — c'est le prix, pas un quota, qui limite les relances. Refusée quand elle ne
+    changerait rien (marché plein et entièrement verrouillé, deck vide) : on ne fait pas payer
+    une relance sans effet.
   - **Verrouiller** (cadenas au coin haut gauche d'une carte de son marché, action
     `toggleMarketLock`, `MARKET_LOCK_COST` = 1 pièce) : la carte échappe aux relances **et** au
     retour au deck en fin de tour (`PlayerState.lockedUids`), donc elle **ouvre le marché du
@@ -268,7 +270,8 @@ le détail des décisions. Résumé :
     mais **ne rembourse pas** (sinon on verrouillerait « pour voir ») ; acheter une carte
     verrouillée libère simplement son verrou.
 - **Vendre une carte posée** (clic sur la carte → zoom → bouton « Vendre ») la retire
-  définitivement du board vers une pile de défausse (jamais remélangée au deck) et rapporte
+  du board et la renvoie au fond du deck (il n'y a plus de défausse ; une carte dorée y
+  redevient normale) et rapporte
   1 pièce, 3 si la carte est dorée, +1 si elle est Négociante (`sellValue` dans `rules.ts`).
 
 Plusieurs points sont des **hypothèses par défaut**, marquées `// Hn` (H1 à H12,
