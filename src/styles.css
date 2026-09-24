@@ -549,7 +549,7 @@ button {
    juste en dessous — les deux commandes du marché se lisent comme une seule pile. */
 .market-reroll-button {
   position: absolute;
-  top: calc(50% + 2.7rem);
+  top: calc(50% + 3.5rem);
   right: clamp(0.6rem, 2vw, 1.4rem);
   transform: translateY(-50%);
   padding: 0.45rem 1.6rem;
