@@ -34,11 +34,11 @@ const SECTIONS: RulesSection[] = [
   {
     title: 'Le plateau',
     lines: [
-      "Zone d'attaque (5 emplacements) : ces monstres frappent pendant le combat.",
-      "Zone de défense (5 emplacements) : ces monstres encaissent les coups adverses.",
-      "Zone d'enchantements (3 emplacements) : ces cartes renforcent tous tes monstres tant qu'elles restent en jeu.",
-      "Glisse une carte de ta main vers un emplacement libre pour la poser ; glisse une carte posée vers un autre emplacement de la même zone pour la déplacer.",
-      "Un seul déplacement par zone et par tour : un en attaque et un en défense, alors choisis bien (un échange de deux cartes compte pour le déplacement de sa zone).",
+      "Zone d'attaque (5 cartes au plus) : ces monstres frappent pendant le combat.",
+      "Zone de défense (5 cartes au plus) : ces monstres encaissent les coups adverses.",
+      "Zone d'enchantements (3 cartes au plus) : ces cartes renforcent tous tes monstres tant qu'elles restent en jeu.",
+      "Glisse une carte de ta main dans une zone pour la poser : les cartes s'écartent pour te montrer où elle s'insérera, entre deux cartes ou à un bout. Glisse une carte posée ailleurs dans sa zone pour la déplacer.",
+      "Un seul déplacement par zone et par tour : un en attaque et un en défense, alors choisis bien (les cartes décalées par un déplacement ne comptent pas).",
     ],
   },
   {

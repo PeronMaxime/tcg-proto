@@ -9,6 +9,7 @@ import {
   isMarketCardLocked,
   opponentOf,
   ZONE_SIZES,
+  zoneCards,
 } from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Seat, Zone } from '../game/types';
 import type { ActiveCombatStep, CombatView } from '../ui/useCombatPlayback';
@@ -24,10 +25,11 @@ import {
   handCardPose,
   marketCardPose,
   playerTokenPose,
-  slotPose,
+  rowBounds,
+  rowCardPose,
   type Pose,
 } from './layout';
-import Slot from './Slot';
+import ZoneRow from './ZoneRow';
 import { theme } from './theme';
 import type { MonsterFaceStats } from './textures';
 
@@ -305,12 +307,33 @@ function Board({
     { owner: opponentSeat, zone: 'enchant' },
   ];
 
+  // Rangée compacte (demande utilisateur) : pendant un glisser-déposer, la carte tenue quitte
+  // la rangée qu'elle réorganise, et la position d'insertion survolée s'ouvre entre deux
+  // cartes pour lui faire place — les voisines s'écartent avant même le dépôt.
+  const insertion = dropTarget?.kind === 'slot' ? dropTarget : null;
+  // Cartes de ma rangée entre lesquelles la carte tenue peut s'insérer.
+  const rowOthers = (zone: Zone): CardInstance[] => {
+    const cards = zoneCards(me, zone);
+    return drag?.origin?.zone === zone ? cards.filter((c) => c.uid !== drag.uid) : cards;
+  };
+  const rowCount = (zone: Zone) => rowOthers(zone).length;
+  // Pose d'une carte posée, d'index `index` dans sa rangée, en tenant compte de l'insertion.
+  const placedPose = (owner: Seat, zone: Zone, card: CardInstance, index: number): Pose => {
+    const mine = owner === seat;
+    const cards = zoneCards(state.players[owner], zone);
+    if (!mine || insertion?.zone !== zone) return rowCardPose(zone, index, cards.length, mine);
+    const others = rowOthers(zone);
+    const count = others.length + 1;
+    if (card.uid === drag?.uid) return rowCardPose(zone, insertion.slot, count, true);
+    const i = others.findIndex((c) => c.uid === card.uid);
+    return rowCardPose(zone, i < insertion.slot ? i : i + 1, count, true);
+  };
+
   for (const { owner, zone } of zonesToRender) {
     const ownerPlayer = state.players[owner];
     const mine = owner === seat;
-    for (const [index, slot] of ownerPlayer.zones[zone].entries()) {
-      if (!slot) continue;
-      const pose = slotPose(zone, index, mine);
+    for (const [index, slot] of zoneCards(ownerPlayer, zone).entries()) {
+      const pose = placedPose(owner, zone, slot, index);
       zonePositionByUid.set(slot.uid, pose.position);
       zoneCardIdByUid.set(slot.uid, slot.cardId);
 
@@ -325,8 +348,8 @@ function Board({
         ko = computed.ko;
       }
 
-      // Une carte déjà posée peut être déplacée à la souris vers un autre emplacement libre
-      // de SA zone pendant la phase principale (demande utilisateur) : uniquement la mienne,
+      // Une carte déjà posée peut être déplacée à la souris ailleurs dans la rangée de SA zone
+      // pendant la phase principale (demande utilisateur) : uniquement la mienne,
       // uniquement en attaque/défense (pas les enchantements), et seulement si le
       // déplacement de cette zone n'a pas déjà été utilisé ce tour-ci — sinon la carte se
       // soulèverait pour rien, aucun emplacement ne s'allumant.
@@ -492,6 +515,9 @@ function Board({
     if (drag.origin) return zone === drag.origin.zone && isActionLegal(state, seat, { type: 'move', uid: drag.uid, slot });
     return isActionLegal(state, seat, { type: 'place', uid: drag.uid, zone, slot });
   };
+  // La carte tenue peut s'insérer quelque part dans cette rangée.
+  const isLegalRow = (zone: Zone) =>
+    Array.from({ length: rowCount(zone) + 1 }, (_, slot) => slot).some((slot) => isLegalSlot(zone, slot));
 
   // Le marché ouvert affiche des cartes face cachée chez l'adversaire et un fond plus sombre
   // aide à les distinguer sans éblouir ; une fois masqué (bouton HUD), rien ne justifie de
@@ -518,22 +544,19 @@ function Board({
 
       {zonesToRender.map(({ owner, zone }) => {
         const mine = owner === seat;
-        const size = ZONE_SIZES[zone];
-        return Array.from({ length: size }, (_, index) => {
-          const legal = mine && interactive && isLegalSlot(zone, index);
-          const hovered =
-            legal && dropTarget?.kind === 'slot' && dropTarget.zone === zone && dropTarget.slot === index;
-          return (
-            <Slot
-              key={`${owner}-${zone}-${index}`}
-              pose={slotPose(zone, index, mine)}
-              zone={zone}
-              highlighted={legal}
-              hovered={hovered}
-              bright={brightTable}
-            />
-          );
-        });
+        const row = rowBounds(zone, ZONE_SIZES[zone], mine);
+        const hovered = mine && interactive && insertion?.zone === zone;
+        return (
+          <ZoneRow
+            key={`${owner}-${zone}`}
+            center={[row.x, row.z]}
+            halfW={row.halfW}
+            zone={zone}
+            highlighted={mine && interactive && isLegalRow(zone)}
+            ghostX={hovered ? rowCardPose(zone, insertion.slot, rowCount(zone) + 1, true).position[0] : null}
+            bright={brightTable}
+          />
+        );
       })}
 
       <Hero
@@ -585,6 +608,7 @@ function Board({
           start={drag.start}
           dragWorldRef={dragWorldRef}
           isLegalSlot={isLegalSlot}
+          rowCount={rowCount}
           isOverFusionZone={isOverFusionZone}
           onHover={onDragHover}
           onDrop={onDrop}

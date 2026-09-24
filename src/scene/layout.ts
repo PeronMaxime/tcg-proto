@@ -23,15 +23,36 @@ const SLOT_SPACING = 1.05;
 // l'emplacement d'index i a le même x pour les deux joueurs.
 const ROW_Z: Record<Zone, number> = { attack: 0.85, defense: 2.2, enchant: 3.55 };
 
-export function slotPose(zone: Zone, index: number, mine: boolean): Pose {
-  const total = zone === 'enchant' ? 3 : 5;
+// Rangée compacte (demande utilisateur) : les `count` cartes d'une zone sont serrées et
+// centrées, la carte d'index `index` (0 = la plus à gauche) prend la place calculée ici.
+export function rowCardPose(zone: Zone, index: number, count: number, mine: boolean): Pose {
   const z = (mine ? 1 : -1) * ROW_Z[zone];
-  const x = (index - (total - 1) / 2) * SLOT_SPACING;
+  const x = (index - (count - 1) / 2) * SLOT_SPACING;
   return {
     position: [x, 0.03, z],
     rotation: [-Math.PI / 2, 0, 0],
     scale: BOARD_CARD_SCALE,
   };
+}
+
+// Rectangle de la table occupé par la rangée d'une zone à pleine capacité (`capacity`
+// cartes) : centre et demi-dimensions, pour dessiner son fond et viser un dépôt.
+export function rowBounds(zone: Zone, capacity: number, mine: boolean): { x: number; z: number; halfW: number; halfH: number } {
+  return {
+    x: 0,
+    z: (mine ? 1 : -1) * ROW_Z[zone],
+    halfW: (capacity * SLOT_SPACING) / 2,
+    halfH: (theme.card.height * BOARD_CARD_SCALE) / 2,
+  };
+}
+
+// Position d'insertion visée par un point d'abscisse `x` dans une rangée de `count` cartes :
+// le nombre de cartes dont le centre est à gauche de `x` (0 = avant la première, `count` =
+// après la dernière).
+export function insertionIndexAt(count: number, x: number): number {
+  let index = 0;
+  for (let i = 0; i < count; i++) if ((i - (count - 1) / 2) * SLOT_SPACING < x) index++;
+  return index;
 }
 
 const PLAYER_TOKEN_MINE: [number, number, number] = [-4.3, 0.08, 2.2];

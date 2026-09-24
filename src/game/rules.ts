@@ -32,7 +32,7 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 15;
+export const RULES_VERSION = 16;
 export const STARTING_HP = 10;
 // Pièces en stock au début de la partie (demande utilisateur), avant le gain du 1er tour.
 export const STARTING_COINS = 2;
@@ -110,6 +110,21 @@ function keywordLog(seat: Seat, card: CardInstance, keyword: Keyword): EffectLog
 export function sellValue(card: CardInstance): number {
   const base = card.golden ? SELL_GOLDEN_COINS : SELL_COINS;
   return base + (hasKeyword(card, 'merchant') ? KEYWORD_MERCHANT_BONUS : 0);
+}
+
+// Rangée compacte (demande utilisateur) : les cartes d'une zone sont toujours serrées les unes
+// contre les autres, sans emplacement vide entre elles — on les insère entre deux cartes (ou
+// à un bout) au lieu de viser une case. Le tableau `zones[zone]` garde sa longueur fixe
+// (compatibilité avec les états déjà écrits), les cartes en tête et les `null` en fin. Un
+// état écrit avant cette règle peut encore avoir des trous : tout le code lit donc la zone
+// via `zoneCards`, dont l'index (la position dans la rangée) ignore les trous.
+export function zoneCards(player: PlayerState, zone: Zone): CardInstance[] {
+  return player.zones[zone].filter((s): s is CardInstance => s !== null);
+}
+
+// Réécrit la zone à partir de la rangée `cards`, complétée de `null` jusqu'à sa taille.
+function writeZone(player: PlayerState, zone: Zone, cards: CardInstance[]): void {
+  player.zones[zone] = [...cards, ...new Array<Slot>(ZONE_SIZES[zone] - cards.length).fill(null)];
 }
 
 function emptyZones(): Record<Zone, Slot[]> {
@@ -215,8 +230,8 @@ export function getMonsterStats(
 function fusionPartners(player: PlayerState, card: CardInstance): { zone: MonsterZone; slot: number }[] {
   const partners: { zone: MonsterZone; slot: number }[] = [];
   for (const zone of ['attack', 'defense'] as MonsterZone[]) {
-    player.zones[zone].forEach((s, slot) => {
-      if (s && s.cardId === card.cardId && !s.golden) partners.push({ zone, slot });
+    zoneCards(player, zone).forEach((s, slot) => {
+      if (s.cardId === card.cardId && !s.golden) partners.push({ zone, slot });
     });
   }
   return partners;
@@ -296,13 +311,15 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
       if (state.phase !== 'main') return false;
       const card = player.hand.find((c) => c.uid === action.uid);
       if (!card) return false;
-      const size = ZONE_SIZES[action.zone];
-      if (!Number.isInteger(action.slot) || action.slot < 0 || action.slot >= size) return false;
+      // `slot` = position d'insertion dans la rangée compacte : 0 = tout à gauche, `count` =
+      // tout à droite, entre les deux = entre deux cartes (demande utilisateur).
+      const count = zoneCards(player, action.zone).length;
       // H10 : pas de défausse ni de retrait gratuit d'une carte posée — si toutes les zones
       // légales sont pleines, cette action est simplement refusée et la carte reste en main.
       // (le retrait contre 1 pièce, `sell` ci-dessous, a été ajouté après coup à la demande
       // explicite de l'utilisateur : H10 ne portait que sur un retrait/une défausse gratuits.)
-      if (player.zones[action.zone][action.slot] !== null) return false;
+      if (count >= ZONE_SIZES[action.zone]) return false;
+      if (!Number.isInteger(action.slot) || action.slot < 0 || action.slot > count) return false;
       const def = getCardDef(card.cardId);
       if (action.zone === 'enchant') return def.kind === 'enchantment';
       // Une carte qui peut fusionner (2 exemplaires normaux déjà posés) ne sert qu'à la
@@ -312,17 +329,18 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
 
     case 'move': {
       // Repositionne une carte déjà posée à l'intérieur de SA zone (attaque ou défense)
-      // uniquement : pas de changement de zone (demande utilisateur). Emplacement occupé =
-      // échange des deux cartes, pour pouvoir réorganiser même une zone pleine. Un seul
-      // déplacement par zone et par tour (`canMoveInZone`).
+      // uniquement : pas de changement de zone (demande utilisateur). `slot` = sa position
+      // dans la rangée une fois déplacée : elle s'insère entre deux cartes, les autres se
+      // décalent. Un seul déplacement par zone et par tour (`canMoveInZone`).
       if (state.phase !== 'main') return false;
       if (!Number.isInteger(action.slot)) return false;
       for (const zone of ['attack', 'defense'] as MonsterZone[]) {
-        const from = player.zones[zone].findIndex((s) => s?.uid === action.uid);
+        const cards = zoneCards(player, zone);
+        const from = cards.findIndex((c) => c.uid === action.uid);
         if (from === -1) continue;
         if (!canMoveInZone(player, zone)) return false;
         if (action.slot === from) return false; // pas de no-op
-        return action.slot >= 0 && action.slot < ZONE_SIZES[zone];
+        return action.slot >= 0 && action.slot < cards.length;
       }
       return false;
     }
@@ -465,28 +483,30 @@ function applyPlace(next: GameState, seat: Seat, uid: string, zone: Zone, slot: 
   // H3 : un monstre posé pendant la phase principale combat dès la phase de combat du même
   // tour — `place` ne fait qu'écrire dans `zones`, et `resolveCombat` (plus bas) lit l'état
   // des zones tel qu'il est au moment de l'appel, donc juste après la phase principale.
-  player.zones[zone][slot] = card;
+  const cards = zoneCards(player, zone);
+  cards.splice(slot, 0, card); // insertion entre deux cartes : les suivantes se décalent
+  writeZone(player, zone, cards);
   // E3 : Invoqué se déclenche après que la carte a rejoint le board (elle en fait donc partie).
   const effects = fireTrigger(next, seat, card, 'summon');
   next.lastEvent = { id: next.eventSeq, type: 'place', seat, uid, zone, slot, effects };
 }
 
-// Repositionne une carte déjà posée dans un autre emplacement de SA zone (attaque ou
-// défense), en l'échangeant avec la carte qui l'occupait le cas échéant, et consomme le
-// déplacement de cette zone pour le tour en cours : pas de
+// Repositionne une carte déjà posée ailleurs dans la rangée de SA zone (attaque ou
+// défense) — elle s'insère à la position `slot`, les cartes entre les deux se décalent d'un
+// cran — et consomme le déplacement de cette zone pour le tour en cours : pas de
 // déclenchement de capacité (les cartes ne quittent pas le board, E3/E4 ne s'appliquent qu'à
 // la pose/vente), pas de changement de zone (`isActionLegal` l'impose déjà).
 function applyMove(next: GameState, seat: Seat, uid: string, slot: number): void {
   const player = next.players[seat];
   for (const zone of ['attack', 'defense'] as MonsterZone[]) {
-    const from = player.zones[zone].findIndex((s) => s?.uid === uid);
+    const cards = zoneCards(player, zone);
+    const from = cards.findIndex((c) => c.uid === uid);
     if (from === -1) continue;
-    const card = player.zones[zone][from]!;
-    const swapped = player.zones[zone][slot];
-    player.zones[zone][from] = swapped;
-    player.zones[zone][slot] = card;
-    // Un échange consomme le déplacement de SA zone, pas deux : c'est la zone qui a droit à
-    // un déplacement par tour, pas chaque carte.
+    const [card] = cards.splice(from, 1);
+    cards.splice(slot, 0, card);
+    writeZone(player, zone, cards);
+    // Les cartes décalées ne comptent pas : c'est la zone qui a droit à un déplacement par
+    // tour, pas chaque carte.
     player.movesUsed = { ...(player.movesUsed ?? { attack: false, defense: false }), [zone]: true };
     next.lastEvent = {
       id: next.eventSeq,
@@ -496,7 +516,6 @@ function applyMove(next: GameState, seat: Seat, uid: string, slot: number): void
       zone,
       from,
       to: slot,
-      swappedUid: swapped?.uid ?? null,
     };
     return;
   }
@@ -511,9 +530,13 @@ function applyFuse(next: GameState, seat: Seat, uid: string): void {
   const player = next.players[seat];
   const card = player.hand.find((c) => c.uid === uid)!;
   const absorbedCards: CardInstance[] = [];
-  for (const { zone, slot } of fusionPartners(player, card).slice(0, FUSION_COUNT - 1)) {
-    const absorbed = player.zones[zone][slot]!;
-    player.zones[zone][slot] = null;
+  // Exemplaires lus avant tout retrait : `slot` est une position dans la rangée, qui se
+  // resserre dès qu'on en retire une carte.
+  const partners = fusionPartners(player, card)
+    .slice(0, FUSION_COUNT - 1)
+    .map(({ zone, slot }) => ({ zone, absorbed: zoneCards(player, zone)[slot] }));
+  for (const { zone, absorbed } of partners) {
+    writeZone(player, zone, zoneCards(player, zone).filter((c) => c.uid !== absorbed.uid));
     if (absorbed.buff) addBuff(card, absorbed.buff.attack, absorbed.buff.defense);
     clearBuff(absorbed); // E9 : le buff disparaît de l'exemplaire absorbé, il quitte le board
     absorbedCards.push(absorbed);
@@ -532,10 +555,11 @@ function applyFuse(next: GameState, seat: Seat, uid: string): void {
 function applySell(next: GameState, seat: Seat, uid: string): void {
   const player = next.players[seat];
   for (const zone of ['attack', 'defense', 'enchant'] as Zone[]) {
-    const slot = player.zones[zone].findIndex((s) => s?.uid === uid);
+    const cards = zoneCards(player, zone);
+    const slot = cards.findIndex((c) => c.uid === uid);
     if (slot === -1) continue;
-    const card = player.zones[zone][slot]!;
-    player.zones[zone][slot] = null;
+    const [card] = cards.splice(slot, 1);
+    writeZone(player, zone, cards); // rangée compacte : les cartes restantes se resserrent
     clearBuff(card); // E9 : le buff disparaît, la carte quitte le board (vente)
     player.deck.unshift(card); // fond du deck
     player.coins += sellValue(card); // K4 Négociant : +1 pièce
@@ -679,7 +703,7 @@ function fireTrigger(
 interface Fighter {
   card: CardInstance;
   seat: Seat;
-  slot: number; // emplacement dans sa zone : sert au voisinage de K1 Portée
+  slot: number; // position dans la rangée de sa zone : sert au voisinage de K1 Portée
   damageTaken: number;
   ko: boolean;
   // K3 Protection : attaques encore absorbables pendant CE combat (0 pour les autres cartes).
@@ -701,8 +725,8 @@ function standingFighters(state: GameState, fighters: Fighter[], zone: MonsterZo
 function buildFighters(state: GameState, seat: Seat, zone: MonsterZone): Fighter[] {
   const player = state.players[seat];
   const fighters: Fighter[] = [];
-  player.zones[zone].forEach((card, slot) => {
-    if (!card) return;
+  // `slot` = position dans la rangée compacte : deux voisins de rangée se touchent (Portée).
+  zoneCards(player, zone).forEach((card, slot) => {
     const fighter: Fighter = {
       card,
       seat,

@@ -138,7 +138,10 @@ export interface PlayerState {
   deck: CardInstance[]; // le haut du deck est la fin du tableau, le fond est le début
   market: CardInstance[]; // marché du tour en cours ; accessible tant que la phase 'main' dure, vidé à la fin du tour
   hand: CardInstance[];
-  zones: Record<Zone, Slot[]>; // longueurs fixes 5 / 5 / 3 ; index 0 = emplacement de gauche
+  // Longueurs fixes 5 / 5 / 3. Rangée compacte : les cartes en tête (index 0 = la plus à
+  // gauche), les `null` en fin — à lire via `zoneCards` (rules.ts), un état plus ancien
+  // pouvant encore avoir des trous.
+  zones: Record<Zone, Slot[]>;
   // Cartes en plus à révéler au marché du prochain tour (effet `extraMarketCard`), remis à 0
   // dès que ce marché est tiré.
   extraMarketCards: number;
@@ -157,12 +160,15 @@ export interface PlayerState {
 export type Action =
   | { type: 'beginTurn' }
   | { type: 'buy'; uid: string }
+  // Pose une carte de la main dans une zone, insérée à la position `slot` de sa rangée
+  // compacte (demande utilisateur) : 0 = tout à gauche, nombre de cartes posées = tout à
+  // droite, entre les deux = entre deux cartes, qui s'écartent pour lui faire place.
   | { type: 'place'; uid: string; zone: Zone; slot: number }
-  // Déplace une carte déjà posée vers un autre emplacement de la même zone (attaque ou
-  // défense) : on ne peut pas changer de zone en la déplaçant (demande utilisateur). Si
-  // l'emplacement est occupé, les deux cartes échangent leur place. Un seul déplacement par
-  // zone et par tour (`PlayerState.movesUsed`) : un échange compte pour un déplacement de la
-  // zone concernée, pas deux.
+  // Déplace une carte déjà posée ailleurs dans la rangée de sa zone (attaque ou défense) :
+  // on ne peut pas changer de zone en la déplaçant (demande utilisateur). `slot` = sa
+  // position une fois déplacée, les cartes entre l'ancienne et la nouvelle se décalent d'un
+  // cran. Un seul déplacement par zone et par tour (`PlayerState.movesUsed`) : les cartes
+  // décalées ne comptent pas.
   | { type: 'move'; uid: string; slot: number }
   // Relance le marché contre `MARKET_REROLL_COST` pièce (demande utilisateur) : les cartes
   // non verrouillées repartent au fond du deck et le marché est complété depuis le dessus
@@ -219,7 +225,7 @@ export interface CombatStep {
   retaliationEffective: boolean;
   // Habiletés (K1-K6, voir `Keyword`). Toutes absentes sur un évènement écrit avant les
   // habiletés, et sur un coup qui n'en déclenche aucune : à lire avec `?? []` / `?? null`.
-  // Portée : dégâts collatéraux aux voisins de la cible, dans l'ordre des emplacements.
+  // Portée : dégâts collatéraux aux voisins de la cible, dans l'ordre de la rangée.
   splash?: { uid: string; damage: number; remaining: number; effective: boolean }[];
   // Furie : dégâts en excès reportés sur le défenseur suivant après un défenseur tué.
   overflow?: { uid: string; damage: number; remaining: number } | null;
@@ -240,7 +246,7 @@ export type GameEvent =
   // `locked` : l'état de la carte APRÈS l'action ; `cost` : 0 au déverrouillage.
   | { id: number; type: 'marketLock'; seat: Seat; uid: string; locked: boolean; cost: number }
   | { id: number; type: 'place'; seat: Seat; uid: string; zone: Zone; slot: number; effects: EffectLog[] }
-  // `swappedUid` : la carte qui occupait `to` et part en `from` (échange), null si `to` était libre.
+  // `from`/`to` : positions dans la rangée compacte, avant et après le déplacement.
   | {
       id: number;
       type: 'move';
@@ -249,7 +255,6 @@ export type GameEvent =
       zone: MonsterZone;
       from: number;
       to: number;
-      swappedUid: string | null;
     }
   // `uid` : la carte en main devenue dorée ; `fusedUids` : les 2 exemplaires absorbés.
   | { id: number; type: 'fuse'; seat: Seat; uid: string; fusedUids: string[] }

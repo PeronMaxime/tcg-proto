@@ -3,25 +3,33 @@ import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import { ZONE_SIZES } from '../game/rules';
 import type { Zone } from '../game/types';
-import { slotPose } from './layout';
-import { theme } from './theme';
+import { insertionIndexAt, rowBounds } from './layout';
 
 // Glisser-déposer d'une carte de ma main (demande utilisateur : on pose une carte en la
 // faisant glisser sur un emplacement, plus par clic). Monté uniquement pendant un drag :
 // écoute le pointeur sur `window` (il peut passer au-dessus du HUD HTML), projette sa
-// position sur la table pour faire suivre la carte et trouver l'emplacement visé, puis
+// position sur la table pour faire suivre la carte et trouver où elle s'insérerait, puis
 // signale le dépôt au relâchement.
 
+// `slot` : position d'insertion dans la rangée compacte de la zone (demande utilisateur : on
+// dépose entre deux cartes, ou à un bout, plus sur une case), au sens de l'action `place` ou
+// `move` correspondante.
 export type DropTarget = { kind: 'slot'; zone: Zone; slot: number } | { kind: 'fusion' };
 
 export const DRAG_HEIGHT = 1.2; // hauteur de la carte tenue au-dessus de la table
 const SLOT_Y = 0.03;
-const HIT_MARGIN = 0.08; // tolérance autour d'un emplacement (reste < demi-espacement)
+// Tolérance autour d'une rangée : serrée en profondeur (reste < demi-écart entre deux
+// rangées), plus large sur les côtés pour viser facilement un bout de la rangée.
+const HIT_MARGIN_Z = 0.08;
+const HIT_MARGIN_X = 0.5;
 
 interface DragControllerProps {
   start: { x: number; y: number }; // position écran du pointeur au début du drag
   dragWorldRef: RefObject<THREE.Vector3 | null>; // lu par la carte tenue (Card)
   isLegalSlot: (zone: Zone, slot: number) => boolean;
+  // Nombre de cartes de la rangée entre lesquelles la carte tenue peut s'insérer : toutes les
+  // cartes posées, moins la carte tenue elle-même quand on la déplace dans sa zone.
+  rowCount: (zone: Zone) => number;
   isOverFusionZone: (clientX: number, clientY: number) => boolean;
   onHover: (target: DropTarget | null) => void;
   onDrop: (target: DropTarget | null) => void;
@@ -53,20 +61,16 @@ function DragController(props: DragControllerProps) {
     }
 
     function targetAt(clientX: number, clientY: number): DropTarget | null {
-      const { isOverFusionZone, isLegalSlot } = latest.current;
+      const { isOverFusionZone, isLegalSlot, rowCount } = latest.current;
       // La zone de fusion (surcouche HTML) passe avant les emplacements qu'elle recouvre.
       if (isOverFusionZone(clientX, clientY)) return { kind: 'fusion' };
       const hit = projectOnPlane(clientX, clientY, SLOT_Y);
       if (!hit) return null;
       for (const zone of ['attack', 'defense', 'enchant'] as Zone[]) {
-        for (let slot = 0; slot < ZONE_SIZES[zone]; slot++) {
-          const pose = slotPose(zone, slot, true);
-          const halfW = (theme.card.width * pose.scale) / 2 + HIT_MARGIN;
-          const halfH = (theme.card.height * pose.scale) / 2 + HIT_MARGIN;
-          if (Math.abs(hit.x - pose.position[0]) <= halfW && Math.abs(hit.z - pose.position[2]) <= halfH) {
-            return isLegalSlot(zone, slot) ? { kind: 'slot', zone, slot } : null;
-          }
-        }
+        const row = rowBounds(zone, ZONE_SIZES[zone], true);
+        if (Math.abs(hit.x - row.x) > row.halfW + HIT_MARGIN_X || Math.abs(hit.z - row.z) > row.halfH + HIT_MARGIN_Z) continue;
+        const slot = insertionIndexAt(rowCount(zone), hit.x);
+        return isLegalSlot(zone, slot) ? { kind: 'slot', zone, slot } : null;
       }
       return null;
     }

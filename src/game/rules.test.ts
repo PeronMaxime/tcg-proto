@@ -45,6 +45,7 @@ import type {
   Keyword,
   PlayerState,
   Seat,
+  Slot,
   Trigger,
   Zone,
 } from './types';
@@ -162,7 +163,7 @@ describe('createInitialState', () => {
     expect(state.phase).toBe('start');
     expect(state.turn).toBe(state.starter);
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(15);
+    expect(state.rulesVersion).toBe(16);
   });
 
   it('tire au sort le joueur qui commence (lancer de pièce) et compense celui qui suit', () => {
@@ -544,9 +545,35 @@ describe('applyAction - place', () => {
     expect(afterAttack!.players.p1.coins).toBe(5); // pose gratuite, ni guard ni drake n'ont de capacité Invoqué
     expect(afterAttack!.lastEvent).toMatchObject({ type: 'place', effects: [] });
 
-    const afterDefense = applyAction(afterAttack!, 'p1', { type: 'place', uid: 'h2', zone: 'defense', slot: 2 });
-    expect(afterDefense!.players.p1.zones.defense[2]?.uid).toBe('h2');
+    const afterDefense = applyAction(afterAttack!, 'p1', { type: 'place', uid: 'h2', zone: 'defense', slot: 0 });
+    expect(afterDefense!.players.p1.zones.defense[0]?.uid).toBe('h2');
     expect(afterDefense!.players.p1.hand).toEqual([]);
+  });
+
+  it('insère la carte entre deux cartes posées, ou à un bout de la rangée', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'a');
+    state.players.p1.zones.attack[1] = makeCard('guard', 'b');
+    state.players.p1.hand = [makeCard('squire', 'h1'), makeCard('drake', 'h2'), makeCard('archer', 'h3')];
+
+    const between = applyAction(state, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 1 })!;
+    expect(between.players.p1.zones.attack.map((c) => c?.uid ?? null)).toEqual(['a', 'h1', 'b', null, null]);
+    expect(between.lastEvent).toMatchObject({ type: 'place', uid: 'h1', zone: 'attack', slot: 1 });
+
+    const left = applyAction(between, 'p1', { type: 'place', uid: 'h2', zone: 'attack', slot: 0 })!;
+    expect(left.players.p1.zones.attack.map((c) => c?.uid ?? null)).toEqual(['h2', 'a', 'h1', 'b', null]);
+
+    const right = applyAction(left, 'p1', { type: 'place', uid: 'h3', zone: 'attack', slot: 4 })!;
+    expect(right.players.p1.zones.attack.map((c) => c?.uid ?? null)).toEqual(['h2', 'a', 'h1', 'b', 'h3']);
+  });
+
+  it('refuse une position au-delà du bout de la rangée', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'a');
+    state.players.p1.hand = [makeCard('squire', 'h1')];
+
+    expect(applyAction(state, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 2 })).toBeNull();
+    expect(applyAction(state, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 1 })).not.toBeNull();
   });
 
   it('refuse un monstre sur enchant et un enchantement en attaque', () => {
@@ -557,12 +584,25 @@ describe('applyAction - place', () => {
     expect(applyAction(state, 'p1', { type: 'place', uid: 'h2', zone: 'attack', slot: 0 })).toBeNull();
   });
 
-  it('refuse un emplacement occupé', () => {
+  it('refuse une zone pleine', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.hand = [makeCard('squire', 'h1')];
-    state.players.p1.zones.attack[0] = makeCard('wolf', 'existing');
+    state.players.p1.zones.attack = ['wolf', 'guard', 'archer', 'squire', 'golem'].map((id, i) =>
+      makeCard(id, `a${i}`),
+    );
 
     expect(applyAction(state, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 0 })).toBeNull();
+    expect(applyAction(state, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 2 })).toBeNull();
+  });
+
+  it('un état ancien avec des trous : la position ignore les trous et la rangée se resserre', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[1] = makeCard('wolf', 'a');
+    state.players.p1.zones.attack[3] = makeCard('guard', 'b');
+    state.players.p1.hand = [makeCard('squire', 'h1')];
+
+    const next = applyAction(state, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 1 })!;
+    expect(next.players.p1.zones.attack.map((c) => c?.uid ?? null)).toEqual(['a', 'h1', 'b', null, null]);
   });
 
   it('refuse les index de slot invalides', () => {
@@ -587,28 +627,21 @@ describe('applyAction - place', () => {
 });
 
 describe('applyAction - move', () => {
-  it('déplace une carte posée vers un autre emplacement libre de la même zone', () => {
+  it('insère la carte déplacée entre deux cartes, les cartes entre les deux se décalent', () => {
     const state = baseState({ phase: 'main' });
-    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
+    state.players.p1.zones.attack = ['wolf', 'guard', 'archer'].map((id, i): Slot => makeCard(id, `a${i}`)).concat([null, null]);
 
-    const next = applyAction(state, 'p1', { type: 'move', uid: 'w1', slot: 3 });
+    const next = applyAction(state, 'p1', { type: 'move', uid: 'a0', slot: 2 });
 
     expect(next).not.toBeNull();
-    expect(next!.players.p1.zones.attack[0]).toBeNull();
-    expect(next!.players.p1.zones.attack[3]?.uid).toBe('w1');
-    expect(next!.lastEvent).toEqual({
-      id: 1,
-      type: 'move',
-      seat: 'p1',
-      uid: 'w1',
-      zone: 'attack',
-      from: 0,
-      to: 3,
-      swappedUid: null,
-    });
+    expect(next!.players.p1.zones.attack.map((c) => c?.uid ?? null)).toEqual(['a1', 'a2', 'a0', null, null]);
+    expect(next!.lastEvent).toEqual({ id: 1, type: 'move', seat: 'p1', uid: 'a0', zone: 'attack', from: 0, to: 2 });
+
+    const back = applyAction(state, 'p1', { type: 'move', uid: 'a2', slot: 1 })!;
+    expect(back.players.p1.zones.attack.map((c) => c?.uid ?? null)).toEqual(['a0', 'a2', 'a1', null, null]);
   });
 
-  it("échange deux cartes de la même zone quand l'emplacement visé est occupé, même zone pleine", () => {
+  it('réorganise même une zone pleine', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.defense = ['wolf', 'guard', 'archer', 'squire', 'golem'].map((id, i) =>
       makeCard(id, `d${i}`),
@@ -617,16 +650,17 @@ describe('applyAction - move', () => {
     const next = applyAction(state, 'p1', { type: 'move', uid: 'd0', slot: 3 });
 
     expect(next).not.toBeNull();
-    expect(next!.players.p1.zones.defense.map((c) => c?.uid)).toEqual(['d3', 'd1', 'd2', 'd0', 'd4']);
-    expect(next!.lastEvent).toMatchObject({ type: 'move', uid: 'd0', zone: 'defense', from: 0, to: 3, swappedUid: 'd3' });
+    expect(next!.players.p1.zones.defense.map((c) => c?.uid)).toEqual(['d1', 'd2', 'd3', 'd0', 'd4']);
+    expect(next!.lastEvent).toMatchObject({ type: 'move', uid: 'd0', zone: 'defense', from: 0, to: 3 });
   });
 
-  it("refuse un slot identique, un slot hors zone, ou hors phase main", () => {
+  it("refuse un slot identique, un slot hors rangée, ou hors phase main", () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.defense[0] = makeCard('wolf', 'w1');
+    state.players.p1.zones.defense[1] = makeCard('guard', 'w2');
 
     expect(applyAction(state, 'p1', { type: 'move', uid: 'w1', slot: 0 })).toBeNull(); // no-op
-    expect(applyAction(state, 'p1', { type: 'move', uid: 'w1', slot: 5 })).toBeNull(); // hors zone
+    expect(applyAction(state, 'p1', { type: 'move', uid: 'w1', slot: 2 })).toBeNull(); // au-delà de la rangée
     expect(applyAction(state, 'p1', { type: 'move', uid: 'w1', slot: -1 })).toBeNull();
 
     const startState = baseState({ phase: 'start' });
@@ -646,21 +680,22 @@ describe('applyAction - move', () => {
     state.players.p1.zones.attack[0] = makeCard('wolf', 'a1');
     state.players.p1.zones.attack[1] = makeCard('guard', 'a2');
     state.players.p1.zones.defense[0] = makeCard('archer', 'd1');
+    state.players.p1.zones.defense[1] = makeCard('squire', 'd2');
 
-    const afterAttackMove = applyAction(state, 'p1', { type: 'move', uid: 'a1', slot: 4 })!;
+    const afterAttackMove = applyAction(state, 'p1', { type: 'move', uid: 'a1', slot: 1 })!;
     expect(afterAttackMove.players.p1.movesUsed).toEqual({ attack: true, defense: false });
 
     // Attaque consommée : plus aucun déplacement dans cette zone, même avec une autre carte.
-    expect(applyAction(afterAttackMove, 'p1', { type: 'move', uid: 'a1', slot: 2 })).toBeNull();
-    expect(applyAction(afterAttackMove, 'p1', { type: 'move', uid: 'a2', slot: 2 })).toBeNull();
+    expect(applyAction(afterAttackMove, 'p1', { type: 'move', uid: 'a1', slot: 0 })).toBeNull();
+    expect(applyAction(afterAttackMove, 'p1', { type: 'move', uid: 'a2', slot: 1 })).toBeNull();
 
     // La défense garde le sien, et l'épuise à son tour.
-    const afterDefenseMove = applyAction(afterAttackMove, 'p1', { type: 'move', uid: 'd1', slot: 2 })!;
+    const afterDefenseMove = applyAction(afterAttackMove, 'p1', { type: 'move', uid: 'd1', slot: 1 })!;
     expect(afterDefenseMove.players.p1.movesUsed).toEqual({ attack: true, defense: true });
-    expect(applyAction(afterDefenseMove, 'p1', { type: 'move', uid: 'd1', slot: 4 })).toBeNull();
+    expect(applyAction(afterDefenseMove, 'p1', { type: 'move', uid: 'd1', slot: 0 })).toBeNull();
   });
 
-  it("un échange ne consomme que le déplacement de sa zone, et le tour suivant les rend", () => {
+  it("un déplacement ne consomme que celui de sa zone, et le tour suivant les rend", () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.attack[0] = makeCard('wolf', 'a1');
     state.players.p1.zones.attack[1] = makeCard('guard', 'a2');
@@ -702,8 +737,8 @@ describe('fusion dorée', () => {
     expect(applyAction(state, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 0 })).toBeNull();
 
     const fused = applyAction(state, 'p1', { type: 'fuse', uid: 'w3' })!;
-    expect(fused.players.p1.zones.attack[0]).toBeNull();
-    expect(fused.players.p1.zones.attack[1]).toBeNull();
+    // Rangée compacte : les 3 cartes restantes se resserrent à gauche.
+    expect(fused.players.p1.zones.attack.map((c) => c?.uid ?? null)).toEqual(['a2', 'a3', 'a4', null, null]);
 
     const placed = applyAction(fused, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 1 })!;
     expect(placed.players.p1.zones.attack[1]).toEqual({ uid: 'w3', cardId: 'wolf', golden: true });
@@ -808,7 +843,7 @@ describe('fusion dorée', () => {
     expect(applyAction(afterSecond, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 2 })).toBeNull();
 
     const afterSell = applyAction(afterSecond, 'p1', { type: 'sell', uid: 'w1' })!;
-    expect(applyAction(afterSell, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 2 })).not.toBeNull();
+    expect(applyAction(afterSell, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 1 })).not.toBeNull();
   });
 
   it('un monstre doré a ses stats de base doublées, enchantements ajoutés ensuite', () => {
@@ -848,7 +883,7 @@ describe('applyAction - sell', () => {
     const next = applyAction(state, 'p1', { type: 'sell', uid: 'w1' });
 
     expect(next).not.toBeNull();
-    expect(next!.players.p1.zones.attack[3]).toBeNull();
+    expect(next!.players.p1.zones.attack.every((c) => c === null)).toBe(true);
     expect(next!.players.p1.deck.map((c) => c.uid)).toEqual(['w1', 'd1', 'd2']);
     expect(next!.players.p1.coins).toBe(3);
     expect(next!.players.p1.hp).toBe(6); // E8 : Loup - Vendu : +1 PV
@@ -858,9 +893,18 @@ describe('applyAction - sell', () => {
       seat: 'p1',
       uid: 'w1',
       zone: 'attack',
-      slot: 3,
+      slot: 0, // position dans la rangée compacte (l'état ancien avait un trou avant)
       effects: [{ seat: 'p1', sourceUid: 'w1', cardId: 'wolf', trigger: 'sold', effect: { type: 'healSelf', amount: 1 } }],
     });
+  });
+
+  it('la rangée se resserre après la vente d’une carte du milieu', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack = ['guard', 'wolf', 'archer'].map((id, i): Slot => makeCard(id, `a${i}`)).concat([null, null]);
+
+    const next = applyAction(state, 'p1', { type: 'sell', uid: 'a1' })!;
+    expect(next.players.p1.zones.attack.map((c) => c?.uid ?? null)).toEqual(['a0', 'a2', null, null, null]);
+    expect(next.lastEvent).toMatchObject({ type: 'sell', uid: 'a1', slot: 1 });
   });
 
   it('Trésorerie : la vente rend 1 pièce, moins que son coût', () => {

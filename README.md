@@ -130,12 +130,14 @@ Règles v1 (marché, zones fixes, combat automatique) — voir `PLAN-tcg-proto-r
 le détail des décisions. Résumé :
 
 - Chaque joueur a un deck de 60 cartes (48 monstres + 12 enchantements). Le plateau a 3 zones par
-  joueur : **attaque** (5 emplacements), **défense** (5), **enchantements** (3). Une carte
-  posée peut être **déplacée** (action `move`) vers un autre emplacement de **sa** zone — pas
-  d'une zone à l'autre — mais **une seule fois par zone et par tour** : au plus un déplacement
-  en attaque et un en défense (`PlayerState.movesUsed`, remis à zéro par `beginTurn`). Un
-  déplacement vers un emplacement occupé **échange** les deux cartes et ne consomme que le
-  déplacement de sa zone.
+  joueur : **attaque** (5 cartes au plus), **défense** (5), **enchantements** (3). Chaque zone
+  est une **rangée compacte** : les cartes y sont toujours serrées et centrées, sans trou, et
+  une nouvelle carte s'**insère** entre deux cartes (ou à un bout), les autres s'écartant
+  pour lui faire place ; une vente ou une fusion resserre la rangée (`zoneCards` dans
+  `rules.ts`). Une carte posée peut être **déplacée** (action `move`) ailleurs dans la rangée de
+  **sa** zone — pas d'une zone à l'autre — mais **une seule fois par zone et par tour** : au
+  plus un déplacement en attaque et un en défense (`PlayerState.movesUsed`, remis à zéro par
+  `beginTurn`). Les cartes décalées par un déplacement ne consomment rien.
 - **Début de partie** : un **lancer de pièce** désigne le joueur qui commence (`state.starter`,
   tiré dans `createInitialState`, animé par la surcouche `.coin-flip-overlay` de `GameScreen`
   avant le premier `beginTurn`). Chaque joueur commence avec **2 pièces** en stock
@@ -210,8 +212,8 @@ le détail des décisions. Résumé :
 - **Habiletés** (mots-clés, `Keyword` dans `types.ts`) : contrairement à une capacité, une
   habileté n'a pas de déclencheur — c'est une règle permanente portée par certains monstres,
   affichée en tête de leur face (« Portée : … »). Les six habiletés actuelles :
-  - **Portée** : chaque coup porté touche aussi les monstres des emplacements **voisins** de
-    la cible, pour 1 dégât (+1 si le monstre est doré, +1 de plus si son élément domine celui
+  - **Portée** : chaque coup porté touche aussi les monstres **voisins** de la cible dans sa
+    rangée, pour 1 dégât (+1 si le monstre est doré, +1 de plus si son élément domine celui
     du voisin touché). Ces dégâts collatéraux ne provoquent pas de riposte, mais cassent une
     Protection (Archère, Harponneuse).
   - **Provocation** : tant qu'il est debout, ce défenseur est visé **avant** tous les autres,
@@ -237,18 +239,19 @@ le détail des décisions. Résumé :
   Pour donner une habileté à une carte, ajouter son mot-clé à `keywords` dans `CARD_CATALOG`
   (`src/game/cards.ts`) ; les valeurs chiffrées sont les constantes `KEYWORD_*` du même
   fichier, les règles vivent dans `resolveCombat` / `sellValue` (`src/game/rules.ts`).
-- **Poser une carte** : glisser-déposer une carte de sa main sur un emplacement libre de la
-  bonne zone (les emplacements légaux s'allument pendant le glisser).
-- **Déplacer une carte posée** : la glisser vers un autre emplacement de sa zone (attaque ou
-  défense, jamais de changement de zone) ; si l'emplacement est occupé, les deux cartes
-  échangent leur place — on peut donc réorganiser une zone pleine.
+- **Poser une carte** : glisser-déposer une carte de sa main dans la rangée de la bonne zone
+  (les rangées légales s'allument pendant le glisser) ; les cartes posées s'écartent pour
+  montrer où elle s'insérera — entre deux cartes, ou à un bout.
+- **Déplacer une carte posée** : la glisser ailleurs dans la rangée de sa zone (attaque ou
+  défense, jamais de changement de zone) ; elle s'insère entre deux cartes et les autres se
+  décalent — on peut donc réorganiser une zone pleine.
 - **Fusion dorée** : quand on fait glisser une carte monstre alors que 2 exemplaires
   normaux (non dorés) du même monstre sont posés sur son board (attaque + défense
   confondues), une zone de fusion apparaît au milieu de l'écran. Relâcher la carte dedans
   renvoie les 2 exemplaires posés au fond du deck et transforme la carte en **monstre doré**, qui
   reste en main et se repose ensuite comme une autre carte — la fusion marche donc même
   avec un board plein. Tant que la fusion est possible, cette 3e carte ne peut **pas** être
-  posée sur un emplacement : relâchée ailleurs que dans la zone de fusion, elle revient en
+  posée : relâchée ailleurs que dans la zone de fusion, elle revient en
   main. Un monstre doré a son attaque et sa défense de base doublées (les
   bonus d'enchantement s'ajoutent ensuite, sans être doublés) et ne fusionne plus (action
   `fuse` dans `rules.ts`).
