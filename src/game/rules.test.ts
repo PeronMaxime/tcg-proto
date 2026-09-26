@@ -1988,3 +1988,24 @@ describe('partie simulée (invariants)', () => {
     expect(iterations).toBeGreaterThan(0);
   });
 });
+
+describe('variante à 3 cartes par zone de monstres', () => {
+  it('crée des zones de monstres de la taille demandée, sans toucher aux enchantements', () => {
+    const state = createInitialState(seededRandom(3), 3);
+    for (const seat of ['p1', 'p2'] as const) {
+      expect(state.players[seat].zones.attack).toHaveLength(3);
+      expect(state.players[seat].zones.defense).toHaveLength(3);
+      expect(state.players[seat].zones.enchant).toHaveLength(ZONE_SIZES.enchant);
+    }
+  });
+
+  it('refuse de poser un 4e monstre dans une zone de 3 pleine', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack = [makeCard('wolf', 'a'), makeCard('guard', 'b'), null];
+    state.players.p1.hand = [makeCard('squire', 'h1'), makeCard('drake', 'h2')];
+
+    const full = applyAction(state, 'p1', { type: 'place', uid: 'h1', zone: 'attack', slot: 2 })!;
+    expect(full.players.p1.zones.attack.map((c) => c?.uid ?? null)).toEqual(['a', 'b', 'h1']);
+    expect(applyAction(full, 'p1', { type: 'place', uid: 'h2', zone: 'attack', slot: 0 })).toBeNull();
+  });
+});

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { DEFAULT_MONSTER_ZONE_SIZE, MONSTER_ZONE_SIZES } from '../game/rules';
 import { getPlayerName, setPlayerName } from '../net/identity';
 import {
   clearLeftRoomCode,
@@ -8,6 +9,27 @@ import {
   setCurrentRoomCode,
 } from '../net/rooms';
 import { roomStore } from '../net/roomStore';
+
+// Dernière variante choisie, retenue d'une visite à l'autre (simple confort : en cas d'échec
+// de lecture, on retombe sur la variante par défaut).
+const ZONE_SIZE_KEY = 'tcg-monster-zone-size';
+
+function loadZoneSize(): number {
+  try {
+    const stored = Number(localStorage.getItem(ZONE_SIZE_KEY));
+    return (MONSTER_ZONE_SIZES as readonly number[]).includes(stored) ? stored : DEFAULT_MONSTER_ZONE_SIZE;
+  } catch {
+    return DEFAULT_MONSTER_ZONE_SIZE;
+  }
+}
+
+function saveZoneSize(size: number): void {
+  try {
+    localStorage.setItem(ZONE_SIZE_KEY, String(size));
+  } catch {
+    // stockage indisponible : le choix vaut pour cette visite seulement
+  }
+}
 
 interface MenuProps {
   onRoomReady: (code: string) => void;
@@ -19,6 +41,7 @@ function Menu({ onRoomReady }: MenuProps) {
     () => new URLSearchParams(window.location.search).get('code') ?? '',
   );
   const [leftRoomCode, setLeftRoomCode] = useState(() => getLeftRoomCode());
+  const [zoneSize, setZoneSize] = useState(loadZoneSize);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -27,11 +50,16 @@ function Menu({ onRoomReady }: MenuProps) {
     setPlayerName(value);
   }
 
+  function updateZoneSize(size: number) {
+    setZoneSize(size);
+    saveZoneSize(size);
+  }
+
   async function handleCreate() {
     setError(null);
     setBusy(true);
     try {
-      const code = await createRoom();
+      const code = await createRoom(zoneSize);
       clearLeftRoomCode();
       setCurrentRoomCode(code);
       onRoomReady(code);
@@ -103,6 +131,26 @@ function Menu({ onRoomReady }: MenuProps) {
           placeholder="Ton pseudo"
         />
       </label>
+
+      {/* Variante de règles de la partie créée (demande utilisateur) : seul le nombre de
+          cartes par zone de monstres change. Sans effet sur « Rejoindre », qui suit la room. */}
+      <div className="zone-size-picker">
+        <span>Cartes max par zone de monstres</span>
+        <div className="zone-size-options" role="radiogroup">
+          {MONSTER_ZONE_SIZES.map((size) => (
+            <button
+              key={size}
+              role="radio"
+              aria-checked={zoneSize === size}
+              className={zoneSize === size ? 'selected' : undefined}
+              onClick={() => updateZoneSize(size)}
+              disabled={busy}
+            >
+              {size}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <button onClick={handleCreate} disabled={busy}>
         Créer une partie

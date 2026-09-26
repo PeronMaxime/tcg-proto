@@ -101,6 +101,29 @@ button {
   cursor: default;
 }
 
+.zone-size-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+}
+
+.zone-size-options {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.menu .zone-size-options button {
+  flex: 1;
+}
+
+.menu .zone-size-options button.selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 700;
+}
+
 .join-row {
   display: flex;
   gap: 0.5rem;

@@ -8,7 +8,7 @@ import {
   isActionLegal,
   isMarketCardLocked,
   opponentOf,
-  ZONE_SIZES,
+  zoneCapacity,
   zoneCards,
 } from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Seat, Zone } from '../game/types';
@@ -544,7 +544,7 @@ function Board({
 
       {zonesToRender.map(({ owner, zone }) => {
         const mine = owner === seat;
-        const row = rowBounds(zone, ZONE_SIZES[zone], mine);
+        const row = rowBounds(zone, zoneCapacity(state.players[owner], zone), mine);
         const hovered = mine && interactive && insertion?.zone === zone;
         return (
           <ZoneRow
@@ -609,6 +609,7 @@ function Board({
           dragWorldRef={dragWorldRef}
           isLegalSlot={isLegalSlot}
           rowCount={rowCount}
+          capacity={(zone) => zoneCapacity(me, zone)}
           isOverFusionZone={isOverFusionZone}
           onHover={onDragHover}
           onDrop={onDrop}

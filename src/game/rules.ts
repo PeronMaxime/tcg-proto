@@ -53,7 +53,15 @@ export const MARKET_REROLL_COST = 1;
 // tour. Déverrouiller est gratuit mais ne rembourse pas (sinon on verrouillerait « pour
 // voir »).
 export const MARKET_LOCK_COST = 1;
+// Tailles par défaut des zones (règles « 5 cartes », la version d'origine). Les zones de
+// monstres d'une partie peuvent être plus petites (voir `MONSTER_ZONE_SIZES`) : pour
+// connaître la capacité réelle d'une zone en jeu, passer par `zoneCapacity`.
 export const ZONE_SIZES: Record<Zone, number> = { attack: 5, defense: 5, enchant: 3 };
+// Variantes de règles choisies dans le menu à la création d'une room (demande utilisateur) :
+// nombre maximal de cartes par zone de monstres (attaque ET défense). Tout le reste des règles
+// est identique. La première valeur est la variante par défaut.
+export const MONSTER_ZONE_SIZES = [5, 3] as const;
+export const DEFAULT_MONSTER_ZONE_SIZE = MONSTER_ZONE_SIZES[0];
 // Fusion dorée (ajoutée à la demande de l'utilisateur) : une carte en main fusionne avec
 // FUSION_COUNT - 1 exemplaires normaux du même monstre posés sur le board de son
 // propriétaire (action `fuse`) ; elle devient un monstre doré, dont les stats de base sont
@@ -122,20 +130,32 @@ export function zoneCards(player: PlayerState, zone: Zone): CardInstance[] {
   return player.zones[zone].filter((s): s is CardInstance => s !== null);
 }
 
-// Réécrit la zone à partir de la rangée `cards`, complétée de `null` jusqu'à sa taille.
-function writeZone(player: PlayerState, zone: Zone, cards: CardInstance[]): void {
-  player.zones[zone] = [...cards, ...new Array<Slot>(ZONE_SIZES[zone] - cards.length).fill(null)];
+// Capacité d'une zone dans CETTE partie : la longueur fixe de son tableau, posée à la création
+// de la partie selon la variante choisie (`MONSTER_ZONE_SIZES`). Lue sur l'état plutôt que
+// sur une constante pour que les deux variantes partagent le même moteur de règles.
+export function zoneCapacity(player: PlayerState, zone: Zone): number {
+  return player.zones[zone].length;
 }
 
-function emptyZones(): Record<Zone, Slot[]> {
+// Réécrit la zone à partir de la rangée `cards`, complétée de `null` jusqu'à sa taille.
+function writeZone(player: PlayerState, zone: Zone, cards: CardInstance[]): void {
+  player.zones[zone] = [...cards, ...new Array<Slot>(zoneCapacity(player, zone) - cards.length).fill(null)];
+}
+
+function emptyZones(monsterZoneSize: number): Record<Zone, Slot[]> {
   return {
-    attack: new Array(ZONE_SIZES.attack).fill(null),
-    defense: new Array(ZONE_SIZES.defense).fill(null),
+    attack: new Array(monsterZoneSize).fill(null),
+    defense: new Array(monsterZoneSize).fill(null),
     enchant: new Array(ZONE_SIZES.enchant).fill(null),
   };
 }
 
-export function createInitialState(random: () => number = Math.random): GameState {
+// `monsterZoneSize` : nombre maximal de cartes par zone de monstres (variante choisie dans le
+// menu, voir `MONSTER_ZONE_SIZES`).
+export function createInitialState(
+  random: () => number = Math.random,
+  monsterZoneSize: number = DEFAULT_MONSTER_ZONE_SIZE,
+): GameState {
   let uidCounter = 0;
   const makeUid = () => `c${uidCounter++}`;
 
@@ -147,7 +167,7 @@ export function createInitialState(random: () => number = Math.random): GameStat
       deck: shuffle(buildStarterDeck(makeUid), random),
       market: [],
       hand: [],
-      zones: emptyZones(),
+      zones: emptyZones(monsterZoneSize),
       extraMarketCards: 0,
       lockedUids: [],
       movesUsed: { attack: false, defense: false },
@@ -318,7 +338,7 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
       // légales sont pleines, cette action est simplement refusée et la carte reste en main.
       // (le retrait contre 1 pièce, `sell` ci-dessous, a été ajouté après coup à la demande
       // explicite de l'utilisateur : H10 ne portait que sur un retrait/une défausse gratuits.)
-      if (count >= ZONE_SIZES[action.zone]) return false;
+      if (count >= zoneCapacity(player, action.zone)) return false;
       if (!Number.isInteger(action.slot) || action.slot < 0 || action.slot > count) return false;
       const def = getCardDef(card.cardId);
       if (action.zone === 'enchant') return def.kind === 'enchantment';

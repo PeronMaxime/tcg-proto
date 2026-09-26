@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { DEFAULT_MONSTER_ZONE_SIZE } from '../game/rules';
 import type { Room } from '../game/types';
 
 interface LobbyProps {
@@ -34,6 +35,7 @@ function Lobby({ room, onCancel }: LobbyProps) {
         <button onClick={copyLink}>Copier le lien</button>
       </div>
       <p className="copy-feedback">{feedback}</p>
+      <p>Cartes max par zone de monstres : {room.monsterZoneSize ?? DEFAULT_MONSTER_ZONE_SIZE}</p>
       <p>En attente d'un adversaire…</p>
       <button onClick={onCancel}>Annuler</button>
     </div>

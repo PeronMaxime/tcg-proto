@@ -1,5 +1,5 @@
 import { setActiveCatalog } from '../game/cards';
-import { applyAction, createInitialState } from '../game/rules';
+import { applyAction, createInitialState, DEFAULT_MONSTER_ZONE_SIZE } from '../game/rules';
 import type { Action, Catalog, GameState, Room, Seat } from '../game/types';
 import { loadPlayableCatalog } from './catalogStore';
 import { getPlayerId, getPlayerName } from './identity';
@@ -31,11 +31,15 @@ export class RoomError extends Error {}
 // donc plus cette partie — elle s'appliquera à la suivante.
 //
 // Appelé avant d'ouvrir la transaction : le catalogue se lit de façon asynchrone, alors que
-// les callbacks de `roomStore.transact` sont synchrones.
-async function freshGame(): Promise<{ catalog: Catalog; state: GameState }> {
+// les callbacks de `roomStore.transact` sont synchrones. L'état, lui, se crée DANS la
+// transaction (`game.start(existing)`) : il dépend de la variante enregistrée dans la room.
+async function freshGame(): Promise<{ catalog: Catalog; start: (room: Room) => GameState }> {
   const catalog = await loadPlayableCatalog();
   setActiveCatalog(catalog);
-  return { catalog, state: createInitialState() };
+  return {
+    catalog,
+    start: (room) => createInitialState(Math.random, room.monsterZoneSize ?? DEFAULT_MONSTER_ZONE_SIZE),
+  };
 }
 
 // Code de la room courante (D7) : reconnexion automatique après un rafraîchissement.
@@ -63,7 +67,8 @@ export function clearLeftRoomCode(): void {
   sessionStorage.removeItem(LEFT_ROOM_KEY);
 }
 
-export async function createRoom(): Promise<string> {
+// `monsterZoneSize` : variante de règles choisie dans le menu (voir `MONSTER_ZONE_SIZES`).
+export async function createRoom(monsterZoneSize: number = DEFAULT_MONSTER_ZONE_SIZE): Promise<string> {
   const player = { id: getPlayerId(), name: getPlayerName() };
 
   for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS; attempt++) {
@@ -78,6 +83,7 @@ export async function createRoom(): Promise<string> {
         createdAt: Date.now(),
         leftAt: freshLeftAt(),
         rematchReady: freshRematchReady(),
+        monsterZoneSize,
       };
       return fresh;
     });
@@ -107,7 +113,7 @@ export async function joinRoom(rawCode: string): Promise<Room> {
     const joined: Room = {
       ...existing,
       players: { ...existing.players, p2: player },
-      state: game.state,
+      state: game.start(existing),
       catalog: game.catalog,
       status: 'playing',
       leftAt: freshLeftAt(),
@@ -148,7 +154,7 @@ export async function rematch(room: Room): Promise<void> {
     if (!existing) return null;
     const restarted: Room = {
       ...existing,
-      state: game.state,
+      state: game.start(existing),
       catalog: game.catalog,
       status: 'playing',
       leftAt: freshLeftAt(),
@@ -172,7 +178,7 @@ export async function requestRematch(room: Room, seat: Seat): Promise<void> {
     if (ready.p1 && ready.p2) {
       const restarted: Room = {
         ...existing,
-        state: game.state,
+        state: game.start(existing),
         catalog: game.catalog,
         status: 'playing',
         leftAt: freshLeftAt(),

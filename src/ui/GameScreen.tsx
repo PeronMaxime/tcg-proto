@@ -8,6 +8,7 @@ import {
   MARKET_REROLL_COST,
   nextTurnCoinGain,
   sellValue,
+  zoneCapacity,
 } from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
 import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, requestRematch, sendAction } from '../net/rooms';
@@ -705,7 +706,12 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
         </div>
       )}
 
-      {rulesOpen && <RulesModal onClose={() => setRulesOpen(false)} />}
+      {rulesOpen && (
+        <RulesModal
+          monsterZoneSize={zoneCapacity(state.players[seat], 'attack')}
+          onClose={() => setRulesOpen(false)}
+        />
+      )}
 
       {showVictory && (
         <div className="end-overlay">

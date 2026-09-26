@@ -312,4 +312,8 @@ export interface Room {
   // s'applique qu'à la suivante. Absent sur les rooms créées avant le panneau
   // d'administration : à lire via `room.catalog ?? DEFAULT_CATALOG`.
   catalog?: Catalog;
+  // Variante de règles choisie à la création de la room (demande utilisateur) : nombre
+  // maximal de cartes par zone de monstres, repris à chaque revanche. Absent sur les rooms
+  // créées avant les variantes : à lire via `room.monsterZoneSize ?? DEFAULT_MONSTER_ZONE_SIZE`.
+  monsterZoneSize?: number;
 }

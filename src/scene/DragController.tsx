@@ -1,7 +1,6 @@
 import { useThree } from '@react-three/fiber';
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
-import { ZONE_SIZES } from '../game/rules';
 import type { Zone } from '../game/types';
 import { insertionIndexAt, rowBounds } from './layout';
 
@@ -30,6 +29,8 @@ interface DragControllerProps {
   // Nombre de cartes de la rangée entre lesquelles la carte tenue peut s'insérer : toutes les
   // cartes posées, moins la carte tenue elle-même quand on la déplace dans sa zone.
   rowCount: (zone: Zone) => number;
+  // Nombre maximal de cartes de la zone dans cette partie : largeur de la rangée à viser.
+  capacity: (zone: Zone) => number;
   isOverFusionZone: (clientX: number, clientY: number) => boolean;
   onHover: (target: DropTarget | null) => void;
   onDrop: (target: DropTarget | null) => void;
@@ -61,13 +62,13 @@ function DragController(props: DragControllerProps) {
     }
 
     function targetAt(clientX: number, clientY: number): DropTarget | null {
-      const { isOverFusionZone, isLegalSlot, rowCount } = latest.current;
+      const { isOverFusionZone, isLegalSlot, rowCount, capacity } = latest.current;
       // La zone de fusion (surcouche HTML) passe avant les emplacements qu'elle recouvre.
       if (isOverFusionZone(clientX, clientY)) return { kind: 'fusion' };
       const hit = projectOnPlane(clientX, clientY, SLOT_Y);
       if (!hit) return null;
       for (const zone of ['attack', 'defense', 'enchant'] as Zone[]) {
-        const row = rowBounds(zone, ZONE_SIZES[zone], true);
+        const row = rowBounds(zone, capacity(zone), true);
         if (Math.abs(hit.x - row.x) > row.halfW + HIT_MARGIN_X || Math.abs(hit.z - row.z) > row.halfH + HIT_MARGIN_Z) continue;
         const slot = insertionIndexAt(rowCount(zone), hit.x);
         return isLegalSlot(zone, slot) ? { kind: 'slot', zone, slot } : null;

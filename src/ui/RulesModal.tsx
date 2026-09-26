@@ -4,6 +4,9 @@
 // popins du jeu (fond cliquable, croix, Échap géré par le HUD).
 
 interface RulesModalProps {
+  // Nombre maximal de cartes par zone de monstres dans la partie en cours (variante choisie
+  // dans le menu).
+  monsterZoneSize: number;
   onClose: () => void;
 }
 
@@ -12,7 +15,8 @@ interface RulesSection {
   lines: string[];
 }
 
-const SECTIONS: RulesSection[] = [
+function sections(monsterZoneSize: number): RulesSection[] {
+  return [
   {
     title: 'Le but',
     lines: [
@@ -34,8 +38,8 @@ const SECTIONS: RulesSection[] = [
   {
     title: 'Le plateau',
     lines: [
-      "Zone d'attaque (5 cartes au plus) : ces monstres frappent pendant le combat.",
-      "Zone de défense (5 cartes au plus) : ces monstres encaissent les coups adverses.",
+      `Zone d'attaque (${monsterZoneSize} cartes au plus) : ces monstres frappent pendant le combat.`,
+      `Zone de défense (${monsterZoneSize} cartes au plus) : ces monstres encaissent les coups adverses.`,
       "Zone d'enchantements (3 cartes au plus) : ces cartes renforcent tous tes monstres tant qu'elles restent en jeu.",
       "Glisse une carte de ta main dans une zone pour la poser : les cartes s'écartent pour te montrer où elle s'insérera, entre deux cartes ou à un bout. Glisse une carte posée ailleurs dans sa zone pour la déplacer.",
       "Un seul déplacement par zone et par tour : un en attaque et un en défense, alors choisis bien (les cartes décalées par un déplacement ne comptent pas).",
@@ -63,9 +67,10 @@ const SECTIONS: RulesSection[] = [
       "Vendre : clique sur une carte posée pour l'agrandir, puis « Vendre » pour la troquer contre des pièces (elle quitte la partie définitivement).",
     ],
   },
-];
+  ];
+}
 
-function RulesModal({ onClose }: RulesModalProps) {
+function RulesModal({ monsterZoneSize, onClose }: RulesModalProps) {
   return (
     <div className="rules-backdrop" onClick={onClose}>
       <div
@@ -82,7 +87,7 @@ function RulesModal({ onClose }: RulesModalProps) {
           Règles du jeu
         </h2>
         <div className="rules-body">
-          {SECTIONS.map((section) => (
+          {sections(monsterZoneSize).map((section) => (
             <section className="rules-section" key={section.title}>
               <h3 className="rules-section-title">{section.title}</h3>
               <ul className="rules-list">
