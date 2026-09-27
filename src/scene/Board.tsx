@@ -4,7 +4,6 @@ import * as THREE from 'three';
 import { getCardDef, hasKeywordDef, isMonster } from '../game/cards';
 import {
   canMoveInZone,
-  getBaseMonsterStats,
   isActionLegal,
   isMarketCardLocked,
   opponentOf,
@@ -13,7 +12,7 @@ import {
 } from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Seat, Zone } from '../game/types';
 import type { ActiveCombatStep, CombatView } from '../ui/useCombatPlayback';
-import { computeMonsterFaceStats } from './cardFaceStats';
+import { computeMonsterFaceStats, unplacedStats } from './cardFaceStats';
 import type { AttackTrigger, HaloKind, LockBadge } from './Card';
 import Card from './Card';
 import DragController, { type DropTarget } from './DragController';
@@ -157,23 +156,7 @@ interface RenderEntry {
   clickable: boolean;
   onSelect?: () => void;
   onDragStart?: (clientX: number, clientY: number) => void;
-}
-
-// Stats affichées d'une carte hors du board (main, marché, animations) : base du monstre,
-// doublée s'il est doré, plus le buff permanent (E9) qu'elle transporte — une carte dorée
-// hérite des buffs des exemplaires absorbés par la fusion — et sans enchantements.
-function unplacedStats(card: CardInstance): MonsterFaceStats | null {
-  if (!isMonster(getCardDef(card.cardId))) return null;
-  const golden = card.golden === true;
-  const base = getBaseMonsterStats(card.cardId, golden);
-  const buff = card.buff ?? { attack: 0, defense: 0 };
-  return {
-    attack: base.attack + buff.attack,
-    defense: base.defense + buff.defense,
-    attackTone: buff.attack > 0 ? 'buffed' : 'base',
-    defenseTone: buff.defense > 0 ? 'buffed' : 'base',
-    golden,
-  };
+  onInspect?: () => void; // zoom au doigt (appui long, ou tap sur une carte de la main)
 }
 
 function DeckPile({ pose, count, color }: { pose: Pose; count: number; color: string }) {
@@ -242,6 +225,7 @@ function Board({
       hoverable: !drag,
       clickable: false,
       onDragStart: canDrag ? (x, y) => onDragStart(card.uid, x, y) : undefined,
+      onInspect: () => onZoomCard(card.uid),
     });
   }
 
@@ -289,6 +273,8 @@ function Board({
       hoverable: false,
       clickable: buyable,
       onSelect: () => onBuy(card.uid),
+      // Au doigt, pas de survol pour lire une carte avant de l'acheter : appui long = zoom.
+      onInspect: mine ? () => onZoomCard(card.uid) : undefined,
     });
   }
 
@@ -386,6 +372,7 @@ function Board({
         // bouton Vendre n'apparaît que pour la mienne (géré dans GameScreen).
         clickable: !myMarketOpen,
         onSelect: () => onZoomCard(slot.uid),
+        onInspect: myMarketOpen ? undefined : () => onZoomCard(slot.uid),
         onDragStart: movable
           ? (x, y) => onDragStart(slot.uid, x, y, { zone: zone as MonsterZone, slot: index })
           : undefined,
@@ -596,6 +583,7 @@ function Board({
           dragWorldRef={entry.uid === drag?.uid ? dragWorldRef : undefined}
           onSelect={entry.onSelect}
           onDragStart={entry.onDragStart}
+          onInspect={entry.onInspect}
         />
       ))}
 

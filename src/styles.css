@@ -518,6 +518,31 @@ button {
   color: var(--hud-ink-dim);
 }
 
+/* Téléphone en paysage : l'en-tête se resserre pour que le formulaire arrive plus vite (la
+   page défile quand même si besoin). */
+@media (max-height: 500px) {
+  .title {
+    gap: 0.9rem;
+    padding: 1.25rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom));
+  }
+
+  .title-mast {
+    margin-bottom: 0;
+  }
+
+  .title-fan {
+    display: none;
+  }
+
+  .title-name {
+    font-size: 2rem;
+  }
+
+  .title-elements {
+    margin-top: 0.6rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .title-fan span,
   .title-input,
@@ -721,6 +746,12 @@ button {
   inset: 0;
   overflow: hidden;
   background: #05060a;
+  /* Au doigt : pas de zoom au double tap sur le HUD, ni de sélection de texte ou de menu
+     contextuel iOS à l'appui long (réservé au zoom d'une carte). */
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .game-canvas {
@@ -795,7 +826,8 @@ button {
 
 .hud-layer {
   position: absolute;
-  inset: 0;
+  /* Encoche et barre d'accueil des téléphones (viewport-fit=cover dans index.html). */
+  inset: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   pointer-events: none;
   font-family: var(--font-body);
 }
@@ -1453,7 +1485,8 @@ button {
 }
 
 .card-zoom-image {
-  width: min(60vw, 320px);
+  /* Bornée aussi par la hauteur : sur un téléphone en paysage, 320px de large dépasseraient. */
+  width: min(60vw, 320px, calc((100dvh - 7rem) * 5 / 7));
   aspect-ratio: 5 / 7;
   border-radius: 14px;
   box-shadow:
@@ -1482,9 +1515,70 @@ button {
   border-color: var(--hud-gold);
 }
 
+.card-zoom-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.6rem;
+}
+
 .card-zoom-sell:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* -- Invite à passer en paysage (téléphone tenu en portrait) -- */
+
+.rotate-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 2rem;
+  text-align: center;
+  background: radial-gradient(circle at 50% 42%, #1a1d24, #05060a 70%);
+  color: var(--hud-gold-bright);
+}
+
+.rotate-hint svg {
+  width: 72px;
+  height: 72px;
+  margin-bottom: 0.6rem;
+  animation: rotate-hint-tilt 2.4s ease-in-out infinite;
+}
+
+.rotate-hint-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  letter-spacing: 0.06rem;
+}
+
+.rotate-hint-text {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--hud-ink-dim);
+}
+
+@keyframes rotate-hint-tilt {
+  0%,
+  20% {
+    transform: rotate(-90deg);
+  }
+  55%,
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@media (orientation: portrait) and (max-width: 600px) {
+  .rotate-hint {
+    display: flex;
+  }
 }
 
 /* -- Popin des règles du jeu (bouton « Règles » du HUD) -- */
@@ -1721,7 +1815,7 @@ button {
     transform: translateY(0) rotateX(0deg) scale(0.92);
   }
   45% {
-    transform: translateY(-9rem) rotateX(1080deg) scale(1.06);
+    transform: translateY(calc(-1 * var(--coin-toss-height, 9rem))) rotateX(1080deg) scale(1.06);
   }
   100% {
     transform: translateY(0) rotateX(2160deg) scale(1);
@@ -1733,7 +1827,7 @@ button {
     transform: translateY(0) rotateX(0deg) scale(0.92);
   }
   45% {
-    transform: translateY(-9rem) rotateX(1080deg) scale(1.06);
+    transform: translateY(calc(-1 * var(--coin-toss-height, 9rem))) rotateX(1080deg) scale(1.06);
   }
   100% {
     transform: translateY(0) rotateX(2340deg) scale(1);
@@ -1777,6 +1871,214 @@ button {
   .coin-flip-result {
     animation: none;
     opacity: 1;
+  }
+
+  .rotate-hint svg {
+    animation: none;
+  }
+}
+
+/* Téléphone en paysage (écran bas) : le plateau suit la hauteur d'écran (champ vertical fixe
+   de la caméra), le HUD doit donc se faire petit pour lui laisser la place. */
+@media (max-height: 500px) {
+  .game-screen {
+    --hud-edge: 0.45rem;
+    --coin-toss-height: 4.5rem;
+  }
+
+  .hud-plate {
+    left: var(--hud-edge);
+    min-width: 0;
+    gap: 0.2rem;
+    padding: 0.3rem 0.5rem;
+  }
+
+  .hud-plate--top {
+    top: var(--hud-edge);
+  }
+
+  .hud-plate--bottom {
+    bottom: var(--hud-edge);
+  }
+
+  .hud-plate-row {
+    gap: 0.4rem;
+  }
+
+  .hud-name {
+    max-width: 7.5rem;
+    font-size: 0.72rem;
+  }
+
+  .hud-turn {
+    font-size: 0.6rem;
+  }
+
+  .hp-token {
+    width: 22px;
+    height: 22px;
+  }
+
+  .hp-value {
+    font-size: 0.68rem;
+  }
+
+  .hud-deck {
+    margin-left: 0.2rem;
+    font-size: 0.62rem;
+  }
+
+  .hud-plate-row .coin-badge {
+    margin-right: auto;
+  }
+
+  /* Colonne haut-droite : code de room, puis Quitter et Règles en icônes seules. */
+  .room-badge {
+    top: var(--hud-edge);
+    right: var(--hud-edge);
+    padding: 0.25rem 0.5rem;
+  }
+
+  .room-badge-hint {
+    display: none;
+  }
+
+  .leave-button,
+  .rules-button {
+    right: var(--hud-edge);
+    padding: 0.4rem 0.5rem;
+  }
+
+  .leave-button {
+    top: calc(var(--hud-edge) + 2.1rem);
+  }
+
+  .rules-button {
+    top: calc(var(--hud-edge) + 4.4rem);
+  }
+
+  .leave-button span,
+  .rules-button span {
+    display: none;
+  }
+
+  .market-toggle-button,
+  .market-reroll-button {
+    right: var(--hud-edge);
+    padding: 0.4rem 1.1rem;
+    font-size: 0.68rem;
+  }
+
+  .market-toggle-button {
+    top: calc(50% - 1.2rem);
+  }
+
+  .market-reroll-button {
+    top: calc(50% + 1.2rem);
+  }
+
+  .end-turn {
+    right: var(--hud-edge);
+    bottom: var(--hud-edge);
+    min-width: 104px;
+    min-height: 40px;
+    font-size: 0.7rem;
+  }
+
+  .phase-indicator {
+    right: var(--hud-edge);
+    bottom: calc(var(--hud-edge) + 2.9rem);
+    max-width: 30vw;
+    font-size: 0.6rem;
+  }
+
+  /* L'aide recouvrirait la main, déjà petite : l'indicateur de phase et la zone de fusion
+     (libellée) suffisent. */
+  .hint {
+    display: none;
+  }
+
+  .element-wheel {
+    left: var(--hud-edge);
+    width: 76px;
+    padding: 0.25rem;
+    gap: 0;
+  }
+
+  .element-wheel-title {
+    font-size: 0.55rem;
+  }
+
+  .element-wheel-caption {
+    display: none;
+  }
+
+  .effect-toasts {
+    top: 3.6rem;
+    left: 50%;
+    transform: translateX(-50%);
+    align-items: center;
+    max-width: 50vw;
+  }
+
+  .effect-toast {
+    padding: 0.25rem 0.6rem;
+    font-size: 0.64rem;
+  }
+
+  .combat-banner,
+  .turn-banner {
+    top: 0.6rem;
+    padding: 0.35rem 1.6rem;
+    font-size: 0.75rem;
+  }
+
+  .abandon-notice {
+    top: auto;
+    bottom: 3.2rem;
+    font-size: 0.7rem;
+  }
+
+  /* Zoom : la carte à gauche, l'action (Vendre / Acheter) à droite, pour tenir en hauteur. */
+  .card-zoom-panel {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .card-zoom-image {
+    width: calc((100dvh - 2rem) * 5 / 7);
+  }
+
+  .card-zoom-close {
+    top: -0.3rem;
+    right: auto;
+    left: calc((100dvh - 2rem) * 5 / 7 - 1.4rem);
+  }
+
+  .rules-backdrop {
+    padding: 0.6rem;
+  }
+
+  .rules-panel {
+    max-height: calc(100dvh - 1.2rem);
+    padding: 0.9rem 1rem 1rem;
+    gap: 0.6rem;
+  }
+
+  .rules-title {
+    font-size: 1.1rem;
+  }
+
+  .end-title {
+    font-size: 2rem;
+  }
+
+  .coin-flip-overlay {
+    gap: 0.8rem;
+  }
+
+  .coin-flip-coin {
+    width: 6.5rem;
   }
 }
 

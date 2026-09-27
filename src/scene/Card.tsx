@@ -51,6 +51,9 @@ interface CardProps {
   dragWorldRef?: RefObject<THREE.Vector3 | null>;
   onSelect?: () => void;
   onDragStart?: (clientX: number, clientY: number) => void;
+  // Au doigt seulement (pas de survol sur mobile) : ouvre la carte en grand. Déclenché par un
+  // appui long, ou par un simple tap quand la carte n'a pas d'autre action au tap (main).
+  onInspect?: () => void;
 }
 
 const DAMP_LAMBDA = 10;
@@ -65,6 +68,10 @@ const BUBBLE_HEIGHT_RATIO = 1.1;
 // Côté du cadenas du marché : assez grand pour être visé au clic sur une carte agrandie du
 // marché (échelle ~1.6), assez petit pour ne pas masquer l'illustration.
 const LOCK_SIZE = 0.42;
+// Gestes au doigt : durée d'un appui long (zoom) et distance à partir de laquelle un appui
+// devient un glisser. Plus tolérante qu'à la souris, un doigt bouge toujours un peu.
+const LONG_PRESS_MS = 450;
+const TOUCH_DRAG_THRESHOLD_PX = 10;
 
 function haloColor(kind: HaloKind): string {
   switch (kind) {
@@ -96,6 +103,7 @@ function Card({
   dragWorldRef,
   onSelect,
   onDragStart,
+  onInspect,
 }: CardProps) {
   const def = getCardDef(cardId);
   const faceTexture = useMemo(() => getCardFaceTexture(def, stats), [def, stats]);
@@ -132,6 +140,9 @@ function Card({
   const [lockHovered, setLockHovered] = useState(false);
   const lockGroupRef = useRef<THREE.Group>(null!);
   const lockMaterialRef = useRef<THREE.MeshBasicMaterial>(null!);
+  // Vrai quand le dernier appui est un appui au doigt déjà traité par `handleTouchPress` : le
+  // `click` que le navigateur émet ensuite ne doit pas rejouer l'action (achat en double).
+  const touchHandled = useRef(false);
 
   // Pose de départ : sur mount, `spawnPose` (deck du propriétaire) si la carte est neuve,
   // sinon directement la pose cible — pas d'animation surprise au premier rendu (§7.2).
@@ -320,10 +331,60 @@ function Card({
     }
   });
 
+  // Appui au doigt : glisser au-delà du seuil -> drag (si la carte se déplace), appui long ->
+  // zoom, tap -> action de la carte (achat, zoom d'une carte posée), ou zoom si elle n'en a
+  // pas (carte de la main).
+  function handleTouchPress(startX: number, startY: number) {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      setHovered(false);
+      onInspect?.();
+    }, LONG_PRESS_MS);
+    const onMove = (ev: PointerEvent) => {
+      if (settled || Math.hypot(ev.clientX - startX, ev.clientY - startY) <= TOUCH_DRAG_THRESHOLD_PX) return;
+      settled = true;
+      cleanup();
+      if (onDragStart) {
+        setHovered(false);
+        onDragStart(startX, startY);
+      }
+    };
+    const onUp = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      setHovered(false);
+      if (clickable && onSelect) onSelect();
+      else onInspect?.();
+    };
+    const onCancel = () => {
+      settled = true;
+      cleanup();
+      setHovered(false);
+    };
+    function cleanup() {
+      clearTimeout(timer);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+  }
+
   return (
     <group
       ref={groupRef}
       onClick={(e) => {
+        if (touchHandled.current) {
+          touchHandled.current = false;
+          e.stopPropagation();
+          return;
+        }
         // Quand la carte accepte aussi le glisser (carte posée déplaçable), le clic est géré
         // par le seuil de mouvement ci-dessous (onPointerDown) pour ne pas ouvrir le zoom au
         // simple relâchement d'un début de glisser.
@@ -332,6 +393,13 @@ function Card({
         onSelect?.();
       }}
       onPointerDown={(e) => {
+        touchHandled.current = false;
+        if (onInspect && e.nativeEvent.pointerType !== 'mouse') {
+          e.stopPropagation();
+          touchHandled.current = true;
+          handleTouchPress(e.nativeEvent.clientX, e.nativeEvent.clientY);
+          return;
+        }
         if (!onDragStart || e.nativeEvent.button !== 0) return;
         e.stopPropagation();
         // Une carte à la fois cliquable (zoom) et glissable (déplacement posé) : on ne décide

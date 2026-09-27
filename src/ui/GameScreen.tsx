@@ -4,6 +4,7 @@ import { describeAbility, describeKeywordTrigger, getCardDef, isMonster } from '
 import {
   isActionLegal,
   isFirstTurnOfGame,
+  isMarketCardLocked,
   MARKET_LOCK_COST,
   MARKET_REROLL_COST,
   nextTurnCoinGain,
@@ -13,7 +14,7 @@ import {
 import type { CardInstance, EffectLog, GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
 import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, requestRematch, sendAction } from '../net/rooms';
 import Board, { type DragState, type ScreenRect } from '../scene/Board';
-import { computeMonsterFaceStats } from '../scene/cardFaceStats';
+import { computeMonsterFaceStats, unplacedStats } from '../scene/cardFaceStats';
 import CameraRig from '../scene/CameraRig';
 import type { DropTarget } from '../scene/DragController';
 import { CAMERA } from '../scene/layout';
@@ -38,6 +39,8 @@ const COIN_FLIP_MS = 2800;
 
 // Livre ouvert, pour le bouton des règles.
 const RULES_ICON_PATH = 'M12 6.5C10.5 5.2 8.6 4.5 6 4.5H3v14h3c2.6 0 4.5.7 6 2 1.5-1.3 3.4-2 6-2h3v-14h-3c-2.6 0-4.5.7-6 2zM12 6.5v14';
+// Téléphone couché et flèche de rotation, pour l'invite à passer en paysage.
+const ROTATE_ICON_PATH = 'M3 9a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1zM14 12h.01M8 4.5A7 7 0 0 1 20 7.5M20 3.5v4h-4';
 const LEAVE_ICON_PATH = 'M9 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h5M15 8l4 4-4 4M19 12H8';
 
 function CoinBadge({ coins }: { coins: number }) {
@@ -150,26 +153,29 @@ function hintText(
   return '';
 }
 
+// `zone` : une zone du board, ou 'hand'/'market' pour une carte de MA main ou de MON marché,
+// ouvertes en grand au doigt (appui long ou tap, voir `onInspect` de Card) faute de survol.
 interface ZoomedCard {
   owner: Seat;
-  zone: Zone;
-  slot: number;
+  zone: Zone | 'hand' | 'market';
   card: CardInstance;
   cardId: string;
   uid: string;
 }
 
 // Cherche une carte posée (n'importe laquelle des deux boards) par son uid, pour le zoom
-// au clic sur une carte du board (§ demande utilisateur : zoom + vente).
-function findZoneCard(state: GameState, uid: string): ZoomedCard | null {
+// au clic sur une carte du board (§ demande utilisateur : zoom + vente), puis dans ma main et
+// mon marché.
+function findZoomableCard(state: GameState, seat: Seat, uid: string): ZoomedCard | null {
   for (const owner of ['p1', 'p2'] as Seat[]) {
     for (const zone of ['attack', 'defense', 'enchant'] as Zone[]) {
-      const slot = state.players[owner].zones[zone].findIndex((s) => s?.uid === uid);
-      if (slot !== -1) {
-        const card = state.players[owner].zones[zone][slot]!;
-        return { owner, zone, slot, card, cardId: card.cardId, uid };
-      }
+      const card = state.players[owner].zones[zone].find((s) => s?.uid === uid);
+      if (card) return { owner, zone, card, cardId: card.cardId, uid };
     }
+  }
+  for (const zone of ['hand', 'market'] as const) {
+    const card = state.players[seat][zone].find((c) => c.uid === uid);
+    if (card) return { owner: seat, zone, card, cardId: card.cardId, uid };
   }
   return null;
 }
@@ -384,7 +390,12 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     if (!marketVisible || !isMyTurn || state.phase !== 'main') return;
     function onPointerDown(e: PointerEvent) {
       const target = e.target as HTMLElement | null;
-      if (target?.closest('.market-toggle-button') || target?.closest('.market-reroll-button')) return;
+      if (
+        target?.closest('.market-toggle-button') ||
+        target?.closest('.market-reroll-button') ||
+        target?.closest('.card-zoom-backdrop')
+      )
+        return;
       const rect = marketZoneRectRef.current;
       const inside = rect && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
       if (!inside) setMarketVisible(false);
@@ -463,6 +474,11 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     await sendAction(room, seat, { type: 'endTurn' });
   }
 
+  async function buyZoomed(uid: string) {
+    await sendAction(room, seat, { type: 'buy', uid });
+    setZoomedUid(null);
+  }
+
   async function sellCard(uid: string) {
     await sendAction(room, seat, { type: 'sell', uid });
     setZoomedUid(null);
@@ -500,20 +516,31 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const mainButtonAction = endTurn;
   const mainButtonEnabled = interactive && state.phase === 'main';
 
-  const zoomed = zoomedUid ? findZoneCard(state, zoomedUid) : null;
+  const zoomed = zoomedUid ? findZoomableCard(state, seat, zoomedUid) : null;
   const zoomImageUrl = useMemo(() => {
     if (!zoomed) return null;
     const def = getCardDef(zoomed.cardId);
-    const stats = isMonster(def)
-      ? computeMonsterFaceStats(state.players[zoomed.owner], zoomed.card, zoomed.zone as MonsterZone, null).stats
-      : null;
+    const stats = !isMonster(def)
+      ? null
+      : zoomed.zone === 'hand' || zoomed.zone === 'market'
+        ? unplacedStats(zoomed.card)
+        : computeMonsterFaceStats(state.players[zoomed.owner], zoomed.card, zoomed.zone as MonsterZone, null).stats;
     return getCardFaceDataUrl(def, stats);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, zoomedUid]);
   // Zone de fusion affichée seulement quand la carte tenue peut fusionner.
   const fusable = drag !== null && interactive && isActionLegal(state, seat, { type: 'fuse', uid: drag.uid });
+  const zoomedOnBoard = zoomed !== null && zoomed.zone !== 'hand' && zoomed.zone !== 'market';
   const canSell = Boolean(
     zoomed && zoomed.owner === seat && interactive && isActionLegal(state, seat, { type: 'sell', uid: zoomed.uid }),
+  );
+  const canBuyZoomed = Boolean(
+    zoomed?.zone === 'market' && interactive && isActionLegal(state, seat, { type: 'buy', uid: zoomed.uid }),
+  );
+  // Le cadenas 3D est une petite cible au doigt : le zoom d'une carte du marché le reprend.
+  const zoomedLocked = zoomed?.zone === 'market' && isMarketCardLocked(me, zoomed.uid);
+  const canLockZoomed = Boolean(
+    zoomed?.zone === 'market' && interactive && isActionLegal(state, seat, { type: 'toggleMarketLock', uid: zoomed.uid }),
   );
 
   return (
@@ -696,14 +723,32 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
               ×
             </button>
             <img className="card-zoom-image" src={zoomImageUrl} alt="" />
-            {zoomed.owner === seat && (
-              <button
-                className="hud-button hud-button--gold card-zoom-sell"
-                disabled={!canSell}
-                onClick={() => sellCard(zoomed.uid)}
-              >
-                Vendre (+{sellValue(zoomed.card)} pièce{sellValue(zoomed.card) > 1 ? 's' : ''})
-              </button>
+            {(zoomed.zone === 'market' || (zoomedOnBoard && zoomed.owner === seat)) && (
+              <div className="card-zoom-actions">
+                {zoomed.zone === 'market' && (
+                  <button
+                    className="hud-button hud-button--gold card-zoom-sell"
+                    disabled={!canBuyZoomed}
+                    onClick={() => buyZoomed(zoomed.uid)}
+                  >
+                    Acheter ({getCardDef(zoomed.cardId).cost} pièce{getCardDef(zoomed.cardId).cost > 1 ? 's' : ''})
+                  </button>
+                )}
+                {zoomed.zone === 'market' && (canLockZoomed || zoomedLocked) && (
+                  <button className="hud-button" disabled={!canLockZoomed} onClick={() => toggleMarketLock(zoomed.uid)}>
+                    {zoomedLocked ? 'Déverrouiller' : `Verrouiller (${MARKET_LOCK_COST} pièce)`}
+                  </button>
+                )}
+                {zoomedOnBoard && zoomed.owner === seat && (
+                  <button
+                    className="hud-button hud-button--gold card-zoom-sell"
+                    disabled={!canSell}
+                    onClick={() => sellCard(zoomed.uid)}
+                  >
+                    Vendre (+{sellValue(zoomed.card)} pièce{sellValue(zoomed.card) > 1 ? 's' : ''})
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -715,6 +760,16 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           onClose={() => setRulesOpen(false)}
         />
       )}
+
+      {/* Téléphone tenu en portrait : le plateau, large, ne se joue qu'en paysage. Affiché par
+          styles.css seulement (media query), pour suivre la rotation sans état React. */}
+      <div className="rotate-hint" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d={ROTATE_ICON_PATH} />
+        </svg>
+        <p className="rotate-hint-title">Tourne ton téléphone</p>
+        <p className="rotate-hint-text">La partie se joue en mode paysage.</p>
+      </div>
 
       {showVictory && (
         <div className="end-overlay">

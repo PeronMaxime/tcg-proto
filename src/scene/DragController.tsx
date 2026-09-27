@@ -36,6 +36,20 @@ interface DragControllerProps {
   onDrop: (target: DropTarget | null) => void;
 }
 
+// État du pointeur, suivi en continu : un glisser lancé au doigt ne démarre qu'après un seuil
+// de mouvement (Card), et un geste rapide peut relâcher le doigt avant que ce composant soit
+// monté. Sans ce suivi, le relâchement serait perdu et la carte resterait « tenue ».
+const pointer = { down: false, x: 0, y: 0 };
+function trackPointer(e: PointerEvent) {
+  pointer.x = e.clientX;
+  pointer.y = e.clientY;
+  if (e.type === 'pointerdown') pointer.down = true;
+  else if (e.type === 'pointerup' || e.type === 'pointercancel') pointer.down = false;
+}
+for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) {
+  window.addEventListener(type, trackPointer as EventListener, true);
+}
+
 function sameTarget(a: DropTarget | null, b: DropTarget | null): boolean {
   if (a === null || b === null) return a === b;
   if (a.kind === 'fusion' || b.kind === 'fusion') return a.kind === b.kind;
@@ -107,6 +121,13 @@ function DragController(props: DragControllerProps) {
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
     document.body.style.cursor = 'grabbing';
+    // Déjà relâché avant le montage (voir `pointer`) : on dépose tout de suite, là où le
+    // pointeur a été levé.
+    if (!pointer.down) {
+      update(pointer.x, pointer.y);
+      stop();
+      latest.current.onDrop(current);
+    }
 
     // La carte reste à sa dernière position tant que le composant est monté (le parent le
     // garde jusqu'à ce que l'action soit envoyée), puis rejoint sa pose normale.

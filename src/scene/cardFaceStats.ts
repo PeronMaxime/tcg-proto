@@ -2,6 +2,7 @@
 // combat en cours de lecture). Partagé entre `Board.tsx` (rendu 3D) et le zoom de carte
 // (`GameScreen.tsx`) pour que les deux affichent exactement les mêmes chiffres.
 
+import { getCardDef, isMonster } from '../game/cards';
 import { getBaseMonsterStats, getMonsterStats } from '../game/rules';
 import type { CardInstance, MonsterZone, PlayerState } from '../game/types';
 import type { CombatView } from '../ui/useCombatPlayback';
@@ -42,5 +43,22 @@ export function computeMonsterFaceStats(
       golden: golden === true,
     },
     ko,
+  };
+}
+
+// Stats affichées d'une carte hors du board (main, marché, animations) : base du monstre,
+// doublée s'il est doré, plus le buff permanent (E9) qu'elle transporte — une carte dorée
+// hérite des buffs des exemplaires absorbés par la fusion — et sans enchantements.
+export function unplacedStats(card: CardInstance): MonsterFaceStats | null {
+  if (!isMonster(getCardDef(card.cardId))) return null;
+  const golden = card.golden === true;
+  const base = getBaseMonsterStats(card.cardId, golden);
+  const buff = card.buff ?? { attack: 0, defense: 0 };
+  return {
+    attack: base.attack + buff.attack,
+    defense: base.defense + buff.defense,
+    attackTone: buff.attack > 0 ? 'buffed' : 'base',
+    defenseTone: buff.defense > 0 ? 'buffed' : 'base',
+    golden,
   };
 }
