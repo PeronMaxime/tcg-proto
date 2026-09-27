@@ -154,88 +154,136 @@ function Menu({ onRoomReady }: MenuProps) {
   }
 
   return (
-    <div className="menu">
-      <h1>TCG Proto</h1>
+    <main className="title">
+      <header className="title-mast">
+        {/* Dos de cartes en éventail derrière le titre : pur décor. */}
+        <div className="title-fan" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        <p className="title-kicker">Prototype · duel à deux joueurs</p>
+        <h1 className="title-name">TCG Proto</h1>
+        <ul className="title-elements" aria-hidden="true">
+          <li className="is-fire" />
+          <li className="is-water" />
+          <li className="is-air" />
+          <li className="is-earth" />
+        </ul>
+      </header>
+
+      {leftRoomCode && (
+        <button className="title-resume" onClick={handleResume} disabled={busy}>
+          <span className="title-resume-label">Partie en cours</span>
+          <span className="title-resume-code">{leftRoomCode}</span>
+          <span className="title-resume-action">Reprendre</span>
+        </button>
+      )}
+
+      <label className="title-field">
+        <span className="title-label">Pseudo</span>
+        <input
+          className="title-input"
+          value={pseudo}
+          onChange={(e) => updatePseudo(e.target.value)}
+          placeholder="Ton pseudo"
+          autoComplete="nickname"
+        />
+      </label>
+
+      {/* Les réglages ne valent que pour la partie créée : « Rejoindre » suit la room. D'où leur
+          regroupement avec le bouton de création. */}
+      <section className="title-block" aria-labelledby="title-new">
+        <h2 id="title-new" className="title-block-heading">
+          Nouvelle partie
+        </h2>
+
+        {/* Version du jeu (demande utilisateur) : elle choisit le catalogue de cartes. */}
+        <div className="title-picker">
+          <span className="title-label" id="title-version-label">
+            Version du jeu
+          </span>
+          <div className="title-segments" role="radiogroup" aria-labelledby="title-version-label">
+            {GAME_VERSIONS.map((version) => (
+              <button
+                key={version}
+                role="radio"
+                aria-checked={gameVersion === version}
+                onClick={() => updateGameVersion(version)}
+                disabled={busy}
+              >
+                {GAME_VERSION_LABELS[version]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Variante de règles (demande utilisateur) : seul le nombre de cartes par zone de
+            monstres change. */}
+        <div className="title-picker">
+          <span className="title-label" id="title-zone-label">
+            Cartes max par zone de monstres
+          </span>
+          <div className="title-segments" role="radiogroup" aria-labelledby="title-zone-label">
+            {MONSTER_ZONE_SIZES.map((size) => (
+              <button
+                key={size}
+                role="radio"
+                aria-checked={zoneSize === size}
+                onClick={() => updateZoneSize(size)}
+                disabled={busy}
+              >
+                {size}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button className="title-primary" onClick={handleCreate} disabled={busy}>
+          Créer une partie
+        </button>
+      </section>
+
+      <p className="title-or">
+        <span>ou</span>
+      </p>
+
+      <form
+        className="title-join"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (joinCode) handleJoin();
+        }}
+      >
+        <label className="title-field">
+          <span className="title-label">Code de la room</span>
+          <input
+            className="title-input title-code-input"
+            value={joinCode}
+            onChange={(e) => setJoinCode(e.target.value)}
+            placeholder="ABC23"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <button type="submit" className="title-secondary" disabled={busy || !joinCode}>
+          Rejoindre
+        </button>
+      </form>
+
+      {error && (
+        <p className="title-error" role="alert">
+          {error}
+        </p>
+      )}
 
       {roomStore.isLocal && (
-        <p className="badge-local">
+        <p className="title-note">
           Mode local — ouvre un deuxième onglet (pas « Dupliquer l'onglet ») pour jouer contre
           toi-même.
         </p>
       )}
-
-      {leftRoomCode && (
-        <button className="resume-link" onClick={handleResume} disabled={busy}>
-          Reprendre la partie <span className="resume-code">{leftRoomCode}</span>
-        </button>
-      )}
-
-      <label>
-        Pseudo
-        <input
-          value={pseudo}
-          onChange={(e) => updatePseudo(e.target.value)}
-          placeholder="Ton pseudo"
-        />
-      </label>
-
-      {/* Version du jeu de la partie créée (demande utilisateur) : elle choisit le catalogue de
-          cartes. Sans effet sur « Rejoindre », qui suit la room. */}
-      <div className="menu-picker">
-        <span>Version du jeu</span>
-        <div className="menu-picker-options" role="radiogroup">
-          {GAME_VERSIONS.map((version) => (
-            <button
-              key={version}
-              role="radio"
-              aria-checked={gameVersion === version}
-              className={gameVersion === version ? 'selected' : undefined}
-              onClick={() => updateGameVersion(version)}
-              disabled={busy}
-            >
-              {GAME_VERSION_LABELS[version]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Variante de règles de la partie créée (demande utilisateur) : seul le nombre de
-          cartes par zone de monstres change. Sans effet sur « Rejoindre », qui suit la room. */}
-      <div className="menu-picker">
-        <span>Cartes max par zone de monstres</span>
-        <div className="menu-picker-options" role="radiogroup">
-          {MONSTER_ZONE_SIZES.map((size) => (
-            <button
-              key={size}
-              role="radio"
-              aria-checked={zoneSize === size}
-              className={zoneSize === size ? 'selected' : undefined}
-              onClick={() => updateZoneSize(size)}
-              disabled={busy}
-            >
-              {size}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <button onClick={handleCreate} disabled={busy}>
-        Créer une partie
-      </button>
-
-      <div className="join-row">
-        <input
-          value={joinCode}
-          onChange={(e) => setJoinCode(e.target.value)}
-          placeholder="Code de la room"
-        />
-        <button onClick={handleJoin} disabled={busy || !joinCode}>
-          Rejoindre
-        </button>
-      </div>
-
-      {error && <p className="error">{error}</p>}
-    </div>
+    </main>
   );
 }
 
