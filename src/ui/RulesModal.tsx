@@ -63,7 +63,7 @@ function sections(monsterZoneSize: number): RulesSection[] {
   {
     title: 'Deux astuces',
     lines: [
-      "Fusion dorée : si 2 exemplaires identiques d'un monstre sont déjà posés, glisser un 3e exemplaire dans la zone de fusion qui apparaît le transforme en monstre doré, aux statistiques doublées.",
+      "Fusion dorée : avec 3 exemplaires identiques d'un monstre ou d'un enchantement (posés ou en main), glisse celui de ta main dans la zone de fusion qui apparaît sur le board adverse : il devient doré, aux valeurs doublées.",
       "Vendre : clique sur une carte posée pour l'agrandir, puis « Vendre » pour la troquer contre des pièces (elle quitte la partie définitivement).",
     ],
   },

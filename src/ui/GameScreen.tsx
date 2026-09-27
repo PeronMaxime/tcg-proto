@@ -147,7 +147,7 @@ function hintText(
 ): string {
   if (playing) return '';
   if (!isMyTurn) return "En attente de l'adversaire…";
-  if (fusable) return 'Relâche la carte dans la zone de fusion pour créer un monstre doré';
+  if (fusable) return 'Pose la carte, ou relâche-la dans la zone de fusion (sur le board adverse) pour la rendre dorée';
   if (phase === 'main')
     return `Achète, pose ou déplace tes cartes, puis lance le combat${movesHint(movesUsed)} · cadenas sur une carte du marché : la garder pour le prochain tour`;
   return '';
@@ -460,13 +460,18 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     }
   }
 
-  // Test de la zone de fusion (surcouche HTML) sous le pointeur : un disque, pas son carré.
+  // Test de la zone de fusion (surcouche HTML, posée sur le board adverse) sous le pointeur.
   function isOverFusionZone(clientX: number, clientY: number): boolean {
     const el = fusionZoneRef.current;
     if (!el) return false;
     const rect = el.getBoundingClientRect();
-    const radius = rect.width / 2;
-    return Math.hypot(clientX - (rect.left + radius), clientY - (rect.top + rect.height / 2)) <= radius;
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  }
+
+  // Fusion depuis le zoom d'une carte de ma main (bouton « Fusionner »), sans glisser-déposer.
+  async function fuseZoomed(uid: string) {
+    setZoomedUid(null);
+    await sendAction(room, seat, { type: 'fuse', uid });
   }
 
   async function endTurn() {
@@ -521,7 +526,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     if (!zoomed) return null;
     const def = getCardDef(zoomed.cardId);
     const stats = !isMonster(def)
-      ? null
+      ? unplacedStats(zoomed.card)
       : zoomed.zone === 'hand' || zoomed.zone === 'market'
         ? unplacedStats(zoomed.card)
         : computeMonsterFaceStats(state.players[zoomed.owner], zoomed.card, zoomed.zone as MonsterZone, null).stats;
@@ -533,6 +538,9 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const zoomedOnBoard = zoomed !== null && zoomed.zone !== 'hand' && zoomed.zone !== 'market';
   const canSell = Boolean(
     zoomed && zoomed.owner === seat && interactive && isActionLegal(state, seat, { type: 'sell', uid: zoomed.uid }),
+  );
+  const canFuseZoomed = Boolean(
+    zoomed?.zone === 'hand' && interactive && isActionLegal(state, seat, { type: 'fuse', uid: zoomed.uid }),
   );
   const canBuyZoomed = Boolean(
     zoomed?.zone === 'market' && interactive && isActionLegal(state, seat, { type: 'buy', uid: zoomed.uid }),
@@ -723,8 +731,13 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
               ×
             </button>
             <img className="card-zoom-image" src={zoomImageUrl} alt="" />
-            {(zoomed.zone === 'market' || (zoomedOnBoard && zoomed.owner === seat)) && (
+            {(zoomed.zone === 'market' || canFuseZoomed || (zoomedOnBoard && zoomed.owner === seat)) && (
               <div className="card-zoom-actions">
+                {canFuseZoomed && (
+                  <button className="hud-button hud-button--gold card-zoom-sell" onClick={() => fuseZoomed(zoomed.uid)}>
+                    ★ Fusionner
+                  </button>
+                )}
                 {zoomed.zone === 'market' && (
                   <button
                     className="hud-button hud-button--gold card-zoom-sell"

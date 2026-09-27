@@ -7,6 +7,7 @@ import {
   describeKeywordEffect,
   KEYWORD_LABELS,
   scaleAbilityEffect,
+  scaleEnchantmentEffect,
   TRIGGER_LABELS,
 } from '../game/cards';
 import { GOLDEN_MULTIPLIER } from '../game/rules';
@@ -39,7 +40,7 @@ export interface MonsterFaceStats {
   defense: number;
   attackTone: StatTone;
   defenseTone: StatTone;
-  golden: boolean; // monstre doré (fusion) : cadre et bandeau dorés
+  golden: boolean; // carte dorée (fusion) : cadre et bandeau dorés
 }
 
 const faceCache = new Map<string, THREE.CanvasTexture>();
@@ -684,30 +685,38 @@ function watchFontLoading(): void {
   ]).then(redrawAll, () => {});
 }
 
-// `stats` est `null` pour un enchantement (§6.3/§6.4). Clé de cache :
-// `id:att:déf:tonAtt:tonDéf:doré` pour un monstre, `id` pour un enchantement.
+// `stats` est `null` pour un enchantement normal (§6.3/§6.4) ; pour un enchantement doré,
+// seul son `golden` compte. Clé de cache : `id:att:déf:tonAtt:tonDéf:doré` pour un monstre,
+// `id` ou `id:golden` pour un enchantement.
 export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null): THREE.CanvasTexture {
   const key =
     def.kind === 'monster' && stats
       ? `${def.id}:${stats.attack}:${stats.defense}:${stats.attackTone}:${stats.defenseTone}:${stats.golden}`
-      : def.id;
+      : stats?.golden
+        ? `${def.id}:golden`
+        : def.id;
   const cached = faceCache.get(key);
   if (cached) return cached;
 
   const rarity = cardRarity(def);
   const texture = makeTexture((ctx, w, h) => {
     if (def.kind === 'enchantment') {
-      drawFrame(ctx, def.element, w, h, false);
+      const golden = stats?.golden ?? false;
+      drawFrame(ctx, def.element, w, h, golden);
       drawArtWindow(ctx, def, rarity);
       drawNamePlate(ctx, def.name, w);
       drawCostCoin(ctx, 32, 34, def.cost);
       drawElementBadge(ctx, def.element, w - 32, 34);
-      drawTypeBanner(ctx, 'Enchantement', w, false);
+      drawTypeBanner(ctx, golden ? '★ Enchantement doré ★' : 'Enchantement', w, golden);
 
-      // Effet permanent, puis capacités (déclencheur → effet) (§6.1).
+      // Effet permanent, puis capacités (déclencheur → effet) (§6.1). Enchantement doré :
+      // valeurs affichées multipliées, comme elles s'appliquent.
+      const multiplier = golden ? GOLDEN_MULTIPLIER : 1;
       const paragraphs: TextRun[][] = [
-        [{ text: describeEffect(def.effect), bold: false }],
-        ...(def.abilities ?? []).map(abilityRuns),
+        [{ text: describeEffect(scaleEnchantmentEffect(def.effect, multiplier)), bold: false }],
+        ...(def.abilities ?? []).map((ability) =>
+          abilityRuns({ ...ability, effect: scaleAbilityEffect(ability.effect, multiplier) }),
+        ),
       ];
       // Même bas de carte que pour un monstre : l'encadré s'arrête au-dessus de la rangée
       // basse, où la gemme de rareté est posée au centre.

@@ -163,7 +163,7 @@ describe('createInitialState', () => {
     expect(state.phase).toBe('start');
     expect(state.turn).toBe(state.starter);
     expect(state.winner).toBeNull();
-    expect(state.rulesVersion).toBe(16);
+    expect(state.rulesVersion).toBe(17);
   });
 
   it('tire au sort le joueur qui commence (lancer de pièce) et compense celui qui suit', () => {
@@ -794,27 +794,25 @@ describe('fusion dorée', () => {
     expect(getMonsterStats(placed.players.p1, card, 'attack').attack).toBe(base.attack * GOLDEN_MULTIPLIER + 3);
   });
 
-  it("refuse avec 1 seul exemplaire posé ; ne compte ni les dorés ni ceux de l'adversaire", () => {
+  it("refuse avec 1 seul autre exemplaire ; ne compte ni les dorés ni ceux de l'adversaire", () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.attack[0] = { uid: 'g1', cardId: 'wolf', golden: true };
     state.players.p1.zones.attack[1] = makeCard('wolf', 'w1');
     state.players.p1.zones.attack[2] = makeCard('squire', 's1');
     state.players.p2.zones.attack[0] = makeCard('wolf', 'x1');
-    state.players.p1.hand = [makeCard('wolf', 'w2')];
+    state.players.p2.hand = [makeCard('wolf', 'x2')];
+    state.players.p1.hand = [makeCard('wolf', 'w2'), { uid: 'g2', cardId: 'wolf', golden: true }];
 
     expect(applyAction(state, 'p1', { type: 'fuse', uid: 'w2' })).toBeNull();
   });
 
-  it('refuse une carte dorée, un enchantement, une carte hors main ou hors phase main', () => {
+  it('refuse une carte dorée, une carte hors main ou hors phase main', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
     state.players.p1.zones.attack[1] = makeCard('wolf', 'w2');
-    state.players.p1.zones.enchant[0] = makeCard('banner', 'b1');
-    state.players.p1.zones.enchant[1] = makeCard('banner', 'b2');
-    state.players.p1.hand = [{ uid: 'g1', cardId: 'wolf', golden: true }, makeCard('banner', 'b3')];
+    state.players.p1.hand = [{ uid: 'g1', cardId: 'wolf', golden: true }];
 
     expect(applyAction(state, 'p1', { type: 'fuse', uid: 'g1' })).toBeNull();
-    expect(applyAction(state, 'p1', { type: 'fuse', uid: 'b3' })).toBeNull();
     expect(applyAction(state, 'p1', { type: 'fuse', uid: 'w1' })).toBeNull();
 
     const startState = baseState({ phase: 'start' });
@@ -823,27 +821,72 @@ describe('fusion dorée', () => {
     expect(applyAction(startState, 'p1', { type: 'fuse', uid: 'w3' })).toBeNull();
   });
 
-  it('une carte qui peut fusionner ne peut pas être posée, même sur un emplacement libre', () => {
+  it('fusionne 3 exemplaires en main : les 2 autres quittent la main pour le fond du deck', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.hand = [makeCard('wolf', 'w1'), makeCard('squire', 's1'), makeCard('wolf', 'w2'), makeCard('wolf', 'w3')];
+    state.players.p1.deck = [makeCard('guard', 'd1')];
+
+    const next = applyAction(state, 'p1', { type: 'fuse', uid: 'w2' })!;
+
+    const p1 = next.players.p1;
+    expect(p1.hand).toEqual([makeCard('squire', 's1'), { uid: 'w2', cardId: 'wolf', golden: true }]);
+    expect(p1.deck.map((c) => c.uid)).toEqual(['w1', 'w3', 'd1']);
+    expect(next.lastEvent).toEqual({ id: 1, type: 'fuse', seat: 'p1', uid: 'w2', fusedUids: ['w1', 'w3'] });
+  });
+
+  it('fusionne 2 exemplaires en main avec 1 posé', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.defense[0] = makeCard('wolf', 'w1');
+    state.players.p1.hand = [makeCard('wolf', 'w2'), makeCard('wolf', 'w3')];
+
+    const next = applyAction(state, 'p1', { type: 'fuse', uid: 'w3' })!;
+
+    expect(next.players.p1.hand).toEqual([{ uid: 'w3', cardId: 'wolf', golden: true }]);
+    expect(next.players.p1.zones.defense[0]).toBeNull();
+    expect(next.players.p1.deck.map((c) => c.uid)).toEqual(['w1', 'w2']);
+  });
+
+  it("absorbe d'abord les exemplaires posés, puis ceux de la main", () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
+    state.players.p1.hand = [makeCard('wolf', 'w2'), makeCard('wolf', 'w3'), makeCard('wolf', 'w4')];
+
+    const next = applyAction(state, 'p1', { type: 'fuse', uid: 'w4' })!;
+
+    expect(next.lastEvent).toMatchObject({ type: 'fuse', fusedUids: ['w1', 'w2'] });
+    expect(next.players.p1.hand.map((c) => c.uid)).toEqual(['w3', 'w4']);
+  });
+
+  it('une carte qui peut fusionner peut aussi être posée normalement', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
     state.players.p1.zones.attack[1] = makeCard('wolf', 'w2');
     state.players.p1.hand = [makeCard('wolf', 'w3')];
 
-    expect(applyAction(state, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 2 })).toBeNull();
-    expect(applyAction(state, 'p1', { type: 'place', uid: 'w3', zone: 'defense', slot: 0 })).toBeNull();
+    const placed = applyAction(state, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 2 })!;
+    expect(placed.players.p1.zones.attack[2]?.uid).toBe('w3');
   });
 
-  it("le 2e exemplaire se pose normalement, et un exemplaire se repose dès qu'il ne peut plus fusionner", () => {
+  it('fusionne un enchantement : 2 exemplaires posés libèrent leurs emplacements', () => {
     const state = baseState({ phase: 'main' });
-    state.players.p1.zones.attack[0] = makeCard('wolf', 'w1');
-    state.players.p1.hand = [makeCard('wolf', 'w2'), makeCard('wolf', 'w3')];
+    state.players.p1.zones.enchant = [makeCard('banner', 'b1'), makeCard('rampart', 'r1'), makeCard('banner', 'b2')];
+    state.players.p1.hand = [makeCard('banner', 'b3')];
 
-    const afterSecond = applyAction(state, 'p1', { type: 'place', uid: 'w2', zone: 'attack', slot: 1 })!;
-    expect(afterSecond.players.p1.zones.attack[1]?.uid).toBe('w2');
-    expect(applyAction(afterSecond, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 2 })).toBeNull();
+    const fused = applyAction(state, 'p1', { type: 'fuse', uid: 'b3' })!;
+    expect(fused.players.p1.zones.enchant.map((c) => c?.uid ?? null)).toEqual(['r1', null, null]);
+    expect(fused.players.p1.hand).toEqual([{ uid: 'b3', cardId: 'banner', golden: true }]);
 
-    const afterSell = applyAction(afterSecond, 'p1', { type: 'sell', uid: 'w1' })!;
-    expect(applyAction(afterSell, 'p1', { type: 'place', uid: 'w3', zone: 'attack', slot: 1 })).not.toBeNull();
+    const placed = applyAction(fused, 'p1', { type: 'place', uid: 'b3', zone: 'enchant', slot: 1 })!;
+    expect(placed.players.p1.zones.enchant[1]).toEqual({ uid: 'b3', cardId: 'banner', golden: true });
+  });
+
+  it('un enchantement doré a son effet doublé', () => {
+    const player = freshPlayer();
+    player.zones.enchant[0] = { uid: 'b1', cardId: 'banner', golden: true }; // +1/+1 en attaque
+    player.zones.enchant[1] = { uid: 't1', cardId: 'treasury', golden: true }; // +1 pièce par tour
+    const wolf = makeCard('wolf', 'w');
+    expect(getMonsterStats(player, wolf, 'attack')).toEqual({ attack: 3 + 2, defense: 1 + 2 });
+    expect(nextTurnCoinGain(player)).toBe(player.turnsPlayed + 1 + 2);
   });
 
   it('un monstre doré a ses stats de base doublées, enchantements ajoutés ensuite', () => {

@@ -12,7 +12,7 @@ import {
 } from '../game/rules';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Seat, Zone } from '../game/types';
 import type { ActiveCombatStep, CombatView } from '../ui/useCombatPlayback';
-import { computeMonsterFaceStats, unplacedStats } from './cardFaceStats';
+import { computeMonsterFaceStats, enchantmentFaceStats, unplacedStats } from './cardFaceStats';
 import type { AttackTrigger, HaloKind, LockBadge } from './Card';
 import Card from './Card';
 import DragController, { type DropTarget } from './DragController';
@@ -327,7 +327,7 @@ function Board({
       zoneCardIdByUid.set(slot.uid, slot.cardId);
 
       const def = getCardDef(slot.cardId);
-      let stats: MonsterFaceStats | null = null;
+      let stats: MonsterFaceStats | null = enchantmentFaceStats(slot);
       let ko = false;
       if (isMonster(def)) {
         // `zone` est forcément 'attack' ou 'defense' ici : les règles n'autorisent un
@@ -406,8 +406,9 @@ function Board({
     }
   }
 
-  // --- Fusion dorée : les 2 exemplaires absorbés quittent le board et se fondent dans la
-  // carte devenue dorée, dans la main (ils sont déjà au fond du deck dans l'état) ---
+  // --- Fusion dorée : les 2 exemplaires absorbés quittent le board ou la main et se fondent
+  // dans la carte devenue dorée, dans la main (ils sont déjà au fond du deck dans l'état).
+  // Face cachée chez l'adversaire : un exemplaire venu de sa main ne doit pas être révélé ---
   if (state.lastEvent?.type === 'fuse') {
     const { seat: owner, uid: goldenUid, fusedUids } = state.lastEvent;
     const ownerPlayer = state.players[owner];
@@ -424,7 +425,7 @@ function Board({
           stats: unplacedStats(card),
           ko: false,
           pose: { ...goldenPose, scale: goldenPose.scale * 0.05 },
-          hidden: false,
+          hidden: !mine,
           mine,
           halo: 'none',
           hoverable: false,

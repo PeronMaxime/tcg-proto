@@ -46,11 +46,18 @@ export function computeMonsterFaceStats(
   };
 }
 
+// Face d'un enchantement : `null` s'il est normal ; doré, seul `golden` compte (cadre et
+// valeurs doublées, voir `getCardFaceTexture`), l'attaque et la défense sont ignorées.
+export function enchantmentFaceStats(card: CardInstance): MonsterFaceStats | null {
+  if (!card.golden) return null;
+  return { attack: 0, defense: 0, attackTone: 'base', defenseTone: 'base', golden: true };
+}
+
 // Stats affichées d'une carte hors du board (main, marché, animations) : base du monstre,
 // doublée s'il est doré, plus le buff permanent (E9) qu'elle transporte — une carte dorée
 // hérite des buffs des exemplaires absorbés par la fusion — et sans enchantements.
 export function unplacedStats(card: CardInstance): MonsterFaceStats | null {
-  if (!isMonster(getCardDef(card.cardId))) return null;
+  if (!isMonster(getCardDef(card.cardId))) return enchantmentFaceStats(card);
   const golden = card.golden === true;
   const base = getBaseMonsterStats(card.cardId, golden);
   const buff = card.buff ?? { attack: 0, defense: 0 };

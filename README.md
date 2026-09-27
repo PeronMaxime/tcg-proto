@@ -267,16 +267,17 @@ le détail des décisions. Résumé :
 - **Déplacer une carte posée** : la glisser ailleurs dans la rangée de sa zone (attaque ou
   défense, jamais de changement de zone) ; elle s'insère entre deux cartes et les autres se
   décalent — on peut donc réorganiser une zone pleine.
-- **Fusion dorée** : quand on fait glisser une carte monstre alors que 2 exemplaires
-  normaux (non dorés) du même monstre sont posés sur son board (attaque + défense
-  confondues), une zone de fusion apparaît au milieu de l'écran. Relâcher la carte dedans
-  renvoie les 2 exemplaires posés au fond du deck et transforme la carte en **monstre doré**, qui
-  reste en main et se repose ensuite comme une autre carte — la fusion marche donc même
-  avec un board plein. Tant que la fusion est possible, cette 3e carte ne peut **pas** être
-  posée : relâchée ailleurs que dans la zone de fusion, elle revient en
-  main. Un monstre doré a son attaque et sa défense de base doublées (les
-  bonus d'enchantement s'ajoutent ensuite, sans être doublés) et ne fusionne plus (action
-  `fuse` dans `rules.ts`).
+- **Fusion dorée** : quand on fait glisser une carte de sa main (monstre **ou**
+  enchantement) alors que le joueur possède 2 autres exemplaires normaux (non dorés) de la
+  même carte — posés sur son board, dans sa main, ou les deux —, une zone de fusion apparaît
+  sur le board adverse. Relâcher la carte dedans (ou « ★ Fusionner » sur la carte zoomée en
+  main) renvoie les 2 autres exemplaires au fond du deck — ceux du board d'abord, puis ceux de
+  la main — et transforme la carte en **carte dorée**, qui reste en main et se repose ensuite
+  comme une autre carte : la fusion marche donc même avec un board plein. La fusion n'est
+  jamais obligatoire : la carte peut aussi se poser normalement. Un monstre doré a son
+  attaque, sa défense de base et ses capacités doublées (les bonus d'enchantement s'ajoutent
+  ensuite) ; un enchantement doré a son effet doublé. Une carte dorée ne fusionne plus
+  (action `fuse` dans `rules.ts`).
 - **Marché** : seul le joueur actif voit ses cartes ; l'adversaire les voit face cachée. Deux
   options payantes pendant toute la phase principale (demande utilisateur) :
   - **Relancer** (bouton HUD « Relancer », action `rerollMarket`, `MARKET_REROLL_COST` = 1

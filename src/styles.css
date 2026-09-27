@@ -760,17 +760,19 @@ button {
 }
 
 /* -- Zone de fusion (visible pendant le glisser-déposer d'une carte fusionnable) --
-   Centrée à l'écran, légèrement remontée pour se poser entre les deux rangées d'attaque
-   (en vh : la caméra a un champ vertical fixe, la table suit donc la hauteur d'écran). */
+   Posée sur le board adverse (rangées d'attaque et de défense), loin de mes rangées pour ne
+   pas gêner la pose de la carte. En vh : la caméra a un champ vertical fixe, la table suit
+   donc la hauteur d'écran (valeurs projetées depuis `CAMERA` de scene/layout.ts ; le
+   cadrage compact a les siennes plus bas). */
 
 .fusion-zone {
   position: absolute;
   left: 50%;
-  top: calc(50% - 9.5vh); /* bord bas ≈ bord haut de ma rangée d'attaque (-2.5vh) */
-  width: clamp(96px, 14vh, 170px);
-  aspect-ratio: 1;
+  top: calc(50% - 14.4vh); /* milieu des deux rangées adverses */
+  width: 42vh;
+  height: 18vh;
   transform: translate(-50%, -50%);
-  border-radius: 50%;
+  border-radius: 18px;
   border: 2px dashed var(--hud-gold);
   background: radial-gradient(circle, rgba(240, 207, 107, 0.35), rgba(201, 164, 65, 0.12) 60%, rgba(20, 21, 27, 0.55));
   box-shadow:
@@ -1884,6 +1886,13 @@ button {
   .game-screen {
     --hud-edge: 0.45rem;
     --coin-toss-height: 4.5rem;
+  }
+
+  /* Cadrage compact (`CAMERA_COMPACT`) : le board adverse est plus haut et plus large. */
+  .fusion-zone {
+    top: calc(50% - 23.3vh);
+    width: 56vh;
+    height: 24vh;
   }
 
   .hud-plate {

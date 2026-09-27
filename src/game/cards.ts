@@ -200,11 +200,22 @@ export function buildStarterDeck(makeUid: () => string): CardInstance[] {
   return deck;
 }
 
+// Valeurs d'un effet d'enchantement multipliées (enchantement doré : `GOLDEN_MULTIPLIER`).
+export function scaleEnchantmentEffect(effect: EnchantmentEffect, multiplier: number): EnchantmentEffect {
+  if (multiplier === 1) return effect;
+  switch (effect.type) {
+    case 'coinsPerTurn':
+      return { ...effect, amount: effect.amount * multiplier };
+    case 'monsterBuff':
+      return { ...effect, attack: effect.attack * multiplier, defense: effect.defense * multiplier };
+  }
+}
+
 // Texte affiché sur la face d'un enchantement, généré depuis l'effet — jamais stocké à part.
 export function describeEffect(effect: EnchantmentEffect): string {
   switch (effect.type) {
     case 'coinsPerTurn':
-      return `+${effect.amount} pièce au début de ton tour`;
+      return `+${effect.amount} ${pluralize(effect.amount, 'pièce')} au début de ton tour`;
     case 'monsterBuff': {
       const stats =
         effect.attack > 0 && effect.defense > 0

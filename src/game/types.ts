@@ -123,8 +123,8 @@ export interface Catalog {
 export interface CardInstance {
   uid: string; // unique dans la partie, stable : c'est la key React de la carte
   cardId: string;
-  // Monstre doré, issu de la fusion d'une carte en main avec 2 exemplaires posés (action
-  // `fuse`). Absent (et jamais `false`/`undefined` explicite) sur une carte normale.
+  // Carte dorée (monstre ou enchantement), issue de la fusion d'une carte en main avec 2
+  // autres exemplaires, posés ou en main (action `fuse`). Absent (et jamais `false`/`undefined` explicite) sur une carte normale.
   golden?: true;
   // Buff permanent cumulé via une capacité (E9), disparaît si la carte quitte le board.
   // Absent tant qu'aucun buff n'a été reçu ; jamais écrit `{ attack: 0, defense: 0 }`.
@@ -258,7 +258,7 @@ export type GameEvent =
       from: number;
       to: number;
     }
-  // `uid` : la carte en main devenue dorée ; `fusedUids` : les 2 exemplaires absorbés.
+  // `uid` : la carte en main devenue dorée ; `fusedUids` : les 2 exemplaires absorbés (posés ou en main).
   | { id: number; type: 'fuse'; seat: Seat; uid: string; fusedUids: string[] }
   | { id: number; type: 'sell'; seat: Seat; uid: string; zone: Zone; slot: number; effects: EffectLog[] }
   | {

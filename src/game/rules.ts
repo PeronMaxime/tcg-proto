@@ -32,7 +32,7 @@ import type {
   Zone,
 } from './types';
 
-export const RULES_VERSION = 16;
+export const RULES_VERSION = 17;
 export const STARTING_HP = 10;
 // Pièces en stock au début de la partie (demande utilisateur), avant le gain du 1er tour.
 export const STARTING_COINS = 2;
@@ -63,9 +63,9 @@ export const ZONE_SIZES: Record<Zone, number> = { attack: 5, defense: 5, enchant
 export const MONSTER_ZONE_SIZES = [5, 3] as const;
 export const DEFAULT_MONSTER_ZONE_SIZE = MONSTER_ZONE_SIZES[0];
 // Fusion dorée (ajoutée à la demande de l'utilisateur) : une carte en main fusionne avec
-// FUSION_COUNT - 1 exemplaires normaux du même monstre posés sur le board de son
-// propriétaire (action `fuse`) ; elle devient un monstre doré, dont les stats de base sont
-// multipliées par GOLDEN_MULTIPLIER.
+// FUSION_COUNT - 1 autres exemplaires normaux de la même carte, posés sur le board de son
+// propriétaire ou dans sa main (action `fuse`) ; elle devient dorée. Monstre doré : stats de
+// base et capacités multipliées par GOLDEN_MULTIPLIER ; enchantement doré : effet multiplié.
 export const FUSION_COUNT = 3;
 export const GOLDEN_MULTIPLIER = 2;
 // Vente d'une carte posée (action `sell`) : une carte dorée vaut plus cher qu'une normale
@@ -207,8 +207,8 @@ export function getBaseMonsterStats(cardId: string, golden = false): { attack: n
 
 // Stats effectives d'un monstre posé : base (doublée s'il est doré) + buff permanent (E9,
 // non doublé) + somme des `monsterBuff` des enchantements posés par SON propriétaire (R3 :
-// les effets se cumulent et ne touchent que le board de leur propriétaire, non doublés non
-// plus). L'attaque a un plancher de `MIN_ATTACK` (E16) ; la défense n'en a pas (E17 : un
+// les effets se cumulent et ne touchent que le board de leur propriétaire ; doublés quand
+// c'est l'enchantement qui est doré, pas le monstre). L'attaque a un plancher de `MIN_ATTACK` (E16) ; la défense n'en a pas (E17 : un
 // monstre à défense ≤ 0 est filtré ailleurs, pas ici).
 export function getMonsterStats(
   player: PlayerState,
@@ -226,8 +226,9 @@ export function getMonsterStats(
     if (enchantDef.kind !== 'enchantment') continue;
     const effect = enchantDef.effect;
     if (effect.type === 'monsterBuff' && (effect.zone === 'all' || effect.zone === zone)) {
-      attack += effect.attack;
-      defense += effect.defense;
+      const multiplier = slot.golden ? GOLDEN_MULTIPLIER : 1;
+      attack += effect.attack * multiplier;
+      defense += effect.defense * multiplier;
     }
   }
   // Auras des autres monstres posés par le même propriétaire (Titan) : s'appliquent aussi aux
@@ -245,21 +246,26 @@ export function getMonsterStats(
   return { attack: Math.max(MIN_ATTACK, attack), defense };
 }
 
-// Exemplaires posés (attaque puis défense, de gauche à droite) avec lesquels `card` peut
-// fusionner : même monstre, non dorés, sur le board de `player`.
-function fusionPartners(player: PlayerState, card: CardInstance): { zone: MonsterZone; slot: number }[] {
-  const partners: { zone: MonsterZone; slot: number }[] = [];
-  for (const zone of ['attack', 'defense'] as MonsterZone[]) {
-    zoneCards(player, zone).forEach((s, slot) => {
-      if (s.cardId === card.cardId && !s.golden) partners.push({ zone, slot });
-    });
+// Exemplaires avec lesquels `card` (en main) peut fusionner : même carte, non dorés, chez
+// `player`. Ceux du board d'abord (attaque, défense, enchantements, de gauche à droite) —
+// leurs buffs sont reportés et leurs emplacements libérés —, puis ceux de la main (demande
+// utilisateur : pas besoin d'avoir les exemplaires posés).
+function fusionPartners(player: PlayerState, card: CardInstance): { from: Zone | 'hand'; uid: string }[] {
+  const partners: { from: Zone | 'hand'; uid: string }[] = [];
+  for (const zone of ['attack', 'defense', 'enchant'] as Zone[]) {
+    for (const s of zoneCards(player, zone)) {
+      if (s.cardId === card.cardId && !s.golden) partners.push({ from: zone, uid: s.uid });
+    }
+  }
+  for (const c of player.hand) {
+    if (c.uid !== card.uid && c.cardId === card.cardId && !c.golden) partners.push({ from: 'hand', uid: c.uid });
   }
   return partners;
 }
 
-// `card` (en main) est un monstre normal avec assez d'exemplaires posés pour fusionner.
+// `card` (en main, monstre ou enchantement) est normale et a assez d'exemplaires pour fusionner.
 function canFuse(player: PlayerState, card: CardInstance): boolean {
-  if (card.golden || !isMonster(getCardDef(card.cardId))) return false;
+  if (card.golden) return false;
   return fusionPartners(player, card).length >= FUSION_COUNT - 1;
 }
 
@@ -269,7 +275,7 @@ function coinsPerTurnBonus(player: PlayerState): number {
     if (!slot) continue;
     const def = getCardDef(slot.cardId);
     if (def.kind === 'enchantment' && def.effect.type === 'coinsPerTurn') {
-      bonus += def.effect.amount;
+      bonus += def.effect.amount * (slot.golden ? GOLDEN_MULTIPLIER : 1);
     }
   }
   return bonus;
@@ -341,10 +347,10 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
       if (count >= zoneCapacity(player, action.zone)) return false;
       if (!Number.isInteger(action.slot) || action.slot < 0 || action.slot > count) return false;
       const def = getCardDef(card.cardId);
+      // Une carte qui peut fusionner se pose aussi normalement : le joueur choisit (demande
+      // utilisateur).
       if (action.zone === 'enchant') return def.kind === 'enchantment';
-      // Une carte qui peut fusionner (2 exemplaires normaux déjà posés) ne sert qu'à la
-      // fusion : elle ne se pose pas (demande utilisateur).
-      return def.kind === 'monster' && !canFuse(player, card);
+      return def.kind === 'monster';
     }
 
     case 'move': {
@@ -542,21 +548,24 @@ function applyMove(next: GameState, seat: Seat, uid: string, slot: number): void
 }
 
 // Fusion dorée : la carte en main devient dorée (elle reste en main) et absorbe les
-// FUSION_COUNT - 1 premiers exemplaires posés, qui retournent au fond du deck (demande
-// utilisateur : plus de défausse ; le total de 50 cartes par joueur reste donc intact). Un monstre doré ne fusionne plus. Exception à E9 :
-// les buffs permanents des exemplaires absorbés (attaque gagnée en attaquant, par exemple)
-// ne sont pas perdus, ils sont reportés sur la carte dorée.
+// FUSION_COUNT - 1 premiers exemplaires de `fusionPartners` (posés, puis en main), qui
+// retournent au fond du deck (demande utilisateur : plus de défausse ; le total de 50 cartes
+// par joueur reste donc intact). Une carte dorée ne fusionne plus. Exception à E9 : les buffs
+// permanents des exemplaires absorbés (attaque gagnée en attaquant, par exemple) ne sont pas
+// perdus, ils sont reportés sur la carte dorée.
 function applyFuse(next: GameState, seat: Seat, uid: string): void {
   const player = next.players[seat];
   const card = player.hand.find((c) => c.uid === uid)!;
   const absorbedCards: CardInstance[] = [];
-  // Exemplaires lus avant tout retrait : `slot` est une position dans la rangée, qui se
-  // resserre dès qu'on en retire une carte.
-  const partners = fusionPartners(player, card)
-    .slice(0, FUSION_COUNT - 1)
-    .map(({ zone, slot }) => ({ zone, absorbed: zoneCards(player, zone)[slot] }));
-  for (const { zone, absorbed } of partners) {
-    writeZone(player, zone, zoneCards(player, zone).filter((c) => c.uid !== absorbed.uid));
+  for (const { from, uid: absorbedUid } of fusionPartners(player, card).slice(0, FUSION_COUNT - 1)) {
+    let absorbed: CardInstance;
+    if (from === 'hand') {
+      absorbed = player.hand.find((c) => c.uid === absorbedUid)!;
+      player.hand = player.hand.filter((c) => c.uid !== absorbedUid);
+    } else {
+      absorbed = zoneCards(player, from).find((c) => c.uid === absorbedUid)!;
+      writeZone(player, from, zoneCards(player, from).filter((c) => c.uid !== absorbedUid));
+    }
     if (absorbed.buff) addBuff(card, absorbed.buff.attack, absorbed.buff.defense);
     clearBuff(absorbed); // E9 : le buff disparaît de l'exemplaire absorbé, il quitte le board
     absorbedCards.push(absorbed);
