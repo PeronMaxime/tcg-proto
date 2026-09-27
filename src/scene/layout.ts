@@ -134,21 +134,23 @@ export function handCardPose(index: number, total: number, mine: boolean, compac
   };
 }
 
-// Carte survolée dans ma main : remonte, avance vers la caméra, grossit, se redresse (§6.6).
+// Carte survolée dans ma main : remonte vers la caméra, grossit nettement et se tourne face à
+// elle pour être lisible (§6.6 ; agrandie à la demande de l'utilisateur, ~la moitié de la
+// hauteur d'écran). Position absolue en y/z : le bas de la carte reste juste dans l'écran.
 // En cadrage compact, la main est à moitié sous le bord de l'écran : la carte monte vers le haut
 // de l'écran (z diminue) au lieu d'avancer vers la caméra, pour sortir entière.
 export function handHoverPose(basePose: Pose, compact = false): Pose {
   if (compact) {
     return {
-      position: [basePose.position[0], basePose.position[1] + 0.7, basePose.position[2] - 1.0],
-      rotation: [basePose.rotation[0], basePose.rotation[1], 0],
-      scale: 1.4,
+      position: [basePose.position[0], 2.5, 3.25],
+      rotation: [-1.35, basePose.rotation[1], 0],
+      scale: 2.1,
     };
   }
   return {
-    position: [basePose.position[0], basePose.position[1] + 0.4, basePose.position[2] + 0.6],
-    rotation: [basePose.rotation[0], basePose.rotation[1], 0],
-    scale: 1.5,
+    position: [basePose.position[0], 2.4, 4.3],
+    rotation: [-1.3, basePose.rotation[1], 0],
+    scale: 2.6,
   };
 }
 

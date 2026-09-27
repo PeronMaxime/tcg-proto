@@ -145,6 +145,15 @@ function Card({
   // `click` que le navigateur émet ensuite ne doit pas rejouer l'action (achat en double).
   const touchHandled = useRef(false);
 
+  // Carte agrandie au survol : elle cesse de capter le pointeur, c'est la zone de survol
+  // laissée à sa place dans l'éventail qui le garde.
+  const enlarged = hovered && hoverable;
+  useEffect(() => {
+    groupRef.current?.traverse((object) => {
+      if (object instanceof THREE.Mesh) object.raycast = enlarged ? () => {} : THREE.Mesh.prototype.raycast;
+    });
+  }, [enlarged]);
+
   // Pose de départ : sur mount, `spawnPose` (deck du propriétaire) si la carte est neuve,
   // sinon directement la pose cible — pas d'animation surprise au premier rendu (§7.2).
   useEffect(() => {
@@ -379,7 +388,6 @@ function Card({
 
   return (
     <group
-      ref={groupRef}
       onClick={(e) => {
         if (touchHandled.current) {
           touchHandled.current = false;
@@ -445,91 +453,102 @@ function Card({
         if (onDragStart && document.body.style.cursor === 'grab') document.body.style.cursor = '';
       }}
     >
-      <mesh position={[0, 0, -0.01]}>
-        <planeGeometry args={[width + 0.12, height + 0.12]} />
-        <meshBasicMaterial ref={haloMaterialRef} color="#000000" transparent opacity={0} />
-      </mesh>
-
-      <mesh position={[0, 0, -0.015]}>
-        <planeGeometry args={[width + 0.26, height + 0.26]} />
-        <meshBasicMaterial ref={goldGlowMaterialRef} color={theme.colors.gold} transparent opacity={0} />
-      </mesh>
-
-      {/* Marques d'habileté : au-dessus de la face, elles ne pivotent pas avec elle et se
-          superposent (bulle de Protection autour de la carte, bouclier de Provocation
-          par-dessus) sur un monstre qui a les deux. */}
-      <group ref={bubbleGroupRef} position={[0, 0, 0.035]} visible={false}>
-        <mesh>
-          <planeGeometry args={[width * BUBBLE_WIDTH_RATIO, height * BUBBLE_HEIGHT_RATIO]} />
-          <meshBasicMaterial
-            ref={bubbleMaterialRef}
-            map={bubbleTexture}
-            transparent
-            opacity={0}
-            depthWrite={false}
-            toneMapped={false}
-            blending={THREE.AdditiveBlending}
-          />
+      {/* Zone de survol d'une carte de la main, fixe à sa place dans l'éventail : la carte
+          agrandie déborde largement sur ses voisines, elle ne capte donc pas le pointeur
+          (voir l'effet sur `hovered`) et passer d'une carte à l'autre reste fluide. */}
+      {hoverable && (
+        <mesh position={pose.position} rotation={pose.rotation} scale={pose.scale}>
+          <planeGeometry args={[width, height]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} />
         </mesh>
-      </group>
+      )}
+      <group ref={groupRef}>
+        <mesh position={[0, 0, -0.01]}>
+          <planeGeometry args={[width + 0.12, height + 0.12]} />
+          <meshBasicMaterial ref={haloMaterialRef} color="#000000" transparent opacity={0} />
+        </mesh>
 
-      <mesh position={[0, 0, 0.05]}>
-        <planeGeometry args={[SHIELD_SIZE, SHIELD_SIZE]} />
-        <meshBasicMaterial
-          ref={shieldMaterialRef}
-          map={shieldTexture}
-          transparent
-          opacity={0}
-          visible={false}
-          depthWrite={false}
-          toneMapped={false}
-        />
-      </mesh>
+        <mesh position={[0, 0, -0.015]}>
+          <planeGeometry args={[width + 0.26, height + 0.26]} />
+          <meshBasicMaterial ref={goldGlowMaterialRef} color={theme.colors.gold} transparent opacity={0} />
+        </mesh>
 
-      {/* Cadenas du marché : coin haut gauche de la carte, au-dessus de la face et hors du
-          groupe qui pivote, avec sa propre zone de clic (il n'achète pas la carte). */}
-      {lockBadge && padlockTexture && (
-        <group
-          ref={lockGroupRef}
-          position={[-width / 2 + LOCK_SIZE * 0.55, height / 2 - LOCK_SIZE * 0.55, 0.06]}
-          onClick={(e) => {
-            e.stopPropagation();
-            lockBadge.onToggle();
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-          onPointerOver={(e) => {
-            e.stopPropagation();
-            setLockHovered(true);
-            document.body.style.cursor = 'pointer';
-          }}
-          onPointerOut={() => {
-            setLockHovered(false);
-            if (document.body.style.cursor === 'pointer') document.body.style.cursor = '';
-          }}
-        >
+        {/* Marques d'habileté : au-dessus de la face, elles ne pivotent pas avec elle et se
+            superposent (bulle de Protection autour de la carte, bouclier de Provocation
+            par-dessus) sur un monstre qui a les deux. */}
+        <group ref={bubbleGroupRef} position={[0, 0, 0.035]} visible={false}>
           <mesh>
-            <planeGeometry args={[LOCK_SIZE, LOCK_SIZE]} />
+            <planeGeometry args={[width * BUBBLE_WIDTH_RATIO, height * BUBBLE_HEIGHT_RATIO]} />
             <meshBasicMaterial
-              ref={lockMaterialRef}
-              map={padlockTexture}
+              ref={bubbleMaterialRef}
+              map={bubbleTexture}
               transparent
               opacity={0}
               depthWrite={false}
               toneMapped={false}
+              blending={THREE.AdditiveBlending}
             />
           </mesh>
         </group>
-      )}
 
-      <group ref={flipRef}>
-        <mesh castShadow>
-          <planeGeometry args={[width, height]} />
-          <meshStandardMaterial ref={faceMaterialRef} map={faceTexture} transparent alphaTest={0.1} />
+        <mesh position={[0, 0, 0.05]}>
+          <planeGeometry args={[SHIELD_SIZE, SHIELD_SIZE]} />
+          <meshBasicMaterial
+            ref={shieldMaterialRef}
+            map={shieldTexture}
+            transparent
+            opacity={0}
+            visible={false}
+            depthWrite={false}
+            toneMapped={false}
+          />
         </mesh>
-        <mesh rotation-y={Math.PI} castShadow>
-          <planeGeometry args={[width, height]} />
-          <meshStandardMaterial map={backTexture} transparent alphaTest={0.1} />
-        </mesh>
+
+        {/* Cadenas du marché : coin haut gauche de la carte, au-dessus de la face et hors du
+            groupe qui pivote, avec sa propre zone de clic (il n'achète pas la carte). */}
+        {lockBadge && padlockTexture && (
+          <group
+            ref={lockGroupRef}
+            position={[-width / 2 + LOCK_SIZE * 0.55, height / 2 - LOCK_SIZE * 0.55, 0.06]}
+            onClick={(e) => {
+              e.stopPropagation();
+              lockBadge.onToggle();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerOver={(e) => {
+              e.stopPropagation();
+              setLockHovered(true);
+              document.body.style.cursor = 'pointer';
+            }}
+            onPointerOut={() => {
+              setLockHovered(false);
+              if (document.body.style.cursor === 'pointer') document.body.style.cursor = '';
+            }}
+          >
+            <mesh>
+              <planeGeometry args={[LOCK_SIZE, LOCK_SIZE]} />
+              <meshBasicMaterial
+                ref={lockMaterialRef}
+                map={padlockTexture}
+                transparent
+                opacity={0}
+                depthWrite={false}
+                toneMapped={false}
+              />
+            </mesh>
+          </group>
+        )}
+
+        <group ref={flipRef}>
+          <mesh castShadow>
+            <planeGeometry args={[width, height]} />
+            <meshStandardMaterial ref={faceMaterialRef} map={faceTexture} transparent alphaTest={0.1} />
+          </mesh>
+          <mesh rotation-y={Math.PI} castShadow>
+            <planeGeometry args={[width, height]} />
+            <meshStandardMaterial map={backTexture} transparent alphaTest={0.1} />
+          </mesh>
+        </group>
       </group>
     </group>
   );

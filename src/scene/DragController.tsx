@@ -13,7 +13,7 @@ import { insertionIndexAt, rowBounds } from './layout';
 // `slot` : position d'insertion dans la rangée compacte de la zone (demande utilisateur : on
 // dépose entre deux cartes, ou à un bout, plus sur une case), au sens de l'action `place` ou
 // `move` correspondante.
-export type DropTarget = { kind: 'slot'; zone: Zone; slot: number } | { kind: 'fusion' };
+export type DropTarget = { kind: 'slot'; zone: Zone; slot: number } | { kind: 'fusion' } | { kind: 'sell' };
 
 export const DRAG_HEIGHT = 1.2; // hauteur de la carte tenue au-dessus de la table
 const SLOT_Y = 0.03;
@@ -32,6 +32,7 @@ interface DragControllerProps {
   // Nombre maximal de cartes de la zone dans cette partie : largeur de la rangée à viser.
   capacity: (zone: Zone) => number;
   isOverFusionZone: (clientX: number, clientY: number) => boolean;
+  isOverSellZone: (clientX: number, clientY: number) => boolean;
   onHover: (target: DropTarget | null) => void;
   onDrop: (target: DropTarget | null) => void;
 }
@@ -52,7 +53,7 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'])
 
 function sameTarget(a: DropTarget | null, b: DropTarget | null): boolean {
   if (a === null || b === null) return a === b;
-  if (a.kind === 'fusion' || b.kind === 'fusion') return a.kind === b.kind;
+  if (a.kind !== 'slot' || b.kind !== 'slot') return a.kind === b.kind;
   return a.zone === b.zone && a.slot === b.slot;
 }
 
@@ -76,9 +77,11 @@ function DragController(props: DragControllerProps) {
     }
 
     function targetAt(clientX: number, clientY: number): DropTarget | null {
-      const { isOverFusionZone, isLegalSlot, rowCount, capacity } = latest.current;
-      // La zone de fusion (surcouche HTML) passe avant les emplacements qu'elle recouvre.
+      const { isOverFusionZone, isOverSellZone, isLegalSlot, rowCount, capacity } = latest.current;
+      // Les zones de fusion et de vente (surcouches HTML) passent avant les emplacements
+      // qu'elles recouvrent.
       if (isOverFusionZone(clientX, clientY)) return { kind: 'fusion' };
+      if (isOverSellZone(clientX, clientY)) return { kind: 'sell' };
       const hit = projectOnPlane(clientX, clientY, SLOT_Y);
       if (!hit) return null;
       for (const zone of ['attack', 'defense', 'enchant'] as Zone[]) {

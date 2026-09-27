@@ -398,8 +398,13 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
     }
 
     case 'sell':
-      return (['attack', 'defense', 'enchant'] as Zone[]).some((zone) =>
-        player.zones[zone].some((s) => s?.uid === action.uid),
+      // Une carte de la main se vend aussi (demande utilisateur), au même prix qu'une carte
+      // posée.
+      return (
+        player.hand.some((c) => c.uid === action.uid) ||
+        (['attack', 'defense', 'enchant'] as Zone[]).some((zone) =>
+          player.zones[zone].some((s) => s?.uid === action.uid),
+        )
       );
 
     case 'endTurn':
@@ -577,12 +582,20 @@ function applyFuse(next: GameState, seat: Seat, uid: string): void {
   next.lastEvent = { id: next.eventSeq, type: 'fuse', seat, uid, fusedUids };
 }
 
-// Vente d'une carte posée : elle quitte son emplacement, retourne au fond du deck (demande
+// Vente d'une carte posée ou en main : elle quitte son emplacement, retourne au fond du deck (demande
 // utilisateur : plus de défausse) et rapporte 1 pièce à son propriétaire, 3 si elle est dorée et 1 de plus
 // si elle est Négociante (K4) — voir `sellValue` (ajouté à la demande explicite de
 // l'utilisateur, voir la note sur H10 plus haut).
 function applySell(next: GameState, seat: Seat, uid: string): void {
   const player = next.players[seat];
+  // Carte de la main (demande utilisateur) : même prix, même Vendu qu'une carte posée —
+  // la poser puis la vendre aurait donné exactement le même résultat.
+  const handSlot = player.hand.findIndex((c) => c.uid === uid);
+  if (handSlot !== -1) {
+    const [card] = player.hand.splice(handSlot, 1);
+    finishSell(next, seat, card, 'hand', handSlot);
+    return;
+  }
   for (const zone of ['attack', 'defense', 'enchant'] as Zone[]) {
     const cards = zoneCards(player, zone);
     const slot = cards.findIndex((c) => c.uid === uid);
@@ -590,18 +603,23 @@ function applySell(next: GameState, seat: Seat, uid: string): void {
     const [card] = cards.splice(slot, 1);
     writeZone(player, zone, cards); // rangée compacte : les cartes restantes se resserrent
     clearBuff(card); // E9 : le buff disparaît, la carte quitte le board (vente)
-    player.deck.unshift(card); // fond du deck
-    player.coins += sellValue(card); // K4 Négociant : +1 pièce
-    // E4 : Vendu se déclenche après que la carte a quitté le board, la pièce versée, au fond
-    // du deck.
-    const effects = fireTrigger(next, seat, card, 'sold');
-    if (hasKeyword(card, 'merchant')) effects.unshift(keywordLog(seat, card, 'merchant'));
-    // Une carte dorée redevient normale en retournant au deck : les exemplaires qu'elle avait
-    // absorbés y sont déjà. Après Vendu, qui a encore profité de son effet doublé.
-    delete card.golden;
-    next.lastEvent = { id: next.eventSeq, type: 'sell', seat, uid, zone, slot, effects };
+    finishSell(next, seat, card, zone, slot);
     return;
   }
+}
+
+function finishSell(next: GameState, seat: Seat, card: CardInstance, zone: Zone | 'hand', slot: number): void {
+  const player = next.players[seat];
+  player.deck.unshift(card); // fond du deck
+  player.coins += sellValue(card); // K4 Négociant : +1 pièce
+  // E4 : Vendu se déclenche après que la carte a quitté le board, la pièce versée, au fond
+  // du deck.
+  const effects = fireTrigger(next, seat, card, 'sold');
+  if (hasKeyword(card, 'merchant')) effects.unshift(keywordLog(seat, card, 'merchant'));
+  // Une carte dorée redevient normale en retournant au deck : les exemplaires qu'elle avait
+  // absorbés y sont déjà. Après Vendu, qui a encore profité de son effet doublé.
+  delete card.golden;
+  next.lastEvent = { id: next.eventSeq, type: 'sell', seat, uid: card.uid, zone, slot, effects };
 }
 
 // ---------------------------------------------------------------------------------------

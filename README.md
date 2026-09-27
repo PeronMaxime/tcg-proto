@@ -303,8 +303,9 @@ le détail des décisions. Résumé :
   une carte de la main ou du board = zoom, **appui long** sur une carte du marché = zoom avec
   les boutons « Acheter » et « Verrouiller » (le tap achète toujours directement), glisser =
   poser ou déplacer comme à la souris (gestes dans `Card.tsx`).
-- **Vendre une carte posée** (clic sur la carte → zoom → bouton « Vendre ») la retire
-  du board et la renvoie au fond du deck (il n'y a plus de défausse ; une carte dorée y
+- **Vendre une carte posée ou en main** (clic/tap sur la carte → zoom → bouton « Vendre »,
+  ou glisser la carte sur la zone « Vendre » qui apparaît sur son deck) la retire
+  du board ou de la main et la renvoie au fond du deck (il n'y a plus de défausse ; une carte dorée y
   redevient normale) et rapporte
   1 pièce, 3 si la carte est dorée, +1 si elle est Négociante (`sellValue` dans `rules.ts`).
 

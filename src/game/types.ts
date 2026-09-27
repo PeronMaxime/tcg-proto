@@ -260,7 +260,7 @@ export type GameEvent =
     }
   // `uid` : la carte en main devenue dorée ; `fusedUids` : les 2 exemplaires absorbés (posés ou en main).
   | { id: number; type: 'fuse'; seat: Seat; uid: string; fusedUids: string[] }
-  | { id: number; type: 'sell'; seat: Seat; uid: string; zone: Zone; slot: number; effects: EffectLog[] }
+  | { id: number; type: 'sell'; seat: Seat; uid: string; zone: Zone | 'hand'; slot: number; effects: EffectLog[] }
   | {
       id: number;
       type: 'combat';

@@ -812,6 +812,61 @@ button {
   text-transform: uppercase;
 }
 
+/* Zone de vente : posée sur mon deck, où la carte vendue retourne (demande utilisateur).
+   Même projection que la zone de fusion, centrée sur `DECK_MINE` de scene/layout.ts. */
+.sell-zone {
+  position: absolute;
+  left: calc(50% + 35.5vh);
+  top: calc(50% + 11.7vh);
+  width: 15vh;
+  height: 21vh;
+  transform: translate(-50%, -50%);
+  border-radius: 14px;
+  border: 2px dashed var(--hud-gold);
+  background: radial-gradient(circle, rgba(240, 207, 107, 0.3), rgba(201, 164, 65, 0.1) 60%, rgba(20, 21, 27, 0.6));
+  box-shadow:
+    0 0 20px rgba(201, 164, 65, 0.4),
+    inset 0 0 16px rgba(240, 207, 107, 0.2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  color: var(--hud-gold-bright);
+  font-family: var(--font-display);
+  pointer-events: none;
+  animation: fusion-zone-pulse 1.2s ease-in-out infinite;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sell-zone.is-hovered {
+  border-style: solid;
+  transform: translate(-50%, -50%) scale(1.12);
+  box-shadow:
+    0 0 40px rgba(240, 207, 107, 0.8),
+    inset 0 0 24px rgba(255, 241, 168, 0.5);
+  animation: none;
+}
+
+.sell-zone-icon {
+  width: clamp(18px, 4vh, 30px);
+  height: clamp(18px, 4vh, 30px);
+}
+
+.sell-zone-label {
+  font-size: clamp(0.65rem, 1.7vh, 0.9rem);
+  font-weight: 600;
+  letter-spacing: 0.1rem;
+  text-transform: uppercase;
+}
+
+.sell-zone-value {
+  font-family: var(--font-body);
+  font-size: clamp(0.8rem, 2.2vh, 1.1rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 @keyframes fusion-zone-pulse {
   0%,
   100% {
@@ -1857,7 +1912,8 @@ button {
     animation: none;
   }
 
-  .fusion-zone {
+  .fusion-zone,
+  .sell-zone {
     animation: none;
   }
 
@@ -1893,6 +1949,13 @@ button {
     top: calc(50% - 23.3vh);
     width: 56vh;
     height: 24vh;
+  }
+
+  .sell-zone {
+    left: calc(50% + 48.9vh);
+    top: calc(50% + 13.6vh);
+    width: 20vh;
+    height: 28vh;
   }
 
   .hud-plate {

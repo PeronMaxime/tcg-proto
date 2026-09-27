@@ -993,14 +993,27 @@ describe('applyAction - sell', () => {
     expect(afterEnchant!.players.p1.deck.map((c) => c.uid)).toEqual(['b1', 'g1']);
   });
 
-  it("refuse une carte qui n'est pas sur le board (main, marché) ou qui n'existe pas", () => {
+  it("refuse une carte qui n'est ni sur le board ni en main (marché) ou qui n'existe pas", () => {
     const state = baseState({ phase: 'main' });
-    state.players.p1.hand = [makeCard('squire', 'h1')];
     state.players.p1.market = [makeCard('wolf', 'm1')];
 
-    expect(applyAction(state, 'p1', { type: 'sell', uid: 'h1' })).toBeNull();
     expect(applyAction(state, 'p1', { type: 'sell', uid: 'm1' })).toBeNull();
     expect(applyAction(state, 'p1', { type: 'sell', uid: 'unknown' })).toBeNull();
+  });
+
+  it('vend une carte de la main : fond du deck, pièces, Vendu, et la carte dorée redevient normale', () => {
+    const state = baseState({ phase: 'main' });
+    state.players.p1.hp = 5;
+    state.players.p1.hand = [makeCard('squire', 'h1'), { ...makeCard('wolf', 'w1'), golden: true }];
+    const coinsBefore = state.players.p1.coins;
+
+    const next = applyAction(state, 'p1', { type: 'sell', uid: 'w1' })!;
+    expect(next.players.p1.hand.map((c) => c.uid)).toEqual(['h1']);
+    expect(next.players.p1.deck[0]).toMatchObject({ uid: 'w1' });
+    expect(next.players.p1.deck[0].golden).toBeUndefined();
+    expect(next.players.p1.coins).toBe(coinsBefore + SELL_GOLDEN_COINS);
+    expect(next.players.p1.hp).toBe(7); // Loup doré : Vendu +2 PV
+    expect(next.lastEvent).toMatchObject({ type: 'sell', uid: 'w1', zone: 'hand', slot: 1 });
   });
 
   it("refuse de vendre une carte de l'adversaire", () => {

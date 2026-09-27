@@ -73,6 +73,7 @@ interface BoardProps {
   onDragHover: (target: DropTarget | null) => void;
   onDrop: (target: DropTarget | null) => void;
   isOverFusionZone: (clientX: number, clientY: number) => boolean;
+  isOverSellZone: (clientX: number, clientY: number) => boolean;
   onZoomCard: (uid: string) => void;
 }
 
@@ -192,6 +193,7 @@ function Board({
   onDragHover,
   onDrop,
   isOverFusionZone,
+  isOverSellZone,
   onZoomCard,
 }: BoardProps) {
   const opponentSeat: Seat = opponentOf(seat);
@@ -603,6 +605,7 @@ function Board({
           rowCount={rowCount}
           capacity={(zone) => zoneCapacity(me, zone)}
           isOverFusionZone={isOverFusionZone}
+          isOverSellZone={isOverSellZone}
           onHover={onDragHover}
           onDrop={onDrop}
         />

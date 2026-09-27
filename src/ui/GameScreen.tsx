@@ -147,7 +147,8 @@ function hintText(
 ): string {
   if (playing) return '';
   if (!isMyTurn) return "En attente de l'adversaire…";
-  if (fusable) return 'Pose la carte, ou relâche-la dans la zone de fusion (sur le board adverse) pour la rendre dorée';
+  if (fusable)
+    return 'Pose la carte, relâche-la dans la zone de fusion (sur le board adverse) pour la rendre dorée, ou sur ton deck pour la vendre';
   if (phase === 'main')
     return `Achète, pose ou déplace tes cartes, puis lance le combat${movesHint(movesUsed)} · cadenas sur une carte du marché : la garder pour le prochain tour`;
   return '';
@@ -185,6 +186,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const fusionZoneRef = useRef<HTMLDivElement>(null);
+  const sellZoneRef = useRef<HTMLDivElement>(null);
   const marketZoneRectRef = useRef<ScreenRect | null>(null);
   const [zoomedUid, setZoomedUid] = useState<string | null>(null);
   const [turnBanner, setTurnBanner] = useState<{ seat: Seat; coinsGained: number; key: number } | null>(null);
@@ -439,7 +441,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   }
 
   // Dépôt d'une carte glissée : sur un emplacement légal -> `place`, sur la zone de fusion
-  // -> `fuse`, ailleurs -> la carte retourne dans la main. Le drag reste actif jusqu'à
+  // -> `fuse`, sur la zone de vente -> `sell`, ailleurs -> la carte retourne à sa place. Le drag reste actif jusqu'à
   // l'envoi de l'action, pour que la carte ne revienne pas en main entre-temps.
   async function handleDrop(target: DropTarget | null) {
     setDropTarget(null);
@@ -450,6 +452,8 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     try {
       if (target.kind === 'fusion') {
         await sendAction(room, seat, { type: 'fuse', uid: drag.uid });
+      } else if (target.kind === 'sell') {
+        await sendAction(room, seat, { type: 'sell', uid: drag.uid });
       } else if (drag.origin) {
         await sendAction(room, seat, { type: 'move', uid: drag.uid, slot: target.slot });
       } else {
@@ -460,9 +464,9 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     }
   }
 
-  // Test de la zone de fusion (surcouche HTML, posée sur le board adverse) sous le pointeur.
-  function isOverFusionZone(clientX: number, clientY: number): boolean {
-    const el = fusionZoneRef.current;
+  // Test d'une zone de dépôt en surcouche HTML (fusion sur le board adverse, vente sur mon
+  // deck) sous le pointeur.
+  function isOverZone(el: HTMLElement | null, clientX: number, clientY: number): boolean {
     if (!el) return false;
     const rect = el.getBoundingClientRect();
     return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
@@ -535,7 +539,12 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   }, [state, zoomedUid]);
   // Zone de fusion affichée seulement quand la carte tenue peut fusionner.
   const fusable = drag !== null && interactive && isActionLegal(state, seat, { type: 'fuse', uid: drag.uid });
-  const zoomedOnBoard = zoomed !== null && zoomed.zone !== 'hand' && zoomed.zone !== 'market';
+  // Zone de vente (demande utilisateur) : sur mon deck, où la carte vendue retourne, pour toute
+  // carte tenue qui peut se vendre (carte de la main, ou carte posée qu'on déplace).
+  const sellableDrag = drag !== null && interactive && isActionLegal(state, seat, { type: 'sell', uid: drag.uid });
+  const draggedCard = sellableDrag ? findZoomableCard(state, seat, drag.uid)?.card : undefined;
+  // Bouton Vendre : sur mes cartes posées et dans ma main (demande utilisateur).
+  const zoomedSellable = zoomed !== null && zoomed.owner === seat && zoomed.zone !== 'market';
   const canSell = Boolean(
     zoomed && zoomed.owner === seat && interactive && isActionLegal(state, seat, { type: 'sell', uid: zoomed.uid }),
   );
@@ -582,7 +591,8 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           }}
           onDragHover={setDropTarget}
           onDrop={handleDrop}
-          isOverFusionZone={(x, y) => fusable && isOverFusionZone(x, y)}
+          isOverFusionZone={(x, y) => fusable && isOverZone(fusionZoneRef.current, x, y)}
+          isOverSellZone={(x, y) => sellableDrag && isOverZone(sellZoneRef.current, x, y)}
           onZoomCard={setZoomedUid}
         />
       </Canvas>
@@ -593,6 +603,14 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             ★
           </span>
           <span className="fusion-zone-label">Fusion</span>
+        </div>
+      )}
+
+      {draggedCard && (
+        <div ref={sellZoneRef} className={`sell-zone ${dropTarget?.kind === 'sell' ? 'is-hovered' : ''}`}>
+          <span className="coin-icon sell-zone-icon" aria-hidden="true" />
+          <span className="sell-zone-label">Vendre</span>
+          <span className="sell-zone-value">+{sellValue(draggedCard)}</span>
         </div>
       )}
 
@@ -731,7 +749,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
               ×
             </button>
             <img className="card-zoom-image" src={zoomImageUrl} alt="" />
-            {(zoomed.zone === 'market' || canFuseZoomed || (zoomedOnBoard && zoomed.owner === seat)) && (
+            {(zoomed.zone === 'market' || canFuseZoomed || zoomedSellable) && (
               <div className="card-zoom-actions">
                 {canFuseZoomed && (
                   <button className="hud-button hud-button--gold card-zoom-sell" onClick={() => fuseZoomed(zoomed.uid)}>
@@ -752,7 +770,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
                     {zoomedLocked ? 'Déverrouiller' : `Verrouiller (${MARKET_LOCK_COST} pièce)`}
                   </button>
                 )}
-                {zoomedOnBoard && zoomed.owner === seat && (
+                {zoomedSellable && (
                   <button
                     className="hud-button hud-button--gold card-zoom-sell"
                     disabled={!canSell}
