@@ -10,11 +10,38 @@ export interface Pose {
   scale: number;
 }
 
-export const CAMERA = {
-  position: [0, 14, 7] as [number, number, number],
-  lookAt: [0, 0, 0.6] as [number, number, number],
+export interface CameraFraming {
+  position: [number, number, number];
+  lookAt: [number, number, number];
+  fov: number;
+}
+
+export const CAMERA: CameraFraming = {
+  position: [0, 14, 7],
+  lookAt: [0, 0, 0.6],
   fov: 45,
 };
+
+// Écran bas (téléphone en paysage) : la caméra a un champ vertical fixe, donc tout se règle sur
+// la hauteur d'écran et les cartes y deviennent minuscules, alors que la largeur, elle, est
+// en trop. Cadrage « compact » : caméra plus proche et plus plongeante, qui remplit la hauteur
+// avec les six rangées et laisse la main adverse hors champ (son nombre de cartes reste dans
+// le HUD). Même seuil que `@media (max-height: 500px)` dans styles.css.
+export const COMPACT_MAX_HEIGHT = 500;
+
+export const CAMERA_COMPACT: CameraFraming = {
+  position: [0, 10.5, 4.6],
+  lookAt: [0, 0, 0.9],
+  fov: 45,
+};
+
+export function isCompactViewport(height: number): boolean {
+  return height <= COMPACT_MAX_HEIGHT;
+}
+
+export function cameraFraming(compact: boolean): CameraFraming {
+  return compact ? CAMERA_COMPACT : CAMERA;
+}
 
 export const BOARD_CARD_SCALE = 0.7;
 const SLOT_SPACING = 1.05;
@@ -69,6 +96,10 @@ export function playerTokenPose(mine: boolean): Pose {
 const HAND_Z_MINE = 5.0;
 const HAND_Y_MINE = 0.6;
 const HAND_ROTATION_X_MINE = -0.96;
+// Cadrage compact : la main remonte dans le champ, plus redressée face à la caméra plongeante.
+const HAND_Z_MINE_COMPACT = 4.85;
+const HAND_Y_MINE_COMPACT = 1.0;
+const HAND_ROTATION_X_MINE_COMPACT = -1.15;
 const HAND_Z_OPPONENT = -5.1;
 const HAND_SCALE_OPPONENT = 0.6;
 const FAN_ANGLE = 0.07; // rotation.z par carte en s'éloignant du centre
@@ -80,15 +111,15 @@ function fanSpacing(total: number): number {
   return Math.min(0.78, HAND_MAX_WIDTH / (total - 1));
 }
 
-export function handCardPose(index: number, total: number, mine: boolean): Pose {
+export function handCardPose(index: number, total: number, mine: boolean, compact = false): Pose {
   const spacing = fanSpacing(total);
   const offset = index - (total - 1) / 2;
-  const lift = HAND_Y_MINE - Math.abs(offset) * FAN_LIFT;
+  const lift = (compact && mine ? HAND_Y_MINE_COMPACT : HAND_Y_MINE) - Math.abs(offset) * FAN_LIFT;
 
   if (mine) {
     return {
-      position: [offset * spacing, lift, HAND_Z_MINE],
-      rotation: [HAND_ROTATION_X_MINE, 0, -offset * FAN_ANGLE],
+      position: [offset * spacing, lift, compact ? HAND_Z_MINE_COMPACT : HAND_Z_MINE],
+      rotation: [compact ? HAND_ROTATION_X_MINE_COMPACT : HAND_ROTATION_X_MINE, 0, -offset * FAN_ANGLE],
       scale: 1,
     };
   }
@@ -104,7 +135,16 @@ export function handCardPose(index: number, total: number, mine: boolean): Pose 
 }
 
 // Carte survolée dans ma main : remonte, avance vers la caméra, grossit, se redresse (§6.6).
-export function handHoverPose(basePose: Pose): Pose {
+// En cadrage compact, la main est à moitié sous le bord de l'écran : la carte monte vers le haut
+// de l'écran (z diminue) au lieu d'avancer vers la caméra, pour sortir entière.
+export function handHoverPose(basePose: Pose, compact = false): Pose {
+  if (compact) {
+    return {
+      position: [basePose.position[0], basePose.position[1] + 0.7, basePose.position[2] - 1.0],
+      rotation: [basePose.rotation[0], basePose.rotation[1], 0],
+      scale: 1.4,
+    };
+  }
   return {
     position: [basePose.position[0], basePose.position[1] + 0.4, basePose.position[2] + 0.6],
     rotation: [basePose.rotation[0], basePose.rotation[1], 0],
@@ -130,20 +170,31 @@ const MARKET_MAX_SCALE = 1.6;
 const MARKET_GAP = 0.08;
 const MARKET_VISIBLE_HEIGHT = 9.5;
 const MARKET_MAX_WIDTH = 9;
+// Cadrage compact : le marché se place au centre du champ de CAMERA_COMPACT, face à elle.
+const MARKET_Y_COMPACT = 3.5;
+const MARKET_Z_COMPACT = 2.15;
+const MARKET_ROTATION_X_COMPACT = -1.15;
+const MARKET_VISIBLE_HEIGHT_COMPACT = 6.1;
+const MARKET_MAX_SCALE_COMPACT = 1.45;
 
 // Le marché flotte au centre, face à la caméra, du côté du joueur actif (H4 : visible des
 // deux joueurs). `mine` = est-ce le marché de "moi" (vu depuis mon écran) ? `aspect` = ratio
 // largeur / hauteur du canvas : les cartes rétrécissent si la rangée ne tient plus en largeur
 // (écran étroit, marché agrandi par un Colporteur).
-export function marketCardPose(index: number, total: number, mine: boolean, aspect = 16 / 9): Pose {
+export function marketCardPose(index: number, total: number, mine: boolean, aspect = 16 / 9, compact = false): Pose {
   const offset = index - (total - 1) / 2;
   if (mine) {
-    const availableWidth = Math.min(MARKET_MAX_WIDTH, MARKET_VISIBLE_HEIGHT * aspect * 0.94);
+    const visibleHeight = compact ? MARKET_VISIBLE_HEIGHT_COMPACT : MARKET_VISIBLE_HEIGHT;
+    const availableWidth = Math.min(MARKET_MAX_WIDTH, visibleHeight * aspect * 0.94);
     const fitScale = availableWidth / (Math.max(total, 1) * theme.card.width * (1 + MARKET_GAP));
-    const scale = Math.min(MARKET_MAX_SCALE, fitScale);
+    const scale = Math.min(compact ? MARKET_MAX_SCALE_COMPACT : MARKET_MAX_SCALE, fitScale);
     return {
-      position: [offset * theme.card.width * scale * (1 + MARKET_GAP), 3.2, 3.0],
-      rotation: [-0.96, 0, 0],
+      position: [
+        offset * theme.card.width * scale * (1 + MARKET_GAP),
+        compact ? MARKET_Y_COMPACT : 3.2,
+        compact ? MARKET_Z_COMPACT : 3.0,
+      ],
+      rotation: [compact ? MARKET_ROTATION_X_COMPACT : -0.96, 0, 0],
       scale,
     };
   }

@@ -1,8 +1,8 @@
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
 import { getCardDef } from '../game/cards';
-import { handHoverPose, type Pose } from './layout';
+import { handHoverPose, isCompactViewport, type Pose } from './layout';
 import { theme } from './theme';
 import {
   getBubbleTexture,
@@ -106,6 +106,7 @@ function Card({
   onInspect,
 }: CardProps) {
   const def = getCardDef(cardId);
+  const compact = useThree((s) => isCompactViewport(s.size.height));
   const faceTexture = useMemo(() => getCardFaceTexture(def, stats), [def, stats]);
   const backTexture = useMemo(() => getCardBackTexture(), []);
   const shieldTexture = useMemo(() => getShieldTexture(), []);
@@ -210,7 +211,7 @@ function Card({
       const effectivePose: Pose = dragPoint
         ? { position: [dragPoint.x, dragPoint.y, dragPoint.z], rotation: [-Math.PI / 2, 0, 0], scale: DRAG_SCALE }
         : hovered && hoverable
-          ? handHoverPose(pose)
+          ? handHoverPose(pose, compact)
           : pose;
       const moveLambda = dragPoint ? DRAG_DAMP_LAMBDA : DAMP_LAMBDA;
       group.position.x = THREE.MathUtils.damp(group.position.x, effectivePose.position[0], moveLambda, delta);

@@ -295,8 +295,10 @@ le détail des décisions. Résumé :
     mais **ne rembourse pas** (sinon on verrouillerait « pour voir ») ; acheter une carte
     verrouillée libère simplement son verrou.
 - **Sur téléphone** : la partie se joue en **paysage** (en portrait, l'écran de jeu invite à
-  tourner le téléphone ; les menus restent utilisables). Sur un écran bas, le HUD se compacte
-  (`@media (max-height: 500px)` dans `styles.css`). Au doigt, sans survol possible : **tap** sur
+  tourner le téléphone ; les menus restent utilisables). Sur un écran bas (500 px de haut au plus), le HUD se compacte
+  (`@media (max-height: 500px)` dans `styles.css`) et la caméra passe en cadrage compact
+  (`CAMERA_COMPACT` dans `layout.ts`) : plus proche et plus plongeante, elle agrandit le
+  plateau en laissant la main adverse hors champ, avec la main et le marché repositionnés. Au doigt, sans survol possible : **tap** sur
   une carte de la main ou du board = zoom, **appui long** sur une carte du marché = zoom avec
   les boutons « Acheter » et « Verrouiller » (le tap achète toujours directement), glisser =
   poser ou déplacer comme à la souris (gestes dans `Card.tsx`).

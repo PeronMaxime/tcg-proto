@@ -22,6 +22,7 @@ import Hero from './Hero';
 import {
   deckPose,
   handCardPose,
+  isCompactViewport,
   marketCardPose,
   playerTokenPose,
   rowBounds,
@@ -101,10 +102,11 @@ function MarketZoneTracker({ count, rectRef }: { count: number; rectRef: RefObje
     }
     const canvasRect = gl.domElement.getBoundingClientRect();
     const aspect = canvasRect.width / Math.max(1, canvasRect.height);
-    const scale = marketCardPose(0, count, true, aspect).scale;
+    const compact = isCompactViewport(canvasRect.height);
+    const scale = marketCardPose(0, count, true, aspect, compact).scale;
     const halfW = (theme.card.width * scale) / 2;
     const halfH = (theme.card.height * scale) / 2;
-    const rotationX = marketCardPose(0, count, true, aspect).rotation[0];
+    const rotationX = marketCardPose(0, count, true, aspect, compact).rotation[0];
     const cos = Math.cos(rotationX);
     const sin = Math.sin(rotationX);
 
@@ -114,7 +116,7 @@ function MarketZoneTracker({ count, rectRef }: { count: number; rectRef: RefObje
     let maxY = -Infinity;
 
     for (let index = 0; index < count; index++) {
-      const [px, py, pz] = marketCardPose(index, count, true, aspect).position;
+      const [px, py, pz] = marketCardPose(index, count, true, aspect, compact).position;
       for (const dx of [-halfW, halfW]) {
         for (const dy of [-halfH, halfH]) {
           corner.current.set(px + dx, py + dy * cos, pz + dy * sin);
@@ -194,6 +196,7 @@ function Board({
 }: BoardProps) {
   const opponentSeat: Seat = opponentOf(seat);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
+  const compact = useThree((s) => isCompactViewport(s.size.height));
   const me = state.players[seat];
   const opponent = state.players[opponentSeat];
 
@@ -218,7 +221,7 @@ function Board({
       cardId: card.cardId,
       stats: unplacedStats(card),
       ko: false,
-      pose: handCardPose(index, me.hand.length, true),
+      pose: handCardPose(index, me.hand.length, true, compact),
       hidden: false,
       mine: true,
       halo: dragged ? 'selected' : playable ? 'playable' : 'none',
@@ -266,7 +269,7 @@ function Board({
       stats: mine ? unplacedStats(card) : null,
       ko: false,
       lockBadge: lockable ? { locked, onToggle: () => onToggleMarketLock(card.uid) } : undefined,
-      pose: marketCardPose(index, activePlayer.market.length, mine, aspect),
+      pose: marketCardPose(index, activePlayer.market.length, mine, aspect, compact),
       hidden: !mine,
       mine,
       halo: buyable ? 'playable' : 'none',
@@ -411,7 +414,7 @@ function Board({
     const mine = owner === seat;
     const handIndex = ownerPlayer.hand.findIndex((c) => c.uid === goldenUid);
     if (handIndex !== -1) {
-      const goldenPose = handCardPose(handIndex, ownerPlayer.hand.length, mine);
+      const goldenPose = handCardPose(handIndex, ownerPlayer.hand.length, mine, compact);
       for (const uid of fusedUids) {
         const card = ownerPlayer.deck.find((c) => c.uid === uid);
         if (!card) continue;
