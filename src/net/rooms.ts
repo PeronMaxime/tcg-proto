@@ -217,7 +217,9 @@ export async function requestRematch(room: Room, seat: Seat): Promise<void> {
 // après `ABANDON_TIMEOUT_MS` pour laisser une chance de reconnexion (voir `deleteRoom`,
 // utilisés dans GameScreen). Si l'autre siège était déjà marqué parti, plus personne n'attend :
 // la room est supprimée immédiatement, terminée ou non.
-export async function leaveMatch(room: Room, seat: Seat): Promise<void> {
+//
+// Rend `true` si la room existe encore (on peut donc la reprendre), `false` si elle a disparu.
+export async function leaveMatch(room: Room, seat: Seat): Promise<boolean> {
   const opponentSeat: Seat = seat === 'p1' ? 'p2' : 'p1';
 
   const updated = await roomStore.transact(room.code, (existing) => {
@@ -227,9 +229,12 @@ export async function leaveMatch(room: Room, seat: Seat): Promise<void> {
     return { ...existing, leftAt: { ...leftAt, [seat]: Date.now() }, rematchReady };
   });
 
-  if (updated?.leftAt?.[opponentSeat]) {
+  if (!updated) return false;
+  if (updated.leftAt?.[opponentSeat]) {
     await roomStore.remove(room.code);
+    return false;
   }
+  return true;
 }
 
 export async function deleteRoom(code: string): Promise<void> {

@@ -473,12 +473,15 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   }
 
   async function leaveGame() {
+    let resumable = true;
     try {
-      await leaveMatch(room, seat);
+      resumable = await leaveMatch(room, seat);
     } catch {
       // Le retour au menu doit fonctionner même si l'écriture échoue (hors-ligne, etc.).
     }
-    rememberLeftRoom(room.code);
+    // Pas de lien « Reprendre la partie » si la room a été supprimée (les deux joueurs sont
+    // partis) ou si la partie est terminée : l'adversaire supprime alors la room aussitôt.
+    if (resumable && !state.winner) rememberLeftRoom(room.code);
     onLeaveToMenu();
   }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DEFAULT_MONSTER_ZONE_SIZE, MONSTER_ZONE_SIZES } from '../game/rules';
 import {
   DEFAULT_GAME_VERSION,
@@ -14,6 +14,7 @@ import {
   getLeftRoomCode,
   joinRoom,
   setCurrentRoomCode,
+  subscribeToRoom,
 } from '../net/rooms';
 import { roomStore } from '../net/roomStore';
 
@@ -72,6 +73,19 @@ function Menu({ onRoomReady }: MenuProps) {
   const [gameVersion, setGameVersion] = useState(loadGameVersion);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // La room quittée peut être supprimée pendant qu'on est sur le menu (l'adversaire est parti
+  // à son tour, ou son délai d'abandon a expiré) : on la suit pour retirer aussitôt le lien
+  // « Reprendre la partie », qui ne mènerait plus nulle part.
+  useEffect(() => {
+    if (!leftRoomCode) return;
+    return subscribeToRoom(leftRoomCode, (room) => {
+      if (!room) {
+        clearLeftRoomCode();
+        setLeftRoomCode(null);
+      }
+    });
+  }, [leftRoomCode]);
 
   function updatePseudo(value: string) {
     setPseudo(value);
