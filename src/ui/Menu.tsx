@@ -1,5 +1,12 @@
 import { useState } from 'react';
 import { DEFAULT_MONSTER_ZONE_SIZE, MONSTER_ZONE_SIZES } from '../game/rules';
+import {
+  DEFAULT_GAME_VERSION,
+  GAME_VERSION_LABELS,
+  GAME_VERSIONS,
+  isGameVersion,
+  type GameVersion,
+} from '../game/versions';
 import { getPlayerName, setPlayerName } from '../net/identity';
 import {
   clearLeftRoomCode,
@@ -31,6 +38,26 @@ function saveZoneSize(size: number): void {
   }
 }
 
+// Même confort pour la version du jeu.
+const GAME_VERSION_KEY = 'tcg-game-version';
+
+function loadGameVersion(): GameVersion {
+  try {
+    const stored = localStorage.getItem(GAME_VERSION_KEY);
+    return isGameVersion(stored) ? stored : DEFAULT_GAME_VERSION;
+  } catch {
+    return DEFAULT_GAME_VERSION;
+  }
+}
+
+function saveGameVersion(version: GameVersion): void {
+  try {
+    localStorage.setItem(GAME_VERSION_KEY, version);
+  } catch {
+    // stockage indisponible : le choix vaut pour cette visite seulement
+  }
+}
+
 interface MenuProps {
   onRoomReady: (code: string) => void;
 }
@@ -42,6 +69,7 @@ function Menu({ onRoomReady }: MenuProps) {
   );
   const [leftRoomCode, setLeftRoomCode] = useState(() => getLeftRoomCode());
   const [zoneSize, setZoneSize] = useState(loadZoneSize);
+  const [gameVersion, setGameVersion] = useState(loadGameVersion);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -55,11 +83,16 @@ function Menu({ onRoomReady }: MenuProps) {
     saveZoneSize(size);
   }
 
+  function updateGameVersion(version: GameVersion) {
+    setGameVersion(version);
+    saveGameVersion(version);
+  }
+
   async function handleCreate() {
     setError(null);
     setBusy(true);
     try {
-      const code = await createRoom(zoneSize);
+      const code = await createRoom(zoneSize, gameVersion);
       clearLeftRoomCode();
       setCurrentRoomCode(code);
       onRoomReady(code);
@@ -132,11 +165,31 @@ function Menu({ onRoomReady }: MenuProps) {
         />
       </label>
 
+      {/* Version du jeu de la partie créée (demande utilisateur) : elle choisit le catalogue de
+          cartes. Sans effet sur « Rejoindre », qui suit la room. */}
+      <div className="menu-picker">
+        <span>Version du jeu</span>
+        <div className="menu-picker-options" role="radiogroup">
+          {GAME_VERSIONS.map((version) => (
+            <button
+              key={version}
+              role="radio"
+              aria-checked={gameVersion === version}
+              className={gameVersion === version ? 'selected' : undefined}
+              onClick={() => updateGameVersion(version)}
+              disabled={busy}
+            >
+              {GAME_VERSION_LABELS[version]}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Variante de règles de la partie créée (demande utilisateur) : seul le nombre de
           cartes par zone de monstres change. Sans effet sur « Rejoindre », qui suit la room. */}
-      <div className="zone-size-picker">
+      <div className="menu-picker">
         <span>Cartes max par zone de monstres</span>
-        <div className="zone-size-options" role="radiogroup">
+        <div className="menu-picker-options" role="radiogroup">
           {MONSTER_ZONE_SIZES.map((size) => (
             <button
               key={size}

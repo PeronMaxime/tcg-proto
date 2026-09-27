@@ -1,4 +1,4 @@
-import { deleteDoc, doc, onSnapshot, runTransaction, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, onSnapshot, runTransaction, setDoc } from 'firebase/firestore';
 import type { Room } from '../game/types';
 import { getDb } from './firebase';
 import type { RoomStore } from './roomStore';
@@ -18,6 +18,11 @@ export const firebaseStore: RoomStore = {
       if (next !== null) tx.set(roomRef(code), next);
       return next;
     });
+  },
+
+  async get(code) {
+    const snap = await getDoc(roomRef(code));
+    return snap.exists() ? (snap.data() as Room) : null;
   },
 
   async set(code, room) {

@@ -70,6 +70,25 @@ Les cartes ne sont plus codées en dur : elles vivent dans un **catalogue** édi
 - Tout ce qui est lu depuis le stockage passe par `src/game/catalogSchema.ts`, qui refuse une
   carte malformée avant qu'elle n'atteigne le plateau.
 
+### Versions du jeu (V1, V2…)
+
+Chaque **version du jeu** (`src/game/versions.ts`) a son **propre catalogue**. La V1 garde le
+document `catalog/current` (le catalogue enregistré avant les versions est donc la V1, sans
+migration) ; les suivantes sont dans `catalog/<version>` (`catalog/v2`), couvertes par la
+même règle de `firestore.rules`.
+
+- Dans `/admin`, le sélecteur **en haut à droite** choisit la version éditée : tous les onglets
+  ne portent que sur elle. Changer de version abandonne le brouillon non enregistré (une
+  confirmation est demandée).
+- Une version sans catalogue propose de **partir d'une copie de la V1** ; la V1 n'est pas
+  modifiée par la suite.
+- Dans le menu, on choisit la version à la **création d'une partie**, comme le nombre de
+  cartes par zone. Elle est enregistrée dans la room (`Room.gameVersion`) et reprise à chaque
+  revanche. Une version sans catalogue refuse la création (pas de repli sur les cartes V1).
+- Le **code des règles est commun** : une capacité ajoutée pour la V2 existe aussi en V1 (sans
+  effet si aucune carte V1 ne l'utilise). Une mécanique propre à une version devra lire la
+  version de la partie.
+
 ### Les quatre onglets
 
 Le panneau partage **un seul brouillon** entre ses onglets : changer d'onglet ne perd rien, et

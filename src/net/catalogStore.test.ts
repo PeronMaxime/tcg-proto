@@ -54,7 +54,7 @@ async function store() {
 describe('catalogStore (mode local)', () => {
   it('rend null tant que rien n’a été enregistré', async () => {
     const { catalogStore } = await store();
-    await expect(catalogStore.load()).resolves.toBeNull();
+    await expect(catalogStore.load('v1')).resolves.toBeNull();
   });
 
   it('loadPlayableCatalog retombe sur le catalogue livré quand rien n’est enregistré', async () => {
@@ -63,28 +63,28 @@ describe('catalogStore (mode local)', () => {
   });
 
   it('l’import initial écrit les cartes livrées et incrémente la version', async () => {
-    const { seedCatalogFromDefaults, catalogStore } = await store();
-    const seeded = await seedCatalogFromDefaults();
+    const { seedCatalog, catalogStore } = await store();
+    const seeded = await seedCatalog('v1');
     expect(seeded.version).toBeGreaterThan(DEFAULT_CATALOG.version);
     expect(seeded.cards).toHaveLength(DEFAULT_CATALOG.cards.length);
 
-    const reloaded = await catalogStore.load();
+    const reloaded = await catalogStore.load('v1');
     expect(reloaded?.cards.map((c) => c.id)).toEqual(DEFAULT_CATALOG.cards.map((c) => c.id));
   });
 
   it('refuse d’écraser une version plus récente écrite ailleurs', async () => {
     const { catalogStore, CatalogError } = await store();
-    const saved = await catalogStore.save(DEFAULT_CATALOG);
+    const saved = await catalogStore.save('v1', DEFAULT_CATALOG);
     // Un autre onglet enregistre après nous : notre brouillon est devenu périmé.
-    await catalogStore.save(saved);
-    await expect(catalogStore.save(saved)).rejects.toBeInstanceOf(CatalogError);
+    await catalogStore.save('v1', saved);
+    await expect(catalogStore.save('v1', saved)).rejects.toBeInstanceOf(CatalogError);
   });
 
   it('refuse de relire un catalogue corrompu plutôt que de le servir au plateau', async () => {
     const { catalogStore, CatalogError } = await store();
-    await catalogStore.save(DEFAULT_CATALOG);
+    await catalogStore.save('v1', DEFAULT_CATALOG);
     storage.setItem('tcg-catalog', JSON.stringify({ version: 2, cards: [{ kind: 'dragon' }], starterCounts: {} }));
-    await expect(catalogStore.load()).rejects.toBeInstanceOf(CatalogError);
+    await expect(catalogStore.load('v1')).rejects.toBeInstanceOf(CatalogError);
   });
 
   it('loadPlayableCatalog ne laisse jamais un catalogue corrompu empêcher de jouer', async () => {
@@ -101,10 +101,50 @@ describe('catalogStore (mode local)', () => {
         card.id === 'squire' ? { ...card, name: 'Écuyère', cost: 5 } : card,
       ),
     };
-    await catalogStore.save(edited);
-    const reloaded = await catalogStore.load();
+    await catalogStore.save('v1', edited);
+    const reloaded = await catalogStore.load('v1');
     const squire = reloaded?.cards.find((card) => card.id === 'squire');
     expect(squire?.name).toBe('Écuyère');
     expect(squire?.cost).toBe(5);
+  });
+});
+
+describe('catalogStore (versions du jeu)', () => {
+  it('garde un catalogue séparé par version', async () => {
+    const { catalogStore } = await store();
+    await catalogStore.save('v1', DEFAULT_CATALOG);
+    await expect(catalogStore.load('v2')).resolves.toBeNull();
+
+    const v2: Catalog = {
+      ...DEFAULT_CATALOG,
+      cards: DEFAULT_CATALOG.cards.map((card) => (card.id === 'squire' ? { ...card, name: 'Page' } : card)),
+    };
+    await catalogStore.save('v2', v2);
+    const [reloadedV1, reloadedV2] = await Promise.all([catalogStore.load('v1'), catalogStore.load('v2')]);
+    expect(reloadedV1?.cards.find((card) => card.id === 'squire')?.name).not.toBe('Page');
+    expect(reloadedV2?.cards.find((card) => card.id === 'squire')?.name).toBe('Page');
+  });
+
+  it('la V1 reste à l’emplacement d’avant les versions', async () => {
+    const { catalogStore } = await store();
+    await catalogStore.save('v1', DEFAULT_CATALOG);
+    expect(storage.getItem('tcg-catalog')).not.toBeNull();
+  });
+
+  it('amorce la V2 avec une copie de la V1 enregistrée', async () => {
+    const { catalogStore, seedCatalog } = await store();
+    const edited: Catalog = {
+      ...DEFAULT_CATALOG,
+      cards: DEFAULT_CATALOG.cards.map((card) => (card.id === 'squire' ? { ...card, cost: 7 } : card)),
+    };
+    await catalogStore.save('v1', edited);
+    const seeded = await seedCatalog('v2');
+    expect(seeded.cards.find((card) => card.id === 'squire')?.cost).toBe(7);
+    await expect(catalogStore.load('v2')).resolves.toStrictEqual(seeded);
+  });
+
+  it('refuse de jouer une V2 sans catalogue plutôt que de lui servir les cartes de la V1', async () => {
+    const { loadPlayableCatalog, CatalogError } = await store();
+    await expect(loadPlayableCatalog('v2')).rejects.toBeInstanceOf(CatalogError);
   });
 });

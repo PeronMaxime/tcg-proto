@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseCatalog } from '../../game/catalogSchema';
 import type { CardDef, Catalog, PowerWeights } from '../../game/types';
-import { catalogStore, seedCatalogFromDefaults } from '../../net/catalogStore';
+import type { GameVersion } from '../../game/versions';
+import { catalogStore, seedCatalog } from '../../net/catalogStore';
 import { applyCatalog } from '../applyCatalog';
 
 // État du panneau d'administration : un brouillon en mémoire, modifié librement, puis
 // enregistré d'un bloc. Le brouillon est installé comme catalogue actif à chaque changement,
 // ce qui donne l'aperçu en direct sans code de rendu dédié (voir `CardPreview`).
+//
+// Le brouillon est celui d'UNE version du jeu (`version`, choisie en haut du panneau) : en
+// changer recharge le catalogue de l'autre version et abandonne le brouillon en cours.
 
 export type CatalogStatus = 'loading' | 'missing' | 'ready' | 'error';
 
@@ -33,7 +37,7 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : 'Erreur inconnue.';
 }
 
-export function useCatalogAdmin(): CatalogAdmin {
+export function useCatalogAdmin(version: GameVersion): CatalogAdmin {
   const [status, setStatus] = useState<CatalogStatus>('loading');
   const [draft, setDraft] = useState<Catalog | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -51,21 +55,28 @@ export function useCatalogAdmin(): CatalogAdmin {
     };
   }, []);
 
+  // Numéro du dernier chargement lancé : si l'on change de version avant la fin d'une lecture,
+  // son résultat (le catalogue de l'ANCIENNE version) doit être ignoré.
+  const loadId = useRef(0);
+
   const reload = useCallback(async () => {
+    const id = ++loadId.current;
     setStatus('loading');
     setFailure(null);
+    setDraft(null);
+    setDirty(false);
     try {
-      const loaded = await catalogStore.load();
-      if (!alive.current) return;
+      const loaded = await catalogStore.load(version);
+      if (!alive.current || id !== loadId.current) return;
       setDraft(loaded);
       setDirty(false);
       setStatus(loaded ? 'ready' : 'missing');
     } catch (e) {
-      if (!alive.current) return;
+      if (!alive.current || id !== loadId.current) return;
       setFailure(message(e));
       setStatus('error');
     }
-  }, []);
+  }, [version]);
 
   useEffect(() => {
     void reload();
@@ -156,38 +167,42 @@ export function useCatalogAdmin(): CatalogAdmin {
 
   const save = useCallback(async () => {
     if (!draft || errors.length > 0) return;
+    // Même garde que `reload` : une écriture terminée après un changement de version ne doit
+    // pas installer son catalogue dans le brouillon de l'autre version.
+    const id = loadId.current;
     setSaving(true);
     setFailure(null);
     try {
-      const saved = await catalogStore.save(draft);
-      if (!alive.current) return;
+      const saved = await catalogStore.save(version, draft);
+      if (!alive.current || id !== loadId.current) return;
       setDraft(saved);
       setDirty(false);
       setStatus('ready');
     } catch (e) {
-      if (!alive.current) return;
+      if (!alive.current || id !== loadId.current) return;
       setFailure(message(e));
     } finally {
       if (alive.current) setSaving(false);
     }
-  }, [draft, errors]);
+  }, [version, draft, errors]);
 
   const seed = useCallback(async () => {
+    const id = loadId.current;
     setSaving(true);
     setFailure(null);
     try {
-      const seeded = await seedCatalogFromDefaults();
-      if (!alive.current) return;
+      const seeded = await seedCatalog(version);
+      if (!alive.current || id !== loadId.current) return;
       setDraft(seeded);
       setDirty(false);
       setStatus('ready');
     } catch (e) {
-      if (!alive.current) return;
+      if (!alive.current || id !== loadId.current) return;
       setFailure(message(e));
     } finally {
       if (alive.current) setSaving(false);
     }
-  }, []);
+  }, [version]);
 
   return {
     status,

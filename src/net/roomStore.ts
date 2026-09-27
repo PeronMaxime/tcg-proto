@@ -8,6 +8,8 @@ export interface RoomStore {
   // retourne la nouvelle room à écrire ou null pour ne rien écrire.
   // Une erreur levée dans `fn` annule et est propagée à l'appelant.
   transact(code: string, fn: (room: Room | null) => Room | null): Promise<Room | null>;
+  // Lecture ponctuelle, hors transaction (null si la room n'existe pas).
+  get(code: string): Promise<Room | null>;
   // Écriture directe, sans transaction (utilisée pour les actions de jeu, voir §5).
   set(code: string, room: Room): Promise<void>;
   // Supprime définitivement la room (partie abandonnée, voir `rooms.ts`).

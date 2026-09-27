@@ -101,23 +101,23 @@ button {
   cursor: default;
 }
 
-.zone-size-picker {
+.menu-picker {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   width: 100%;
 }
 
-.zone-size-options {
+.menu-picker-options {
   display: flex;
   gap: 0.5rem;
 }
 
-.menu .zone-size-options button {
+.menu .menu-picker-options button {
   flex: 1;
 }
 
-.menu .zone-size-options button.selected {
+.menu .menu-picker-options button.selected {
   border-color: var(--color-accent);
   background: var(--color-accent);
   color: #fff;
@@ -1613,6 +1613,63 @@ button {
 .admin .admin-tab.is-active {
   color: var(--color-text);
   border-bottom-color: var(--color-accent);
+}
+
+/* Onglets à gauche, sélecteur de version du jeu à droite, sur la même ligne. La bordure passe
+   des onglets à la barre pour souligner les deux. */
+.admin-topbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem 1rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.admin-topbar .admin-tabs {
+  border-bottom: none;
+}
+
+.admin-version {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  padding-bottom: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--color-text-dim);
+}
+
+/* Hors du panneau (chargement, erreur, catalogue à créer) : même place, en haut à droite. */
+.menu .admin-version {
+  align-self: flex-end;
+}
+
+.admin-version-options {
+  display: flex;
+}
+
+.admin-version-options button {
+  padding: 0.3rem 0.8rem;
+  border-radius: 0;
+}
+
+.admin-version-options button + button {
+  margin-left: -1px;
+}
+
+.admin-version-options button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.admin-version-options button:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.admin-version-options button.selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 700;
 }
 
 /* Tableaux des onglets « Récapitulatif », « Chiffres » et « Puissances ». Le conteneur porte

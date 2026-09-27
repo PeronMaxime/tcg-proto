@@ -34,6 +34,10 @@ export const localStore: RoomStore = {
     return next;
   },
 
+  async get(code) {
+    return readRoom(code);
+  },
+
   async set(code, room) {
     writeRoom(code, room);
   },

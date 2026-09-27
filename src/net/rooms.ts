@@ -1,6 +1,7 @@
 import { setActiveCatalog } from '../game/cards';
 import { applyAction, createInitialState, DEFAULT_MONSTER_ZONE_SIZE } from '../game/rules';
 import type { Action, Catalog, GameState, Room, Seat } from '../game/types';
+import { DEFAULT_GAME_VERSION, type GameVersion } from '../game/versions';
 import { loadPlayableCatalog } from './catalogStore';
 import { getPlayerId, getPlayerName } from './identity';
 import { generateRoomCode, normalizeRoomCode } from './roomCode';
@@ -25,7 +26,8 @@ function freshRematchReady(): Record<Seat, boolean> {
 
 export class RoomError extends Error {}
 
-// Prépare une nouvelle partie : on lit le catalogue partagé, on l'installe comme catalogue
+// Prépare une nouvelle partie : on lit le catalogue partagé de la version du jeu de la room
+// (`Room.gameVersion`), on l'installe comme catalogue
 // actif (`createInitialState` construit les decks avec, via `buildStarterDeck`) et on le rend
 // pour qu'il soit FIGÉ dans la room. Une carte modifiée dans l'admin après ce point ne touche
 // donc plus cette partie — elle s'appliquera à la suivante.
@@ -33,8 +35,10 @@ export class RoomError extends Error {}
 // Appelé avant d'ouvrir la transaction : le catalogue se lit de façon asynchrone, alors que
 // les callbacks de `roomStore.transact` sont synchrones. L'état, lui, se crée DANS la
 // transaction (`game.start(existing)`) : il dépend de la variante enregistrée dans la room.
-async function freshGame(): Promise<{ catalog: Catalog; start: (room: Room) => GameState }> {
-  const catalog = await loadPlayableCatalog();
+async function freshGame(
+  version: GameVersion | undefined,
+): Promise<{ catalog: Catalog; start: (room: Room) => GameState }> {
+  const catalog = await loadPlayableCatalog(version ?? DEFAULT_GAME_VERSION);
   setActiveCatalog(catalog);
   return {
     catalog,
@@ -68,8 +72,16 @@ export function clearLeftRoomCode(): void {
 }
 
 // `monsterZoneSize` : variante de règles choisie dans le menu (voir `MONSTER_ZONE_SIZES`).
-export async function createRoom(monsterZoneSize: number = DEFAULT_MONSTER_ZONE_SIZE): Promise<string> {
+// `gameVersion` : version du jeu choisie dans le menu (voir `game/versions.ts`).
+export async function createRoom(
+  monsterZoneSize: number = DEFAULT_MONSTER_ZONE_SIZE,
+  gameVersion: GameVersion = DEFAULT_GAME_VERSION,
+): Promise<string> {
   const player = { id: getPlayerId(), name: getPlayerName() };
+  // Le catalogue n'est recopié dans la room qu'à l'arrivée du second joueur, mais on vérifie
+  // dès maintenant qu'il existe : une V2 encore sans cartes doit refuser la création, pas
+  // laisser l'adversaire tomber sur une erreur en rejoignant.
+  await loadPlayableCatalog(gameVersion);
 
   for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS; attempt++) {
     const code = generateRoomCode();
@@ -84,6 +96,7 @@ export async function createRoom(monsterZoneSize: number = DEFAULT_MONSTER_ZONE_
         leftAt: freshLeftAt(),
         rematchReady: freshRematchReady(),
         monsterZoneSize,
+        gameVersion,
       };
       return fresh;
     });
@@ -96,8 +109,13 @@ export async function createRoom(monsterZoneSize: number = DEFAULT_MONSTER_ZONE_
 export async function joinRoom(rawCode: string): Promise<Room> {
   const code = normalizeRoomCode(rawCode);
   const player = { id: getPlayerId(), name: getPlayerName() };
-  // Préparé même en cas de reconnexion (où il ne servira pas) : la transaction est synchrone.
-  const game = await freshGame();
+  // Le catalogue dépend de la version de la room : on la lit d'abord, hors transaction (elle
+  // ne change jamais après la création). La partie n'est préparée que si l'on va vraiment
+  // s'asseoir : une reconnexion ne doit pas échouer parce que le catalogue est illisible.
+  const peek = await roomStore.get(code);
+  if (!peek) throw new RoomError('Room introuvable.');
+  const seated = peek.players.p1.id === player.id || peek.players.p2?.id === player.id;
+  const game = seated || peek.players.p2 ? null : await freshGame(peek.gameVersion);
 
   const room = await roomStore.transact(code, (existing) => {
     if (!existing) throw new RoomError('Room introuvable.');
@@ -110,6 +128,9 @@ export async function joinRoom(rawCode: string): Promise<Room> {
       return { ...existing, leftAt: { ...leftAt, [existingSeat]: null } };
     }
     if (existing.players.p2) throw new RoomError('Room pleine.');
+    // La room a changé entre la lecture et la transaction (siège libéré entre-temps) : rare,
+    // il suffit de recommencer.
+    if (!game) throw new RoomError('La room a changé, réessaie.');
     const joined: Room = {
       ...existing,
       players: { ...existing.players, p2: player },
@@ -149,7 +170,7 @@ export async function sendAction(room: Room, seat: Seat, action: Action): Promis
 // Redémarrage immédiat, sans attendre l'autre siège : réservé au cas où la partie reçue
 // utilise d'anciennes règles (RoomScreen, avant même que la partie ait vraiment commencé).
 export async function rematch(room: Room): Promise<void> {
-  const game = await freshGame();
+  const game = await freshGame(room.gameVersion);
   await roomStore.transact(room.code, (existing) => {
     if (!existing) return null;
     const restarted: Room = {
@@ -171,7 +192,7 @@ export async function rematch(room: Room): Promise<void> {
 export async function requestRematch(room: Room, seat: Seat): Promise<void> {
   // La revanche repart du catalogue COURANT : une carte éditée dans l'admin pendant la partie
   // qui vient de se terminer entre en jeu à la manche suivante (demande utilisateur).
-  const game = await freshGame();
+  const game = await freshGame(room.gameVersion);
   await roomStore.transact(room.code, (existing) => {
     if (!existing) return null;
     const ready = { ...(existing.rematchReady ?? freshRematchReady()), [seat]: true };

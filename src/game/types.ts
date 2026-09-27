@@ -1,3 +1,5 @@
+import type { GameVersion } from './versions';
+
 export type Seat = 'p1' | 'p2';
 export type MonsterZone = 'attack' | 'defense';
 export type Zone = MonsterZone | 'enchant';
@@ -102,8 +104,8 @@ export interface PowerWeights {
 }
 
 // Catalogue complet : les cartes existantes et la composition du deck de départ. Éditable
-// depuis le panneau d'administration (`ui/admin`), stocké dans `catalog/current`
-// (`net/catalogStore.ts`) et recopié tel quel dans chaque `Room` à la création d'une partie,
+// depuis le panneau d'administration (`ui/admin`), un par version du jeu (`game/versions.ts`),
+// stocké dans `catalog/current` pour la V1 et `catalog/<version>` ensuite (`net/catalogStore.ts`) et recopié tel quel dans chaque `Room` à la création d'une partie,
 // pour qu'une modification faite en cours de partie ne change pas les cartes sous les pieds
 // des joueurs. `version` est incrémentée à chaque enregistrement : elle sert de garde contre
 // l'écrasement d'une écriture plus récente (deux onglets d'admin ouverts en même temps).
@@ -316,4 +318,8 @@ export interface Room {
   // maximal de cartes par zone de monstres, repris à chaque revanche. Absent sur les rooms
   // créées avant les variantes : à lire via `room.monsterZoneSize ?? DEFAULT_MONSTER_ZONE_SIZE`.
   monsterZoneSize?: number;
+  // Version du jeu choisie à la création de la room (voir `game/versions.ts`) : elle désigne le
+  // catalogue recopié dans `catalog`, à la première partie comme à chaque revanche. Absent sur
+  // les rooms créées avant les versions : à lire via `room.gameVersion ?? DEFAULT_GAME_VERSION`.
+  gameVersion?: GameVersion;
 }
