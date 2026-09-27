@@ -53,8 +53,7 @@ button {
   gap: 0.5rem;
 }
 
-.menu,
-.lobby {
+.menu {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -73,8 +72,7 @@ button {
   width: 100%;
 }
 
-.menu input,
-.lobby input {
+.menu input {
   padding: 0.5rem;
   border-radius: 4px;
   border: 1px solid var(--color-border);
@@ -82,8 +80,7 @@ button {
   color: var(--color-text);
 }
 
-.menu button,
-.lobby button {
+.menu button {
   padding: 0.5rem 1rem;
   border-radius: 4px;
   border: 1px solid var(--color-border);
@@ -91,8 +88,7 @@ button {
   color: var(--color-text);
 }
 
-.menu button:hover:not(:disabled),
-.lobby button:hover:not(:disabled) {
+.menu button:hover:not(:disabled) {
   border-color: var(--color-accent);
 }
 
@@ -113,16 +109,6 @@ button {
   color: var(--color-danger);
 }
 
-.room-code {
-  font-family: var(--font-display);
-  font-size: 2.5rem;
-  font-weight: 700;
-  letter-spacing: 0.35rem;
-  color: var(--hud-gold-bright);
-  text-shadow: 0 0 18px rgba(201, 164, 65, 0.35);
-}
-
-.lobby h1,
 .menu h1 {
   font-family: var(--font-display);
   letter-spacing: 0.06rem;
@@ -133,13 +119,7 @@ button {
   gap: 0.5rem;
 }
 
-.copy-feedback {
-  min-height: 1.2rem;
-  font-size: 0.85rem;
-  color: var(--color-success);
-}
-
-/* ——— Écran titre (Menu.tsx) ———
+/* ——— Écran titre (Menu.tsx, et fond de Lobby.tsx) ———
    Même vocabulaire que le plateau : table sombre, filets d'or, parchemin des cartes et
    pastilles des quatre éléments. */
 .title {
@@ -545,6 +525,177 @@ button {
   .title-primary,
   .title-secondary,
   .title-resume {
+    transition: none;
+  }
+}
+
+/* ——— Salle d'attente (Lobby.tsx), sur le fond et les boutons de l'écran titre ——— */
+.lobby-heading {
+  margin: 0 0 1.25rem;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--hud-ink);
+}
+
+.lobby-code {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.lobby-code span {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 64px;
+  border: 1px solid #c9b385;
+  border-radius: 4px;
+  background: linear-gradient(170deg, #f8eed6, var(--title-parchment));
+  box-shadow:
+    inset 0 0 0 3px var(--title-parchment),
+    inset 0 0 0 4px rgba(122, 90, 12, 0.35),
+    0 6px 14px rgba(0, 0, 0, 0.45);
+  color: var(--title-ink);
+  font-family: var(--font-display);
+  font-size: 1.9rem;
+  font-weight: 700;
+}
+
+/* Légère inclinaison alternée : des cartes posées à la main, pas une grille. */
+.lobby-code span:nth-child(odd) {
+  transform: rotate(-2deg);
+}
+
+.lobby-code span:nth-child(even) {
+  transform: rotate(1.5deg) translateY(2px);
+}
+
+.lobby-copy {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.lobby-copy .title-secondary {
+  flex: 1;
+  padding: 0 0.5rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+/* Place réservée même vide, pour que la page ne saute pas à l'affichage du message. */
+.lobby-feedback {
+  min-height: 1.2rem;
+  margin: -0.75rem 0 0;
+  font-size: 0.85rem;
+  text-align: center;
+  color: var(--color-success);
+}
+
+.lobby-settings {
+  margin: 0;
+  border-top: 1px solid var(--hud-gold-dim);
+}
+
+.lobby-settings div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--title-line);
+}
+
+.lobby-settings dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hud-ink-dim);
+}
+
+/* En Inter et non en Cinzel, dont le « 1 » se lit comme un « I » (« V1 » devenait « VI »). */
+.lobby-settings dd {
+  margin: 0;
+  font-weight: 700;
+  color: var(--hud-gold-bright);
+}
+
+.lobby-waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  margin: 0.5rem 0 0;
+  color: var(--hud-ink);
+}
+
+/* Trois losanges qui s'allument tour à tour. */
+.lobby-waiting-dots {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.lobby-waiting-dots span {
+  width: 6px;
+  height: 6px;
+  background: var(--hud-gold);
+  transform: rotate(45deg);
+  animation: lobby-wait 1.2s ease-in-out infinite;
+}
+
+.lobby-waiting-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.lobby-waiting-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes lobby-wait {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+.lobby-cancel {
+  align-self: center;
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 0;
+  background: none;
+  color: var(--hud-ink-dim);
+  font-size: 0.9rem;
+  text-decoration: underline;
+  text-decoration-color: var(--title-line);
+  text-underline-offset: 4px;
+  transition: color 150ms, text-decoration-color 150ms;
+}
+
+.lobby-cancel:hover {
+  color: var(--hud-ink);
+  text-decoration-color: var(--hud-ink-dim);
+}
+
+.lobby-cancel:focus-visible {
+  outline: 2px solid var(--hud-gold-bright);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lobby-waiting-dots span {
+    animation: none;
+    opacity: 0.7;
+  }
+
+  .lobby-cancel {
     transition: none;
   }
 }
