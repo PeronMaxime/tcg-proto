@@ -145,14 +145,15 @@ function Card({
   // `click` que le navigateur émet ensuite ne doit pas rejouer l'action (achat en double).
   const touchHandled = useRef(false);
 
-  // Carte agrandie au survol : elle cesse de capter le pointeur, c'est la zone de survol
-  // laissée à sa place dans l'éventail qui le garde.
-  const enlarged = hovered && hoverable;
+  // Carte de la main : seule la zone de survol, fixe à sa place dans l'éventail, capte le
+  // pointeur. La carte elle-même (agrandie, ou qui revient en place après un survol) n'est
+  // jamais touchée par le rayon : sinon, en repassant sous le curseur pendant son animation,
+  // elle volait le survol à sa voisine et les deux cartes clignotaient.
   useEffect(() => {
     groupRef.current?.traverse((object) => {
-      if (object instanceof THREE.Mesh) object.raycast = enlarged ? () => {} : THREE.Mesh.prototype.raycast;
+      if (object instanceof THREE.Mesh) object.raycast = hoverable ? () => {} : THREE.Mesh.prototype.raycast;
     });
-  }, [enlarged]);
+  }, [hoverable]);
 
   // Pose de départ : sur mount, `spawnPose` (deck du propriétaire) si la carte est neuve,
   // sinon directement la pose cible — pas d'animation surprise au premier rendu (§7.2).

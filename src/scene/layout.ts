@@ -104,6 +104,11 @@ const HAND_Z_OPPONENT = -5.1;
 const HAND_SCALE_OPPONENT = 0.6;
 const FAN_ANGLE = 0.07; // rotation.z par carte en s'éloignant du centre
 const FAN_LIFT = 0.02; // baisse en y vers les bords
+// Décalage de chaque carte vers la caméra, le long de sa normale, selon son rang dans
+// l'éventail : sans lui, deux cartes à même distance du centre (les deux du milieu d'une main
+// paire) sont exactement dans le même plan — elles se chevauchent en scintillant et le
+// survol tire au hasard celle qu'il agrandit.
+const FAN_DEPTH_STEP = 0.004;
 const HAND_MAX_WIDTH = 8; // largeur dispo pour l'éventail : resserrement continu (R2)
 
 function fanSpacing(total: number): number {
@@ -115,11 +120,16 @@ export function handCardPose(index: number, total: number, mine: boolean, compac
   const spacing = fanSpacing(total);
   const offset = index - (total - 1) / 2;
   const lift = (compact && mine ? HAND_Y_MINE_COMPACT : HAND_Y_MINE) - Math.abs(offset) * FAN_LIFT;
+  const tilt = compact && mine ? HAND_ROTATION_X_MINE_COMPACT : HAND_ROTATION_X_MINE;
+  // Normale d'une carte inclinée de `tilt` autour de x : (0, -sin(tilt), cos(tilt)).
+  const depth = index * FAN_DEPTH_STEP;
+  const y = lift - Math.sin(tilt) * depth;
+  const dz = Math.cos(tilt) * depth;
 
   if (mine) {
     return {
-      position: [offset * spacing, lift, compact ? HAND_Z_MINE_COMPACT : HAND_Z_MINE],
-      rotation: [compact ? HAND_ROTATION_X_MINE_COMPACT : HAND_ROTATION_X_MINE, 0, -offset * FAN_ANGLE],
+      position: [offset * spacing, y, (compact ? HAND_Z_MINE_COMPACT : HAND_Z_MINE) + dz],
+      rotation: [tilt, 0, -offset * FAN_ANGLE],
       scale: 1,
     };
   }
@@ -128,7 +138,7 @@ export function handCardPose(index: number, total: number, mine: boolean, compac
   // pas par l'inclinaison : la même inclinaison que ma main oriente déjà le dos vers la
   // caméra une fois la carte retournée.
   return {
-    position: [-offset * spacing, lift, HAND_Z_OPPONENT],
+    position: [-offset * spacing, y, HAND_Z_OPPONENT + dz],
     rotation: [HAND_ROTATION_X_MINE, 0, offset * FAN_ANGLE],
     scale: HAND_SCALE_OPPONENT,
   };
