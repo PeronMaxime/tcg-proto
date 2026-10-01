@@ -1,5 +1,5 @@
 import { doc, getDoc, onSnapshot, runTransaction } from 'firebase/firestore';
-import { parseCatalog } from '../game/catalogSchema';
+import { migrateCatalogToV2, parseCatalog } from '../game/catalogSchema';
 import { DEFAULT_CATALOG } from '../game/defaultCatalog';
 import type { Catalog } from '../game/types';
 import { DEFAULT_GAME_VERSION, GAME_VERSION_LABELS, type GameVersion } from '../game/versions';
@@ -42,8 +42,11 @@ export interface CatalogStore {
 
 // Les données lues sont NON FIABLES (document public, écrit par une autre version du code) :
 // une carte malformée ferait planter le rendu du plateau. On valide systématiquement.
-function decode(raw: unknown, source: string): Catalog {
-  const parsed = parseCatalog(raw);
+//
+// V2 : le catalogue est d'abord débarrassé de ce qui n'existe plus en V2 (`migrateCatalogToV2`) —
+// il a été amorcé comme une copie de la V1 — puis validé selon les règles de la V2.
+function decode(raw: unknown, source: string, version: GameVersion): Catalog {
+  const parsed = version === 'v2' ? parseCatalog(migrateCatalogToV2(raw), 'v2') : parseCatalog(raw);
   if (!parsed.ok) {
     throw new CatalogError(
       `Catalogue illisible (${source}) :\n${parsed.errors.slice(0, 5).join('\n')}`,
@@ -61,7 +64,7 @@ const firebaseCatalogStore: CatalogStore = {
 
   async load(version) {
     const snap = await getDoc(doc(getDb(), ...docPath(version)));
-    return snap.exists() ? decode(snap.data(), 'Firestore') : null;
+    return snap.exists() ? decode(snap.data(), 'Firestore', version) : null;
   },
 
   async save(version, catalog) {
@@ -82,7 +85,7 @@ const firebaseCatalogStore: CatalogStore = {
 
   subscribe(version, cb) {
     return onSnapshot(doc(getDb(), ...docPath(version)), (snap) => {
-      cb(snap.exists() ? decode(snap.data(), 'Firestore') : null);
+      cb(snap.exists() ? decode(snap.data(), 'Firestore', version) : null);
     });
   },
 };
@@ -92,7 +95,7 @@ const localListeners = new Map<GameVersion, Set<Listener>>();
 
 function readLocal(version: GameVersion): Catalog | null {
   const raw = localStorage.getItem(localKey(version));
-  return raw === null ? null : decode(JSON.parse(raw), 'localStorage');
+  return raw === null ? null : decode(JSON.parse(raw), 'localStorage', version);
 }
 
 const localCatalogStore: CatalogStore = {
@@ -127,7 +130,7 @@ const localCatalogStore: CatalogStore = {
     listeners.add(cb);
     const onStorage = (e: StorageEvent) => {
       if (e.key !== localKey(version)) return;
-      cb(e.newValue === null ? null : decode(JSON.parse(e.newValue), 'localStorage'));
+      cb(e.newValue === null ? null : decode(JSON.parse(e.newValue), 'localStorage', version));
     };
     window.addEventListener('storage', onStorage);
     cb(readLocal(version));
@@ -175,5 +178,11 @@ export async function loadPlayableCatalog(version: GameVersion = DEFAULT_GAME_VE
 // on refait plus vite des cartes en modifiant les anciennes). La V1 n'est pas modifiée.
 export async function seedCatalog(version: GameVersion): Promise<Catalog> {
   const source = version === 'v1' ? DEFAULT_CATALOG : ((await catalogStore.load('v1')) ?? DEFAULT_CATALOG);
-  return catalogStore.save(version, source);
+  if (version !== 'v2') return catalogStore.save(version, source);
+  // V2 : la copie perd tout ce qui n'existe pas en V2 (auras, effets retirés…).
+  const parsed = parseCatalog(migrateCatalogToV2(source), 'v2');
+  if (!parsed.ok) {
+    throw new CatalogError(`Copie de la V1 impossible :\n${parsed.errors.slice(0, 5).join('\n')}`);
+  }
+  return catalogStore.save(version, parsed.value);
 }

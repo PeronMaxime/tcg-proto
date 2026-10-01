@@ -15,6 +15,8 @@ import { applyCatalog } from '../applyCatalog';
 export type CatalogStatus = 'loading' | 'missing' | 'ready' | 'error';
 
 export interface CatalogAdmin {
+  // Version du jeu éditée : elle fixe les habiletés et les effets proposés par les onglets.
+  version: GameVersion;
   status: CatalogStatus;
   draft: Catalog | null;
   // Erreurs bloquantes du brouillon entier (`parseCatalog`) : tant qu'il y en a, on n'écrit pas.
@@ -97,9 +99,9 @@ export function useCatalogAdmin(version: GameVersion): CatalogAdmin {
 
   const errors = useMemo(() => {
     if (!draft) return [];
-    const parsed = parseCatalog(draft);
+    const parsed = parseCatalog(draft, version);
     return parsed.ok ? [] : parsed.errors;
-  }, [draft]);
+  }, [draft, version]);
 
   const mutate = useCallback((fn: (current: Catalog) => Catalog) => {
     setDraft((current) => (current ? fn(current) : current));
@@ -205,6 +207,7 @@ export function useCatalogAdmin(version: GameVersion): CatalogAdmin {
   }, [version]);
 
   return {
+    version,
     status,
     draft,
     errors,

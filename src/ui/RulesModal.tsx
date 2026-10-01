@@ -7,6 +7,9 @@ interface RulesModalProps {
   // Nombre maximal de cartes par zone de monstres dans la partie en cours (variante choisie
   // dans le menu).
   monsterZoneSize: number;
+  // Partie en V2 (modifsV2.md) : les éléments n'ont plus d'avantage, et la V2 a ses propres
+  // notions (armure, états, cibles à choisir, Vol).
+  v2?: boolean;
   onClose: () => void;
 }
 
@@ -15,8 +18,31 @@ interface RulesSection {
   lines: string[];
 }
 
-function sections(monsterZoneSize: number): RulesSection[] {
-  return [
+// Sections propres à la V2, à la place de celle des éléments de la V1.
+const V2_SECTIONS: RulesSection[] = [
+  {
+    title: 'Les éléments (V2)',
+    lines: [
+      "Chaque élément a son style de jeu : le Feu inflige beaucoup de dégâts, l'Air contrôle le board en déplaçant les monstres, l'Eau soigne et protège, la Terre renforce et blinde ses monstres.",
+      "Plus aucun élément n'en bat un autre : il n'y a plus de dégât bonus selon l'élément.",
+    ],
+  },
+  {
+    title: 'Armure et états (V2)',
+    lines: [
+      "Armure (écusson gris) : elle encaisse les dégâts avant la défense, et ce qu'elle a encaissé est perdu pour de bon. Percée l'ignore.",
+      "Gelé : le monstre, couché, ne participe pas à son prochain combat, puis se relève à la fin de celui-ci.",
+      "Brûlé (flamme) : à la fin de chaque combat qu'il dispute, le monstre perd pour de bon 1 défense par brûlure reçue (elles se cumulent) ; à 0, il retourne sous le deck. Une carte d'eau peut éteindre la brûlure (la défense perdue ne revient pas).",
+      "Silence (bulle barrée) : les capacités du monstre ne se déclenchent plus jusqu'à la fin de son prochain combat ; ses habiletés restent actives.",
+      "Enraciné (racines) : le monstre ne peut plus changer de zone ni de place, ni par un effet ni par son joueur, jusqu'au prochain tour de celui qui l'a enraciné.",
+      "Certaines capacités te demandent de choisir une cible : clique sur un monstre allumé, ou « Renoncer ».",
+      "Un monstre qui a Vol peut changer de zone pendant ta phase principale (il compte comme le déplacement de sa zone de départ).",
+    ],
+  },
+];
+
+function sections(monsterZoneSize: number, v2 = false): RulesSection[] {
+  const all: RulesSection[] = [
   {
     title: 'Le but',
     lines: [
@@ -68,9 +94,12 @@ function sections(monsterZoneSize: number): RulesSection[] {
     ],
   },
   ];
+  if (!v2) return all;
+  // V2 : la section des éléments de la V1 laisse place à celles de la V2.
+  return [...all.filter((section) => section.title !== 'Les éléments'), ...V2_SECTIONS];
 }
 
-function RulesModal({ monsterZoneSize, onClose }: RulesModalProps) {
+function RulesModal({ monsterZoneSize, v2 = false, onClose }: RulesModalProps) {
   return (
     <div className="rules-backdrop" onClick={onClose}>
       <div
@@ -87,7 +116,7 @@ function RulesModal({ monsterZoneSize, onClose }: RulesModalProps) {
           Règles du jeu
         </h2>
         <div className="rules-body">
-          {sections(monsterZoneSize).map((section) => (
+          {sections(monsterZoneSize, v2).map((section) => (
             <section className="rules-section" key={section.title}>
               <h3 className="rules-section-title">{section.title}</h3>
               <ul className="rules-list">

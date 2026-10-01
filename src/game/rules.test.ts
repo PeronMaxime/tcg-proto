@@ -12,6 +12,7 @@ import {
   setActiveCatalog,
 } from './cards';
 import { DEFAULT_CATALOG } from './defaultCatalog';
+import { KEYWORDS } from './vocabulary';
 import {
   applyAction,
   BREAKTHROUGH_DAMAGE,
@@ -1681,7 +1682,7 @@ describe('habiletés (mots-clés)', () => {
       if (!isMonster(def)) expect('keywords' in def).toBe(false);
     }
     // Chaque habileté existe au moins une fois dans le catalogue : sinon elle n'est jouable nulle part.
-    for (const keyword of Object.keys(KEYWORD_LABELS) as Keyword[]) {
+    for (const keyword of KEYWORDS) {
       expect(DEFAULT_CATALOG.cards.some((def) => hasKeywordDef(def, keyword))).toBe(true);
     }
   });

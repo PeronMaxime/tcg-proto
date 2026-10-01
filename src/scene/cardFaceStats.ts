@@ -20,7 +20,9 @@ export function computeMonsterFaceStats(
   const base = getBaseMonsterStats(cardId, golden);
   const effective = getMonsterStats(ownerPlayer, card, zone);
   let defenseValue = effective.defense;
-  let defenseTone: MonsterFaceStats['defenseTone'] = effective.defense > base.defense ? 'buffed' : 'base';
+  // V2 : une brûlure retire de la défense définitivement — elle s'affiche « blessée ».
+  let defenseTone: MonsterFaceStats['defenseTone'] =
+    effective.defense > base.defense ? 'buffed' : effective.defense < base.defense ? 'wounded' : 'base';
   let ko = false;
 
   // §6.2 : un attaquant peut désormais aussi encaisser (riposte, E13) et être mis KO, donc
@@ -41,6 +43,12 @@ export function computeMonsterFaceStats(
       attackTone: effective.attack > base.attack ? 'buffed' : 'base',
       defenseTone,
       golden: golden === true,
+      // V2 : armure et états, lus sur l'instance (celle du board au fil du combat pendant
+      // la lecture). Omises quand il n'y a rien, pour garder la même clé de texture qu'en V1.
+      ...(card.armor ? { armor: card.armor } : {}),
+      ...(card.burn ? { burn: card.burn } : {}),
+      ...(card.silenced ? { silenced: true } : {}),
+      ...(card.rootedBy ? { rooted: true } : {}),
     },
     ko,
   };

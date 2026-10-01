@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { combatDisplay, playbackCursor } from '../scene/combatPlayback';
-import type { CombatStep, CombatTarget, EffectLog, GameState, Seat } from '../game/types';
+import type { BoardSnapshot, CombatStep, CombatTarget, EffectLog, GameState, Seat } from '../game/types';
 import { STARTING_HP } from '../game/rules';
 
 // Hook de lecture animée du combat (§7.2) : détecte un nouvel évènement `combat`, fait
@@ -17,6 +17,7 @@ export interface CombatView {
   phase: 'melee' | 'breakthrough';
   complete: boolean;
   stalemate: boolean;
+  board: BoardSnapshot | null; // V2 : zones de monstres à afficher pendant la lecture
 }
 
 export interface ActiveCombatStep {
@@ -46,6 +47,7 @@ export function useCombatPlayback(state: GameState): CombatPlaybackResult {
   const startEffectsRef = useRef<EffectLog[]>([]);
   const hpAfterStartRef = useRef<Record<Seat, number>>(DEFAULT_HP);
   const stalemateRef = useRef(false);
+  const boardsRef = useRef<{ before?: BoardSnapshot; afterStart?: BoardSnapshot }>({});
   const eventIdRef = useRef(0);
   const [, forceRender] = useState(0);
 
@@ -75,6 +77,7 @@ export function useCombatPlayback(state: GameState): CombatPlaybackResult {
       startEffectsRef.current = event.startEffects ?? [];
       hpAfterStartRef.current = event.hpAfterStart ?? event.hpBefore;
       stalemateRef.current = event.stalemate;
+      boardsRef.current = { before: event.boardBefore, afterStart: event.boardAfterStart };
       eventIdRef.current = event.id;
       startedAtRef.current = performance.now();
     } else {
@@ -114,7 +117,7 @@ export function useCombatPlayback(state: GameState): CombatPlaybackResult {
     effects: startEffectsRef.current,
     hp: hpAfterStartRef.current,
     applied: cursor.startApplied,
-  });
+  }, boardsRef.current);
   const combatView: CombatView = { ...view, stalemate: stalemateRef.current };
 
   const lungeStep = cursor.lungeIndex !== null ? stepsRef.current[cursor.lungeIndex] : null;

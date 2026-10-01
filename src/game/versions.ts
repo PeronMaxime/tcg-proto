@@ -5,9 +5,9 @@
 // dans l'admin (sélecteur en haut à droite) et stocké séparément (`net/catalogStore.ts`). Le
 // choix se fait dans le menu à la création d'une room et vaut pour toutes ses revanches.
 //
-// Le code des règles, lui, est commun : une capacité ajoutée pour la V2 existe aussi pour la
-// V1 (sans effet tant qu'aucune carte V1 ne l'utilise). Une mécanique propre à une version
-// devra lire la version de la partie pour ne s'appliquer qu'à elle.
+// Les règles de la V2 (modifsV2.md) vivent dans `rulesV2.ts`, auquel `rules.ts` délègue dès
+// que le catalogue actif porte `gameVersion: 'v2'`. Les habiletés et effets admis par chaque
+// version sont listés dans `vocabulary.ts`.
 //
 // Module pur, comme `rules.ts`. La première valeur est la version par défaut.
 export const GAME_VERSIONS = ['v1', 'v2'] as const;

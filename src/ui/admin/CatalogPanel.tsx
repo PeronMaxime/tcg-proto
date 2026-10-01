@@ -137,6 +137,7 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
             // interne), et le remonter à chaque frappe ferait perdre le focus quand on modifie
             // l'identifiant de la carte.
             <CardEditor
+              version={admin.version}
               def={selected}
               copies={catalog.starterCounts[selected.id] ?? 0}
               onChange={(next) => {

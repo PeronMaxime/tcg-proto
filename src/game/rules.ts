@@ -9,6 +9,7 @@ import {
   getCardDef,
   isElementEffective,
   isMonster,
+  isV2Active,
   hasKeywordDef,
   KEYWORD_MERCHANT_BONUS,
   KEYWORD_PROTECTION_USES,
@@ -31,6 +32,17 @@ import type {
   Trigger,
   Zone,
 } from './types';
+import {
+  applyChooseTarget,
+  clearBoardState,
+  expireRoots,
+  isRootedState,
+  fireTriggerV2,
+  isChoiceLegal,
+  marketBonus,
+  resolveCombatV2,
+  sellBonus,
+} from './rulesV2';
 
 export const RULES_VERSION = 17;
 export const STARTING_HP = 10;
@@ -108,16 +120,18 @@ export function hasKeyword(card: CardInstance, keyword: Keyword): boolean {
 // Journalise le déclenchement d'une habileté pour le fil d'effets du HUD et la pulsation
 // sur la carte (§6.3) : contrairement à une capacité, une habileté ne résout pas d'effet,
 // c'est le mot-clé qui est journalisé. `seat` = propriétaire de la carte qui la porte.
-function keywordLog(seat: Seat, card: CardInstance, keyword: Keyword): EffectLog {
+export function keywordLog(seat: Seat, card: CardInstance, keyword: Keyword): EffectLog {
   return { kind: 'keyword', seat, sourceUid: card.uid, cardId: card.cardId, keyword };
 }
 
 // Pièces rendues par la vente d'une carte posée : dorée = `SELL_GOLDEN_COINS`, et K4
 // Négociant ajoute `KEYWORD_MERCHANT_BONUS` dans les deux cas. Partagé avec l'interface,
 // qui affiche le montant sur le bouton « Vendre ».
-export function sellValue(card: CardInstance): number {
+// V2 : `player` (le propriétaire) ajoute le bonus de ses enchantements « prix de vente ».
+export function sellValue(card: CardInstance, player?: PlayerState): number {
   const base = card.golden ? SELL_GOLDEN_COINS : SELL_COINS;
-  return base + (hasKeyword(card, 'merchant') ? KEYWORD_MERCHANT_BONUS : 0);
+  const bonus = player && isV2Active() ? sellBonus(player, card.uid) : 0;
+  return base + (hasKeyword(card, 'merchant') ? KEYWORD_MERCHANT_BONUS : 0) + bonus;
 }
 
 // Rangée compacte (demande utilisateur) : les cartes d'une zone sont toujours serrées les unes
@@ -133,13 +147,17 @@ export function zoneCards(player: PlayerState, zone: Zone): CardInstance[] {
 // Capacité d'une zone dans CETTE partie : la longueur fixe de son tableau, posée à la création
 // de la partie selon la variante choisie (`MONSTER_ZONE_SIZES`). Lue sur l'état plutôt que
 // sur une constante pour que les deux variantes partagent le même moteur de règles.
+// V2 : une zone peut dépasser sa capacité par effet, la capacité nominale est alors dans
+// `zoneSizes` (absent en V1, où la longueur du tableau ne bouge jamais).
 export function zoneCapacity(player: PlayerState, zone: Zone): number {
-  return player.zones[zone].length;
+  return player.zoneSizes?.[zone] ?? player.zones[zone].length;
 }
 
-// Réécrit la zone à partir de la rangée `cards`, complétée de `null` jusqu'à sa taille.
-function writeZone(player: PlayerState, zone: Zone, cards: CardInstance[]): void {
-  player.zones[zone] = [...cards, ...new Array<Slot>(zoneCapacity(player, zone) - cards.length).fill(null)];
+// Réécrit la zone à partir de la rangée `cards`, complétée de `null` jusqu'à sa taille. Une
+// rangée plus longue que la capacité (V2, par effet) est écrite telle quelle.
+export function writeZone(player: PlayerState, zone: Zone, cards: CardInstance[]): void {
+  const size = Math.max(zoneCapacity(player, zone), cards.length);
+  player.zones[zone] = [...cards, ...new Array<Slot>(size - cards.length).fill(null)];
 }
 
 function emptyZones(monsterZoneSize: number): Record<Zone, Slot[]> {
@@ -171,6 +189,9 @@ export function createInitialState(
       extraMarketCards: 0,
       lockedUids: [],
       movesUsed: { attack: false, defense: false },
+      ...(isV2Active()
+        ? { zoneSizes: { attack: monsterZoneSize, defense: monsterZoneSize, enchant: ZONE_SIZES.enchant } }
+        : {}),
     };
   }
 
@@ -220,6 +241,8 @@ export function getMonsterStats(
     attack += card.buff.attack;
     defense += card.buff.defense;
   }
+  // V2 : défense perdue définitivement par la brûlure (jamais présent en V1).
+  if (card.wounds) defense -= card.wounds;
   for (const slot of player.zones.enchant) {
     if (!slot) continue;
     const enchantDef = getCardDef(slot.cardId);
@@ -312,15 +335,28 @@ function rerollableMarket(player: PlayerState): CardInstance[] {
 // sans jamais rétrécir un marché agrandi par `extraMarketCard`.
 function rerollDrawCount(player: PlayerState): number {
   const lockedCount = player.market.length - rerollableMarket(player).length;
-  return Math.max(MARKET_SIZE, player.market.length) - lockedCount;
+  return Math.max(baseMarketSize(player), player.market.length) - lockedCount;
+}
+
+// Taille du marché hors cartes promises pour un seul tour : `MARKET_SIZE`, plus en V2 les
+// enchantements « cartes au marché de façon permanente ».
+function baseMarketSize(player: PlayerState): number {
+  return MARKET_SIZE + (isV2Active() ? marketBonus(player) : 0);
 }
 
 export function isActionLegal(state: GameState, seat: Seat, action: Action): boolean {
   if (state.winner !== null) return false;
   if (state.turn !== seat) return false;
+  // V2 : un effet attend sa cible, le joueur doit la choisir (ou y renoncer) avant toute autre
+  // action.
+  if (state.pendingChoice) {
+    return action.type === 'chooseTarget' && isChoiceLegal(state, seat, action.uid, action.slot);
+  }
 
   const player = state.players[seat];
   switch (action.type) {
+    case 'chooseTarget':
+      return false; // aucun choix en attente
     case 'beginTurn':
       return state.phase === 'start';
 
@@ -365,6 +401,16 @@ export function isActionLegal(state: GameState, seat: Seat, action: Action): boo
         const from = cards.findIndex((c) => c.uid === action.uid);
         if (from === -1) continue;
         if (!canMoveInZone(player, zone)) return false;
+        // V2 : un monstre enraciné (état) ne bouge pas, même à la main.
+        if (isRootedState(cards[from])) return false;
+        // V2 Vol : changer de zone, dans la limite de sa capacité (seul un effet la dépasse).
+        // Consomme le déplacement de la zone de départ.
+        if (action.zone !== undefined && action.zone !== zone) {
+          if (!isV2Active() || !hasKeyword(cards[from], 'flying')) return false;
+          const count = zoneCards(player, action.zone).length;
+          if (count >= zoneCapacity(player, action.zone)) return false;
+          return action.slot >= 0 && action.slot <= count;
+        }
         if (action.slot === from) return false; // pas de no-op
         return action.slot >= 0 && action.slot < cards.length;
       }
@@ -419,13 +465,15 @@ function applyBeginTurn(next: GameState, seat: Seat): void {
   player.coins += gain;
   // Nouveau tour : les deux déplacements (un par zone) sont de nouveau disponibles.
   player.movesUsed = { attack: false, defense: false };
+  // V2 : les monstres que ce joueur avait enracinés sont libérés.
+  if (isV2Active()) expireRoots(next, seat);
 
   // Les cartes verrouillées au tour précédent (action `toggleMarketLock`) sont restées dans
   // `market` — `applyEndTurn` ne les a pas remises au deck — et ouvrent ce marché ; on le
   // complète depuis le dessus du deck. H7, + cartes promises par un effet
   // `extraMarketCard` joué depuis le tour précédent.
   const retained = player.market;
-  const target = MARKET_SIZE + player.extraMarketCards;
+  const target = baseMarketSize(player) + player.extraMarketCards;
   const drawCount = Math.max(0, Math.min(target - retained.length, player.deck.length));
   player.extraMarketCards = 0;
   const market = [...retained];
@@ -518,7 +566,7 @@ function applyPlace(next: GameState, seat: Seat, uid: string, zone: Zone, slot: 
   cards.splice(slot, 0, card); // insertion entre deux cartes : les suivantes se décalent
   writeZone(player, zone, cards);
   // E3 : Invoqué se déclenche après que la carte a rejoint le board (elle en fait donc partie).
-  const effects = fireTrigger(next, seat, card, 'summon');
+  const effects = isV2Active() ? fireTriggerV2(next, seat, card, 'summon') : fireTrigger(next, seat, card, 'summon');
   next.lastEvent = { id: next.eventSeq, type: 'place', seat, uid, zone, slot, effects };
 }
 
@@ -527,12 +575,23 @@ function applyPlace(next: GameState, seat: Seat, uid: string, zone: Zone, slot: 
 // cran — et consomme le déplacement de cette zone pour le tour en cours : pas de
 // déclenchement de capacité (les cartes ne quittent pas le board, E3/E4 ne s'appliquent qu'à
 // la pose/vente), pas de changement de zone (`isActionLegal` l'impose déjà).
-function applyMove(next: GameState, seat: Seat, uid: string, slot: number): void {
+function applyMove(next: GameState, seat: Seat, uid: string, slot: number, toZone?: MonsterZone): void {
   const player = next.players[seat];
   for (const zone of ['attack', 'defense'] as MonsterZone[]) {
     const cards = zoneCards(player, zone);
     const from = cards.findIndex((c) => c.uid === uid);
     if (from === -1) continue;
+    // V2 Vol : changement de zone (légalité vérifiée par `isActionLegal`).
+    if (toZone !== undefined && toZone !== zone) {
+      const [card] = cards.splice(from, 1);
+      writeZone(player, zone, cards);
+      const target = zoneCards(player, toZone);
+      target.splice(slot, 0, card);
+      writeZone(player, toZone, target);
+      player.movesUsed = { ...(player.movesUsed ?? { attack: false, defense: false }), [zone]: true };
+      next.lastEvent = { id: next.eventSeq, type: 'move', seat, uid, zone, from, to: slot, toZone };
+      return;
+    }
     const [card] = cards.splice(from, 1);
     cards.splice(slot, 0, card);
     writeZone(player, zone, cards);
@@ -573,6 +632,7 @@ function applyFuse(next: GameState, seat: Seat, uid: string): void {
     }
     if (absorbed.buff) addBuff(card, absorbed.buff.attack, absorbed.buff.defense);
     clearBuff(absorbed); // E9 : le buff disparaît de l'exemplaire absorbé, il quitte le board
+    clearBoardState(absorbed); // V2 : armure, états… restent sur le board quitté
     absorbedCards.push(absorbed);
   }
   // Fond du deck, dans l'ordre d'absorption (comme les refusées d'une relance, H5).
@@ -604,17 +664,20 @@ function applySell(next: GameState, seat: Seat, uid: string): void {
     writeZone(player, zone, cards); // rangée compacte : les cartes restantes se resserrent
     clearBuff(card); // E9 : le buff disparaît, la carte quitte le board (vente)
     finishSell(next, seat, card, zone, slot);
+    // V2 : armure, états… disparaissent avec la vente — après Vendu, qu'un Silence bloque.
+    clearBoardState(card);
     return;
   }
 }
 
 function finishSell(next: GameState, seat: Seat, card: CardInstance, zone: Zone | 'hand', slot: number): void {
   const player = next.players[seat];
-  player.deck.unshift(card); // fond du deck
-  player.coins += sellValue(card); // K4 Négociant : +1 pièce
+  // V2 : une créature invoquée n'a pas de place dans le deck, elle disparaît.
+  if (!card.token) player.deck.unshift(card); // fond du deck
+  player.coins += sellValue(card, player); // K4 Négociant : +1 pièce ; V2 : enchantements
   // E4 : Vendu se déclenche après que la carte a quitté le board, la pièce versée, au fond
   // du deck.
-  const effects = fireTrigger(next, seat, card, 'sold');
+  const effects = isV2Active() ? fireTriggerV2(next, seat, card, 'sold') : fireTrigger(next, seat, card, 'sold');
   if (hasKeyword(card, 'merchant')) effects.unshift(keywordLog(seat, card, 'merchant'));
   // Une carte dorée redevient normale en retournant au deck : les exemplaires qu'elle avait
   // absorbés y sont déjà. Après Vendu, qui a encore profité de son effet doublé.
@@ -628,7 +691,7 @@ function finishSell(next: GameState, seat: Seat, card: CardInstance, zone: Zone 
 
 // Seul point d'entrée des dégâts au héros (E7) : fixe le vainqueur au premier 0. Les appels
 // une fois `winner` fixé sont des no-op (E7 : on arrête de résoudre quoi que ce soit).
-function damageHero(state: GameState, seat: Seat, amount: number): void {
+export function damageHero(state: GameState, seat: Seat, amount: number): void {
   if (state.winner !== null) return;
   const player = state.players[seat];
   player.hp = Math.max(0, player.hp - amount);
@@ -709,6 +772,11 @@ function applyAbilityEffect(
       state.players[seat].extraMarketCards += effect.count;
       break;
   }
+}
+
+// Effets communs à la V1 et à la V2 (pièces, dégâts, soin, pioche, marché), pour `rulesV2.ts`.
+export function resolveCommonEffect(state: GameState, seat: Seat, card: CardInstance, effect: AbilityEffect): void {
+  applyAbilityEffect(state, seat, card, effect, undefined);
 }
 
 // Résout toutes les capacités `trigger` de `card` (propriétaire `seat`), dans l'ordre du
@@ -830,7 +898,7 @@ export function elementBonus(from: CardInstance, against: CardInstance): number 
   return isElementEffective(fromElement, againstElement) ? ELEMENT_ADVANTAGE_BONUS : 0;
 }
 
-function snapshotHp(state: GameState): Record<Seat, number> {
+export function snapshotHp(state: GameState): Record<Seat, number> {
   return { p1: state.players.p1.hp, p2: state.players.p2.hp };
 }
 
@@ -1093,10 +1161,17 @@ function applyEndTurn(next: GameState, seat: Seat): void {
   const hpBefore = snapshotHp(next);
   // Le premier joueur n'attaque pas à son premier tour (demande utilisateur, contre
   // l'avantage du premier joueur) : combat vide, aucun coup ni aucune capacité de combat.
-  const { startEffects, hpAfterStart, steps, stalemate } = isFirstTurnOfGame(next)
-    ? { startEffects: [], hpAfterStart: hpBefore, steps: [], stalemate: false }
-    : resolveCombat(next, seat); // mute `next` (dégâts, buffs, pièces...)
-  next.lastEvent = { id: next.eventSeq, type: 'combat', seat, steps, hpBefore, startEffects, hpAfterStart, stalemate };
+  if (isV2Active() && !isFirstTurnOfGame(next)) {
+    // V2 : même déroulé, avec le board au fil du combat et les monstres emportés par leur
+    // brûlure, pour la lecture animée.
+    const result = resolveCombatV2(next, seat);
+    next.lastEvent = { id: next.eventSeq, type: 'combat', seat, hpBefore, ...result };
+  } else {
+    const { startEffects, hpAfterStart, steps, stalemate } = isFirstTurnOfGame(next)
+      ? { startEffects: [], hpAfterStart: hpBefore, steps: [], stalemate: false }
+      : resolveCombat(next, seat); // mute `next` (dégâts, buffs, pièces...)
+    next.lastEvent = { id: next.eventSeq, type: 'combat', seat, steps, hpBefore, startEffects, hpAfterStart, stalemate };
+  }
 
   if (next.winner !== null) return; // H9 : ni changement de tour ni de phase
 
@@ -1128,7 +1203,10 @@ export function applyAction(state: GameState, seat: Seat, action: Action): GameS
       applyPlace(next, seat, action.uid, action.zone, action.slot);
       break;
     case 'move':
-      applyMove(next, seat, action.uid, action.slot);
+      applyMove(next, seat, action.uid, action.slot, action.zone);
+      break;
+    case 'chooseTarget':
+      applyChooseTarget(next, seat, action.uid, action.slot);
       break;
     case 'fuse':
       applyFuse(next, seat, action.uid);

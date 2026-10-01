@@ -45,6 +45,14 @@ export function cameraFraming(compact: boolean): CameraFraming {
 
 export const BOARD_CARD_SCALE = 0.7;
 const SLOT_SPACING = 1.05;
+// V2 : une rangée peut dépasser sa capacité par effet. Au-delà de `ROW_MAX_CARDS` cartes, elles
+// se resserrent pour tenir dans la largeur d'une rangée pleine (sans déborder sur les héros et
+// les decks). Une rangée de 5 cartes au plus (toute la V1) garde l'écart d'origine.
+const ROW_MAX_CARDS = 5;
+
+function rowSpacing(count: number): number {
+  return count <= ROW_MAX_CARDS ? SLOT_SPACING : (SLOT_SPACING * (ROW_MAX_CARDS - 1)) / (count - 1);
+}
 
 // Rangées de zones, en Z, de mon côté (positif) et adverse (négatif). Pas de miroir (R4) :
 // l'emplacement d'index i a le même x pour les deux joueurs.
@@ -54,7 +62,7 @@ const ROW_Z: Record<Zone, number> = { attack: 0.85, defense: 2.2, enchant: 3.55 
 // centrées, la carte d'index `index` (0 = la plus à gauche) prend la place calculée ici.
 export function rowCardPose(zone: Zone, index: number, count: number, mine: boolean): Pose {
   const z = (mine ? 1 : -1) * ROW_Z[zone];
-  const x = (index - (count - 1) / 2) * SLOT_SPACING;
+  const x = (index - (count - 1) / 2) * rowSpacing(count);
   return {
     position: [x, 0.03, z],
     rotation: [-Math.PI / 2, 0, 0],
@@ -78,7 +86,8 @@ export function rowBounds(zone: Zone, capacity: number, mine: boolean): { x: num
 // après la dernière).
 export function insertionIndexAt(count: number, x: number): number {
   let index = 0;
-  for (let i = 0; i < count; i++) if ((i - (count - 1) / 2) * SLOT_SPACING < x) index++;
+  const spacing = rowSpacing(count);
+  for (let i = 0; i < count; i++) if ((i - (count - 1) / 2) * spacing < x) index++;
   return index;
 }
 

@@ -4,19 +4,21 @@ import {
   POWER_COEFFICIENT,
   POWER_PER_ABILITY,
   POWER_PER_AURA,
+  POWER_PER_ENCHANTMENT,
   POWER_PER_KEYWORD,
   describeKeywordEffect,
   isMonster,
 } from '../../game/cards';
 import {
-  ABILITY_EFFECT_TYPES,
-  KEYWORDS,
   MAX_POWER_COEFFICIENT,
   MAX_POWER_WEIGHT,
+  abilityEffectTypesFor,
+  enchantmentEffectTypesFor,
+  keywordsFor,
 } from '../../game/catalogSchema';
 import type { PowerWeights } from '../../game/types';
 import AdminHeader from './AdminHeader';
-import { ABILITY_EFFECT_LABELS } from './CardEditor';
+import { ABILITY_EFFECT_LABELS, ENCHANTMENT_EFFECT_LABELS } from './CardEditor';
 import type { CatalogAdmin } from './useCatalogAdmin';
 
 // Barème de puissance (demande utilisateur) : la liste des habiletés et des effets de
@@ -46,11 +48,13 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
   );
 
   if (!admin.draft) return null;
+  const v2 = admin.version === 'v2';
 
   // Écrit une valeur du barème. `null` retire la clé : la ligne repasse à la valeur par défaut
   // au lieu de figer dans le catalogue un chiffre que personne n'a choisi.
+  // Les deux groupes des enchantements n'existent qu'en V2 (refusés dans un catalogue V1).
   function setWeight(
-    group: 'keywords' | 'abilities' | 'abilityCoefficients',
+    group: 'keywords' | 'abilities' | 'abilityCoefficients' | 'enchantments' | 'enchantmentCoefficients',
     key: string,
     value: number | null,
   ) {
@@ -58,6 +62,12 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
       keywords: { ...(weights?.keywords ?? {}) },
       abilities: { ...(weights?.abilities ?? {}) },
       abilityCoefficients: { ...(weights?.abilityCoefficients ?? {}) },
+      ...(v2
+        ? {
+            enchantments: { ...(weights?.enchantments ?? {}) },
+            enchantmentCoefficients: { ...(weights?.enchantmentCoefficients ?? {}) },
+          }
+        : {}),
     };
     const target = next[group] as Record<string, number>;
     if (value === null) delete target[key];
@@ -85,7 +95,9 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
   const custom =
     Object.keys(weights?.keywords ?? {}).length +
     Object.keys(weights?.abilities ?? {}).length +
-    Object.keys(weights?.abilityCoefficients ?? {}).length;
+    Object.keys(weights?.abilityCoefficients ?? {}).length +
+    Object.keys(weights?.enchantments ?? {}).length +
+    Object.keys(weights?.enchantmentCoefficients ?? {}).length;
 
   return (
     <div className="admin-panel">
@@ -102,7 +114,11 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
           type="button"
           disabled={custom === 0}
           onClick={() =>
-            admin.setPowerWeights({ keywords: {}, abilities: {}, abilityCoefficients: {} })
+            admin.setPowerWeights(
+              v2
+                ? { keywords: {}, abilities: {}, abilityCoefficients: {}, enchantments: {}, enchantmentCoefficients: {} }
+                : { keywords: {}, abilities: {}, abilityCoefficients: {} },
+            )
           }
         >
           Rétablir le barème par défaut
@@ -111,8 +127,16 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
 
       <p className="admin-summary">
         La puissance d’une carte vaut son attaque plus sa défense, plus la valeur de chacune de ses
-        habiletés et de chacune de ses capacités, plus {POWER_PER_AURA} si elle porte une aura
-        {auras > 0 ? ` (${auras} carte${auras > 1 ? 's' : ''} concernée${auras > 1 ? 's' : ''})` : ''}.
+        habiletés et de chacune de ses capacités
+        {v2 ? (
+          <>, plus, pour un enchantement, la valeur de son effet</>
+        ) : (
+          <>
+            , plus {POWER_PER_AURA} si elle porte une aura
+            {auras > 0 ? ` (${auras} carte${auras > 1 ? 's' : ''} concernée${auras > 1 ? 's' : ''})` : ''}
+          </>
+        )}
+        .
         Une capacité compte pour sa puissance multipliée par son coefficient, arrondie à
         l’entier le plus proche : le coefficient (décimales admises, {POWER_COEFFICIENT} par
         défaut) règle finement ce que le champ de puissance, entier, ne peut pas. Laisse une
@@ -132,7 +156,7 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
               </tr>
             </thead>
             <tbody>
-              {KEYWORDS.map((keyword) => {
+              {keywordsFor(admin.version).map((keyword) => {
                 const value = weights?.keywords?.[keyword];
                 return (
                   <tr key={keyword}>
@@ -168,7 +192,7 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
               </tr>
             </thead>
             <tbody>
-              {ABILITY_EFFECT_TYPES.map((effect) => {
+              {abilityEffectTypesFor(admin.version).map((effect) => {
                 const value = weights?.abilities?.[effect];
                 const coefficient = weights?.abilityCoefficients?.[effect];
                 return (
@@ -206,6 +230,59 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
             </tbody>
           </table>
         </section>
+
+        {/* Effets d'enchantement (demande utilisateur), en V2 : même réglage qu'une capacité. */}
+        {v2 && (
+          <section>
+            <h2>Effets d’enchantement</h2>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Effet</th>
+                  <th className="is-numeric">Coefficient</th>
+                  <th className="is-numeric">Puissance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {enchantmentEffectTypesFor(admin.version).map((effect) => {
+                  const value = weights?.enchantments?.[effect];
+                  const coefficient = weights?.enchantmentCoefficients?.[effect];
+                  return (
+                    <tr key={effect}>
+                      <td>{ENCHANTMENT_EFFECT_LABELS[effect]}</td>
+                      <td className="is-numeric">
+                        <input
+                          type="number"
+                          min={0}
+                          max={MAX_POWER_COEFFICIENT}
+                          step={0.5}
+                          className="admin-weight-input"
+                          value={coefficient ?? ''}
+                          placeholder={String(POWER_COEFFICIENT)}
+                          onChange={(e) =>
+                            setWeight('enchantmentCoefficients', effect, readCoefficient(e.target.value))
+                          }
+                        />
+                      </td>
+                      <td className="is-numeric">
+                        <input
+                          type="number"
+                          min={0}
+                          max={MAX_POWER_WEIGHT}
+                          step={1}
+                          className="admin-weight-input"
+                          value={value ?? ''}
+                          placeholder={String(POWER_PER_ENCHANTMENT)}
+                          onChange={(e) => setWeight('enchantments', effect, readInput(e.target.value))}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </section>
+        )}
       </div>
     </div>
   );

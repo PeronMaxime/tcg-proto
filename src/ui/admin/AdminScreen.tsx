@@ -184,6 +184,8 @@ function AdminScreen() {
             La {label} n’a pas encore de cartes{local}. Pars d’une copie des cartes de la{' '}
             {GAME_VERSION_LABELS[DEFAULT_GAME_VERSION]} : tu pourras ensuite les modifier, en supprimer
             et en ajouter sans rien changer à la {GAME_VERSION_LABELS[DEFAULT_GAME_VERSION]}.
+            {version === 'v2' &&
+              ' Ce qui n’existe pas en V2 (auras, bonus permanents, dégâts bonus, enchantements sans équivalent…) est retiré de la copie.'}
           </p>
         )}
         <button onClick={() => void admin.seed()} disabled={admin.saving}>

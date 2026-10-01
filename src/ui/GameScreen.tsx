@@ -1,6 +1,6 @@
 import { Canvas } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { describeAbility, describeKeywordTrigger, getCardDef, isMonster } from '../game/cards';
+import { describeAbility, describeKeywordTrigger, getCardDef, isMonster, isV2Active } from '../game/cards';
 import {
   isActionLegal,
   isFirstTurnOfGame,
@@ -10,7 +10,9 @@ import {
   nextTurnCoinGain,
   sellValue,
   zoneCapacity,
+  zoneCards,
 } from '../game/rules';
+import { choiceTargets, locateMonster } from '../game/rulesV2';
 import type { CardInstance, EffectLog, GameState, MonsterZone, Room, Seat, Zone } from '../game/types';
 import { ABANDON_TIMEOUT_MS, deleteRoom, leaveMatch, rememberLeftRoom, requestRematch, sendAction } from '../net/rooms';
 import Board, { type DragState, type ScreenRect } from '../scene/Board';
@@ -138,6 +140,38 @@ function movesHint(movesUsed: Record<MonsterZone, boolean> | undefined): string 
   return ` · déplacement restant : ${left[0] === 'attack' ? 'attaque' : 'défense'}`;
 }
 
+// V2 : consigne du choix de cible en attente (effet « monstre choisi »).
+function choiceHint(state: GameState, seat: Seat, pickedUid: string | null): string {
+  const choice = state.pendingChoice;
+  if (!choice) return '';
+  if (choice.seat !== seat) return "L'adversaire choisit une cible…";
+  const source = getCardDef(choice.cardId).name;
+  switch (choice.effect.type) {
+    case 'armorChosen':
+      return `${source} : choisis un de tes monstres, il gagne ${choice.effect.amount} armure`;
+    case 'grantShield':
+      return `${source} : choisis un de tes monstres, il reçoit une protection`;
+    case 'burn':
+      return `${source} : choisis le monstre adverse à brûler`;
+    case 'freeze':
+      return `${source} : choisis le monstre adverse à geler`;
+    case 'moveZone':
+      return `${source} : choisis le monstre qui change de zone`;
+    case 'extinguish':
+      return `${source} : choisis le monstre brûlé dont la brûlure s'éteint`;
+    case 'root':
+      return `${source} : choisis le monstre à enraciner jusqu'à ton prochain tour`;
+    case 'silence':
+      return `${source} : choisis le monstre adverse à réduire au silence`;
+    case 'moveSlot':
+      return pickedUid
+        ? `${source} : clique sur la carte dont il prend la place (ou de nouveau sur lui pour changer)`
+        : `${source} : choisis le monstre à déplacer dans sa zone`;
+    default:
+      return `${source} : choisis une cible`;
+  }
+}
+
 function hintText(
   isMyTurn: boolean,
   playing: boolean,
@@ -201,6 +235,10 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const toastIdRef = useRef(0);
 
   const { playing, combatView, activeStep, displayedHp } = useCombatPlayback(state);
+  // V2 : premier monstre désigné pour « Change un monstre ciblé de position » (il faut ensuite
+  // désigner la place qu'il prend). Remis à zéro dès que le choix en attente change.
+  const [pickedUid, setPickedUid] = useState<string | null>(null);
+  useEffect(() => setPickedUid(null), [state.pendingChoice]);
 
   // Lancer de pièce du début de partie (demande utilisateur) : le siège tiré est déjà dans
   // l'état (`state.starter`), l'animation ne fait que le révéler. Tant que le premier
@@ -244,7 +282,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     if (currentId === lastHandledEffectsEventId.current) return;
     lastHandledEffectsEventId.current = currentId;
 
-    if ((event?.type === 'place' || event?.type === 'sell') && event.effects.length > 0) {
+    if ((event?.type === 'place' || event?.type === 'sell' || event?.type === 'choice') && event.effects.length > 0) {
       pushEffectToasts(event.effects);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -264,8 +302,30 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [combatView]);
 
+  // V2 : monstres emportés par leur brûlure, annoncés une fois la lecture du combat terminée
+  // (avant, la carte est encore affichée sur le board du combat).
+  const lastBurnAnnounce = useRef<number | null>(null);
+  useEffect(() => {
+    const event = state.lastEvent;
+    if (playing || event?.type !== 'combat' || !event.burnedOut?.length) return;
+    if (lastBurnAnnounce.current === event.id) return;
+    lastBurnAnnounce.current = event.id;
+    const toasts: EffectToast[] = event.burnedOut.map((out) => ({
+      key: toastIdRef.current++,
+      text: `${getCardDef(out.cardId).name} — consumé par sa brûlure, retourne sous le deck`,
+      mine: out.seat === seat,
+    }));
+    setEffectToasts((prev) => [...prev, ...toasts]);
+    for (const toast of toasts) {
+      setTimeout(() => setEffectToasts((prev) => prev.filter((t) => t.key !== toast.key)), 3000);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, state.lastEvent]);
+
   const isMyTurn = state.turn === seat;
   const interactive = isMyTurn && !playing && !state.winner;
+  // V2 : un effet attend que je désigne sa cible.
+  const choosing = interactive && state.pendingChoice?.seat === seat;
   const me = state.players[seat];
   const opponentSeat: Seat = seat === 'p1' ? 'p2' : 'p1';
   const opponent = state.players[opponentSeat];
@@ -455,7 +515,9 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
       } else if (target.kind === 'sell') {
         await sendAction(room, seat, { type: 'sell', uid: drag.uid });
       } else if (drag.origin) {
-        await sendAction(room, seat, { type: 'move', uid: drag.uid, slot: target.slot });
+        // V2 Vol : déposée dans l'autre zone de monstres, la carte change de zone.
+        const zone = target.zone !== drag.origin.zone && target.zone !== 'enchant' ? target.zone : undefined;
+        await sendAction(room, seat, { type: 'move', uid: drag.uid, slot: target.slot, ...(zone ? { zone } : {}) });
       } else {
         await sendAction(room, seat, { type: 'place', uid: drag.uid, zone: target.zone, slot: target.slot });
       }
@@ -493,6 +555,28 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     setZoomedUid(null);
   }
 
+  // V2 : désignation d'une cible pour l'effet en attente. Pour un changement de position, deux
+  // clics : le monstre, puis la carte de sa zone dont il prend la place.
+  async function pickTarget(uid: string) {
+    const choice = state.pendingChoice;
+    if (!choice) return;
+    if (choice.effect.type !== 'moveSlot') {
+      await sendAction(room, seat, { type: 'chooseTarget', uid });
+      return;
+    }
+    if (!pickedUid || uid === pickedUid) {
+      setPickedUid(uid === pickedUid ? null : uid);
+      return;
+    }
+    const location = locateMonster(state, uid);
+    if (!location) return;
+    await sendAction(room, seat, { type: 'chooseTarget', uid: pickedUid, slot: location.index });
+  }
+
+  async function skipChoice() {
+    await sendAction(room, seat, { type: 'chooseTarget', uid: null });
+  }
+
   async function handleRematch() {
     await requestRematch(room, seat);
   }
@@ -523,7 +607,20 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   // Pas de combat au premier tour de la partie : le bouton ne fait que passer la main.
   const mainButtonLabel = isFirstTurnOfGame(state) ? 'Fin du tour' : 'Combat !';
   const mainButtonAction = endTurn;
-  const mainButtonEnabled = interactive && state.phase === 'main';
+  const mainButtonEnabled = interactive && state.phase === 'main' && !state.pendingChoice;
+
+  // V2 : cibles allumées sur le board pendant mon choix. Pour un changement de position, une
+  // fois le monstre désigné : les cartes de sa zone (lui compris, pour se raviser).
+  const targetUids = useMemo(() => {
+    const choice = state.pendingChoice;
+    if (!choosing || !choice) return null;
+    if (choice.effect.type === 'moveSlot' && pickedUid) {
+      const location = locateMonster(state, pickedUid);
+      if (!location) return null;
+      return new Set(zoneCards(state.players[location.seat], location.zone).map((c) => c.uid));
+    }
+    return new Set(choiceTargets(state, choice));
+  }, [state, choosing, pickedUid]);
 
   const zoomed = zoomedUid ? findZoomableCard(state, seat, zoomedUid) : null;
   const zoomImageUrl = useMemo(() => {
@@ -581,7 +678,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           combatView={combatView}
           activeStep={activeStep}
           displayedHp={displayedHp}
-          marketVisible={marketVisible}
+          marketVisible={marketVisible && !state.pendingChoice}
           marketZoneRectRef={marketZoneRectRef}
           onBuy={buy}
           onToggleMarketLock={toggleMarketLock}
@@ -594,6 +691,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           isOverFusionZone={(x, y) => fusable && isOverZone(fusionZoneRef.current, x, y)}
           isOverSellZone={(x, y) => sellableDrag && isOverZone(sellZoneRef.current, x, y)}
           onZoomCard={setZoomedUid}
+          targeting={targetUids ? { uids: targetUids, onPick: (uid) => void pickTarget(uid) } : null}
         />
       </Canvas>
 
@@ -610,7 +708,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
         <div ref={sellZoneRef} className={`sell-zone ${dropTarget?.kind === 'sell' ? 'is-hovered' : ''}`}>
           <span className="coin-icon sell-zone-icon" aria-hidden="true" />
           <span className="sell-zone-label">Vendre</span>
-          <span className="sell-zone-value">+{sellValue(draggedCard)}</span>
+          <span className="sell-zone-value">+{sellValue(draggedCard, me)}</span>
         </div>
       )}
 
@@ -629,7 +727,8 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
 
       {!showVictory && (
         <div className="hud-layer">
-          <ElementWheel />
+          {/* V2 : plus d'avantage élémentaire, la roue n'a plus lieu d'être. */}
+          {!isV2Active() && <ElementWheel />}
 
           <button
             className={`room-badge ${codeCopied ? 'is-copied' : ''}`}
@@ -738,7 +837,18 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             <span>{mainButtonLabel}</span>
           </button>
 
-          <p className="hint">{hintText(isMyTurn, playing, state.phase, fusable, me.movesUsed)}</p>
+          {state.pendingChoice && !playing ? (
+            <div className="choice-banner">
+              <span>{choiceHint(state, seat, pickedUid)}</span>
+              {choosing && (
+                <button className="hud-button" onClick={skipChoice}>
+                  Renoncer
+                </button>
+              )}
+            </div>
+          ) : (
+            <p className="hint">{hintText(isMyTurn, playing, state.phase, fusable, me.movesUsed)}</p>
+          )}
         </div>
       )}
 
@@ -776,7 +886,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
                     disabled={!canSell}
                     onClick={() => sellCard(zoomed.uid)}
                   >
-                    Vendre (+{sellValue(zoomed.card)} pièce{sellValue(zoomed.card) > 1 ? 's' : ''})
+                    Vendre (+{sellValue(zoomed.card, me)} pièce{sellValue(zoomed.card, me) > 1 ? 's' : ''})
                   </button>
                 )}
               </div>
@@ -788,6 +898,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
       {rulesOpen && (
         <RulesModal
           monsterZoneSize={zoneCapacity(state.players[seat], 'attack')}
+          v2={isV2Active()}
           onClose={() => setRulesOpen(false)}
         />
       )}

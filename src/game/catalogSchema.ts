@@ -7,61 +7,54 @@
 //
 // Module pur, comme `rules.ts` : pas de réseau, pas de React. Il ne dépend que des types.
 
-import { describeAbility, isAbilityAllowed } from './cards';
+import { describeAbility, describeEffect, isAbilityAllowed, isEnchantmentEffectAllowed } from './cards';
 import type {
   AbilityEffect,
   CardAbility,
   CardDef,
-  CardElement,
-  CardRarity,
   Catalog,
   EnchantmentEffect,
   Keyword,
   PowerWeights,
-  Trigger,
 } from './types';
+import type { GameVersion } from './versions';
+import {
+  ABILITY_EFFECT_TYPES,
+  ABILITY_EFFECT_TYPES_V2,
+  CARD_ELEMENTS,
+  CARD_RARITIES,
+  ENCHANTMENT_EFFECT_TYPES,
+  ENCHANTMENT_EFFECT_TYPES_V2,
+  KEYWORDS,
+  KEYWORDS_V2,
+  TRIGGERS,
+  abilityEffectTypesFor,
+  enchantmentEffectTypesFor,
+  keywordsFor,
+} from './vocabulary';
 
-// Listes des valeurs admises. Elles doublent les unions de `types.ts` — inévitable, un type
-// TypeScript n'existe pas à l'exécution — mais `satisfies` garantit qu'elles restent en phase :
-// ajouter un membre à l'union sans l'ajouter ici ne compile pas.
-export const CARD_ELEMENTS = ['fire', 'water', 'air', 'earth'] as const satisfies readonly CardElement[];
-// Raretés, de la plus commune à la plus rare : cet ordre est celui des listes de l'admin.
-export const CARD_RARITIES = [
-  'common',
-  'uncommon',
-  'rare',
-  'legendary',
-] as const satisfies readonly CardRarity[];
-export const KEYWORDS = [
-  'reach',
-  'taunt',
-  'protection',
-  'merchant',
-  'fury',
-  'toxic',
-] as const satisfies readonly Keyword[];
-export const TRIGGERS = [
-  'summon',
-  'combatStart',
-  'attack',
-  'defend',
-  'ko',
-  'sold',
-] as const satisfies readonly Trigger[];
-export const ABILITY_EFFECT_TYPES = [
-  'gainCoins',
-  'damageOpponent',
-  'healSelf',
-  'drawCard',
-  'buff',
-  'bonusDamage',
-  'shield',
-  'extraMarketCard',
-] as const satisfies readonly AbilityEffect['type'][];
-export const ENCHANTMENT_EFFECT_TYPES = [
-  'monsterBuff',
-  'coinsPerTurn',
-] as const satisfies readonly EnchantmentEffect['type'][];
+// Listes des valeurs admises : elles vivent dans `vocabulary.ts` (une par version du jeu),
+// réexportées ici pour les appelants historiques.
+export {
+  ABILITY_EFFECT_TYPES,
+  ABILITY_EFFECT_TYPES_V2,
+  CARD_ELEMENTS,
+  CARD_RARITIES,
+  ENCHANTMENT_EFFECT_TYPES,
+  ENCHANTMENT_EFFECT_TYPES_V2,
+  KEYWORDS,
+  KEYWORDS_V2,
+  TRIGGERS,
+  abilityEffectTypesFor,
+  enchantmentEffectTypesFor,
+  keywordsFor,
+};
+
+// Tous les types d'effet connus, toutes versions confondues : la lecture accepte d'abord le
+// type, puis `isAbilityAllowed` / `isEnchantmentEffectAllowed` le refusent s'il n'appartient
+// pas à la version du catalogue — le message d'erreur nomme alors l'effet en clair.
+const ALL_ABILITY_EFFECT_TYPES = [...new Set([...ABILITY_EFFECT_TYPES, ...ABILITY_EFFECT_TYPES_V2])];
+const ALL_ENCHANTMENT_EFFECT_TYPES = [...new Set([...ENCHANTMENT_EFFECT_TYPES, ...ENCHANTMENT_EFFECT_TYPES_V2])];
 
 // Un id de carte sert de clé d'index, de clé de cache de texture et de clé du registre
 // d'illustrations (`scene/cardArt.ts`). On le contraint pour qu'il reste utilisable comme
@@ -157,7 +150,7 @@ function parseAbilityEffect(raw: unknown, path: string, errors: string[]): Abili
     errors.push(`${path} : effet attendu.`);
     return null;
   }
-  const type = checkEnum(raw.type, `${path}.type`, ABILITY_EFFECT_TYPES, errors);
+  const type = checkEnum(raw.type, `${path}.type`, ALL_ABILITY_EFFECT_TYPES, errors);
   if (type === null) return null;
 
   switch (type) {
@@ -165,9 +158,28 @@ function parseAbilityEffect(raw: unknown, path: string, errors: string[]): Abili
     case 'damageOpponent':
     case 'healSelf':
     case 'bonusDamage':
-    case 'shield': {
+    case 'shield':
+    case 'armorChosen':
+    case 'armorZone':
+    case 'armorBoard':
+    case 'armorSelf': {
       const amount = checkInt(raw.amount, `${path}.amount`, 1, MAX_STAT, errors);
       return amount === null ? null : { type, amount };
+    }
+    case 'grantShield':
+    case 'burn':
+    case 'freeze':
+    case 'moveZone':
+    case 'moveSlot':
+    case 'switchZone':
+    case 'extinguish':
+    case 'root':
+    case 'silence':
+      return { type };
+    case 'summonToken': {
+      const attack = checkInt(raw.attack, `${path}.attack`, 0, MAX_STAT, errors);
+      const defense = checkInt(raw.defense, `${path}.defense`, 1, MAX_STAT, errors);
+      return attack === null || defense === null ? null : { type, attack, defense };
     }
     case 'drawCard':
     case 'extraMarketCard': {
@@ -214,13 +226,18 @@ function parseEnchantmentEffect(raw: unknown, path: string, errors: string[]): E
     errors.push(`${path} : effet attendu.`);
     return null;
   }
-  const type = checkEnum(raw.type, `${path}.type`, ENCHANTMENT_EFFECT_TYPES, errors);
+  const type = checkEnum(raw.type, `${path}.type`, ALL_ENCHANTMENT_EFFECT_TYPES, errors);
   if (type === null) return null;
 
-  if (type === 'coinsPerTurn') {
+  if (type === 'coinsPerTurn' || type === 'sellBonus') {
     const amount = checkInt(raw.amount, `${path}.amount`, 1, MAX_STAT, errors);
     return amount === null ? null : { type, amount };
   }
+  if (type === 'marketSize') {
+    const count = checkInt(raw.count, `${path}.count`, 1, MAX_STAT, errors);
+    return count === null ? null : { type, count };
+  }
+  if (type === 'healBoost') return { type };
   const zone = checkEnum(raw.zone, `${path}.zone`, ['attack', 'defense', 'all'] as const, errors);
   const attack = checkInt(raw.attack, `${path}.attack`, 0, MAX_STAT, errors);
   const defense = checkInt(raw.defense, `${path}.defense`, 0, MAX_STAT, errors);
@@ -234,18 +251,19 @@ function parseEnchantmentEffect(raw: unknown, path: string, errors: string[]): E
 
 // Combinaisons déclencheur × effet refusées par les règles (E12) : `isAbilityAllowed` en est
 // la définition de référence, partagée avec `rules.ts` — on ne la redéclare pas ici.
-function checkAbilitiesAllowed(def: CardDef, path: string, errors: string[]): void {
+function checkAbilitiesAllowed(def: CardDef, path: string, errors: string[], version: GameVersion): void {
   for (const ability of def.abilities ?? []) {
-    if (isAbilityAllowed(def, ability)) continue;
+    if (isAbilityAllowed(def, ability, version)) continue;
     errors.push(
       `${path} : la capacité « ${describeAbility(ability)} » n'est pas permise sur ${
         def.kind === 'monster' ? 'un monstre' : 'un enchantement'
-      }.`,
+      }${version === 'v2' ? ' en V2' : ''}.`,
     );
   }
 }
 
-export function parseCardDef(raw: unknown, path = 'carte'): ParseResult<CardDef> {
+// `version` : version du jeu du catalogue, qui fixe les habiletés et les effets admis.
+export function parseCardDef(raw: unknown, path = 'carte', version: GameVersion = 'v1'): ParseResult<CardDef> {
   const errors: string[] = [];
   if (!isRecord(raw)) return { ok: false, errors: [`${path} : objet attendu.`] };
 
@@ -283,9 +301,13 @@ export function parseCardDef(raw: unknown, path = 'carte'): ParseResult<CardDef>
   if (kind === 'enchantment') {
     const effect = parseEnchantmentEffect(raw.effect, `${path}.effect`, errors);
     if (effect === null || errors.length > 0) return { ok: false, errors };
+    if (!isEnchantmentEffectAllowed(effect, version)) {
+      errors.push(`${path}.effect : « ${describeEffect(effect)} » n'existe pas dans cette version du jeu.`);
+      return { ok: false, errors };
+    }
     const def: CardDef = { kind, id, name, cost, element, rarity, effect };
     if (abilities.length > 0) def.abilities = abilities;
-    checkAbilitiesAllowed(def, path, errors);
+    checkAbilitiesAllowed(def, path, errors, version);
     if (errors.length > 0) return { ok: false, errors };
     return { ok: true, value: def };
   }
@@ -299,7 +321,7 @@ export function parseCardDef(raw: unknown, path = 'carte'): ParseResult<CardDef>
       errors.push(`${path}.keywords : liste attendue.`);
     } else {
       raw.keywords.forEach((keyword, i) => {
-        const parsed = checkEnum(keyword, `${path}.keywords[${i}]`, KEYWORDS, errors);
+        const parsed = checkEnum(keyword, `${path}.keywords[${i}]`, keywordsFor(version), errors);
         if (parsed === null) return;
         if (keywords.includes(parsed)) {
           errors.push(`${path}.keywords : « ${parsed} » est répétée.`);
@@ -312,7 +334,11 @@ export function parseCardDef(raw: unknown, path = 'carte'): ParseResult<CardDef>
 
   let aura: { attack: number; defense: number } | null = null;
   if (raw.aura !== undefined && raw.aura !== null) {
-    if (!isRecord(raw.aura)) {
+    if (version === 'v2') {
+      // Les auras n'existent plus en V2 (modifsV2.md) : les bonus permanents sont réservés aux
+      // enchantements.
+      errors.push(`${path}.aura : les auras n'existent pas en V2.`);
+    } else if (!isRecord(raw.aura)) {
       errors.push(`${path}.aura : objet attendu.`);
     } else {
       const auraAttack = checkInt(raw.aura.attack, `${path}.aura.attack`, 0, MAX_STAT, errors);
@@ -333,7 +359,7 @@ export function parseCardDef(raw: unknown, path = 'carte'): ParseResult<CardDef>
   if (aura) def.aura = aura;
   if (keywords.length > 0) def.keywords = keywords;
   if (abilities.length > 0) def.abilities = abilities;
-  checkAbilitiesAllowed(def, path, errors);
+  checkAbilitiesAllowed(def, path, errors, version);
   if (errors.length > 0) return { ok: false, errors };
   return { ok: true, value: def };
 }
@@ -341,62 +367,72 @@ export function parseCardDef(raw: unknown, path = 'carte'): ParseResult<CardDef>
 // Barème de puissance. Chaque entrée est facultative : une clé absente garde la valeur fixe
 // historique (voir `cardPower`). On ne garde donc que les clés effectivement écrites, ce qui
 // évite de figer dans le catalogue des valeurs que personne n'a choisies.
-function parsePowerWeights(raw: unknown, errors: string[]): PowerWeights | null {
+//
+// Lit un groupe du barème (`group`) : des valeurs entières (`coefficient` faux) ou des
+// coefficients décimaux, indexés par les clés de `allowed`. Rend `null` pour un groupe absent.
+function parseWeightGroup<K extends string>(
+  raw: Record<string, unknown>,
+  group: string,
+  allowed: readonly K[],
+  coefficient: boolean,
+  errors: string[],
+): Partial<Record<K, number>> | null {
+  const value = raw[group];
+  if (value === undefined) return null;
+  if (!isRecord(value)) {
+    errors.push(`powerWeights.${group} : objet attendu.`);
+    return null;
+  }
+  const entries: Partial<Record<K, number>> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const path = `powerWeights.${group}.${key}`;
+    const parsedKey = checkEnum(key, path, allowed, errors);
+    if (parsedKey === null) continue;
+    const parsed = coefficient
+      ? checkNumber(entry, path, 0, MAX_POWER_COEFFICIENT, errors)
+      : checkInt(entry, path, 0, MAX_POWER_WEIGHT, errors);
+    if (parsed !== null) entries[parsedKey] = parsed;
+  }
+  return entries;
+}
+
+function parsePowerWeights(raw: unknown, errors: string[], version: GameVersion): PowerWeights | null {
   if (!isRecord(raw)) {
     errors.push('Catalogue.powerWeights : objet attendu.');
     return null;
   }
-  const weights: PowerWeights = { keywords: {}, abilities: {} };
-
-  if (raw.keywords !== undefined) {
-    if (!isRecord(raw.keywords)) {
-      errors.push('powerWeights.keywords : objet attendu.');
-    } else {
-      for (const [key, value] of Object.entries(raw.keywords)) {
-        const keyword = checkEnum(key, `powerWeights.keywords.${key}`, KEYWORDS, errors);
-        if (keyword === null) continue;
-        const weight = checkInt(value, `powerWeights.keywords.${key}`, 0, MAX_POWER_WEIGHT, errors);
-        if (weight !== null) weights.keywords[keyword] = weight;
-      }
-    }
-  }
-
-  if (raw.abilities !== undefined) {
-    if (!isRecord(raw.abilities)) {
-      errors.push('powerWeights.abilities : objet attendu.');
-    } else {
-      for (const [key, value] of Object.entries(raw.abilities)) {
-        const effect = checkEnum(key, `powerWeights.abilities.${key}`, ABILITY_EFFECT_TYPES, errors);
-        if (effect === null) continue;
-        const weight = checkInt(value, `powerWeights.abilities.${key}`, 0, MAX_POWER_WEIGHT, errors);
-        if (weight !== null) weights.abilities[effect] = weight;
-      }
-    }
-  }
+  const abilities = abilityEffectTypesFor(version);
+  const weights: PowerWeights = {
+    keywords: parseWeightGroup(raw, 'keywords', keywordsFor(version), false, errors) ?? {},
+    abilities: parseWeightGroup(raw, 'abilities', abilities, false, errors) ?? {},
+  };
 
   // `abilityCoefficients` reste absent tant qu'aucun coefficient n'a été réglé : un barème
   // écrit avant cette fonctionnalité se relit tel quel, et on n'écrit pas une clé de plus
-  // dans le catalogue pour y stocker le coefficient neutre.
-  if (raw.abilityCoefficients !== undefined) {
-    if (!isRecord(raw.abilityCoefficients)) {
-      errors.push('powerWeights.abilityCoefficients : objet attendu.');
-    } else {
-      const coefficients: Partial<Record<AbilityEffect['type'], number>> = {};
-      for (const [key, value] of Object.entries(raw.abilityCoefficients)) {
-        const path = `powerWeights.abilityCoefficients.${key}`;
-        const effect = checkEnum(key, path, ABILITY_EFFECT_TYPES, errors);
-        if (effect === null) continue;
-        const coefficient = checkNumber(value, path, 0, MAX_POWER_COEFFICIENT, errors);
-        if (coefficient !== null) coefficients[effect] = coefficient;
-      }
-      if (Object.keys(coefficients).length > 0) weights.abilityCoefficients = coefficients;
+  // dans le catalogue pour y stocker le coefficient neutre. Même règle pour les deux groupes
+  // des enchantements (V2).
+  const coefficients = parseWeightGroup(raw, 'abilityCoefficients', abilities, true, errors);
+  if (coefficients && Object.keys(coefficients).length > 0) weights.abilityCoefficients = coefficients;
+
+  if (version === 'v2') {
+    const types = enchantmentEffectTypesFor(version);
+    const enchantments = parseWeightGroup(raw, 'enchantments', types, false, errors);
+    if (enchantments && Object.keys(enchantments).length > 0) weights.enchantments = enchantments;
+    const enchantmentCoefficients = parseWeightGroup(raw, 'enchantmentCoefficients', types, true, errors);
+    if (enchantmentCoefficients && Object.keys(enchantmentCoefficients).length > 0) {
+      weights.enchantmentCoefficients = enchantmentCoefficients;
     }
+  } else if (raw.enchantments !== undefined || raw.enchantmentCoefficients !== undefined) {
+    errors.push("powerWeights : le barème des enchantements n'existe qu'en V2.");
   }
 
   return weights;
 }
 
-export function parseCatalog(raw: unknown): ParseResult<Catalog> {
+// `gameVersion` : version du jeu du catalogue (`game/versions.ts`), qui fixe les habiletés et
+// les effets admis. Le catalogue rendu porte `gameVersion` pour la V2 (absent pour la V1, comme
+// avant les versions) : c'est par lui que les règles savent quelle version appliquer.
+export function parseCatalog(raw: unknown, gameVersion: GameVersion = 'v1'): ParseResult<Catalog> {
   if (!isRecord(raw)) return { ok: false, errors: ['Catalogue : objet attendu.'] };
 
   const errors: string[] = [];
@@ -408,7 +444,7 @@ export function parseCatalog(raw: unknown): ParseResult<Catalog> {
   } else {
     const seen = new Set<string>();
     raw.cards.forEach((card, i) => {
-      const parsed = parseCardDef(card, `cards[${i}]`);
+      const parsed = parseCardDef(card, `cards[${i}]`, gameVersion);
       if (!parsed.ok) {
         errors.push(...parsed.errors);
         return;
@@ -447,10 +483,77 @@ export function parseCatalog(raw: unknown): ParseResult<Catalog> {
 
   // Barème absent = catalogue écrit avant cette fonctionnalité : la puissance retombe sur les
   // valeurs fixes, et la clé n'est pas créée tant que l'admin n'a rien pesé.
-  const powerWeights = raw.powerWeights === undefined ? null : parsePowerWeights(raw.powerWeights, errors);
+  const powerWeights =
+    raw.powerWeights === undefined ? null : parsePowerWeights(raw.powerWeights, errors, gameVersion);
 
   if (version === null || errors.length > 0) return { ok: false, errors };
   const catalog: Catalog = { version, cards, starterCounts };
   if (powerWeights) catalog.powerWeights = powerWeights;
+  if (gameVersion !== 'v1') catalog.gameVersion = gameVersion;
   return { ok: true, value: catalog };
+}
+
+// ---------------------------------------------------------------------------------------
+// Passage d'un catalogue à la V2 (modifsV2.md : toute habileté et tout effet absents de la
+// liste V2 doivent disparaître de la V2). Le catalogue V2 a été amorcé comme une copie de la
+// V1 : il porte encore des auras, des bonus permanents, des dégâts bonus… On les RETIRE au lieu
+// de refuser le catalogue, à la lecture comme à l'amorçage : les cartes gardent tout ce qui
+// existe encore en V2 (statistiques, habiletés et capacités communes). Un enchantement dont
+// l'effet n'existe plus disparaît, faute d'effet à porter.
+//
+// Ne touche qu'à ce qui n'existe pas en V2, sans rien valider d'autre : `parseCatalog(…, 'v2')`
+// passe ensuite. Données non fiables en entrée, d'où les gardes de forme.
+// ---------------------------------------------------------------------------------------
+
+export function migrateCatalogToV2(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw;
+  const keywords = new Set<string>(KEYWORDS_V2);
+  const abilityTypes = new Set<string>(ABILITY_EFFECT_TYPES_V2);
+  const enchantmentTypes = new Set<string>(ENCHANTMENT_EFFECT_TYPES_V2);
+  const removedIds = new Set<string>();
+
+  const cards = Array.isArray(raw.cards)
+    ? raw.cards.flatMap((card): unknown[] => {
+        if (!isRecord(card)) return [card];
+        if (card.kind === 'enchantment' && isRecord(card.effect) && !enchantmentTypes.has(String(card.effect.type))) {
+          if (typeof card.id === 'string') removedIds.add(card.id);
+          return [];
+        }
+        const next: Record<string, unknown> = { ...card };
+        delete next.aura;
+        if (Array.isArray(card.keywords)) {
+          const kept = card.keywords.filter((k) => keywords.has(String(k)));
+          if (kept.length > 0) next.keywords = kept;
+          else delete next.keywords;
+        }
+        if (Array.isArray(card.abilities)) {
+          const kept = card.abilities.filter(
+            (a) => !isRecord(a) || !isRecord(a.effect) || abilityTypes.has(String(a.effect.type)),
+          );
+          if (kept.length > 0) next.abilities = kept;
+          else delete next.abilities;
+        }
+        return [next];
+      })
+    : raw.cards;
+
+  const next: Record<string, unknown> = { ...raw, cards };
+  if (isRecord(raw.starterCounts) && removedIds.size > 0) {
+    next.starterCounts = Object.fromEntries(Object.entries(raw.starterCounts).filter(([id]) => !removedIds.has(id)));
+  }
+  if (isRecord(raw.powerWeights)) {
+    const weights: Record<string, unknown> = { ...raw.powerWeights };
+    const keep = (group: string, allowed: Set<string>) => {
+      const value = weights[group];
+      if (isRecord(value)) weights[group] = Object.fromEntries(Object.entries(value).filter(([k]) => allowed.has(k)));
+    };
+    keep('keywords', keywords);
+    keep('abilities', abilityTypes);
+    keep('abilityCoefficients', abilityTypes);
+    keep('enchantments', enchantmentTypes);
+    keep('enchantmentCoefficients', enchantmentTypes);
+    next.powerWeights = weights;
+  }
+  next.gameVersion = 'v2';
+  return next;
 }

@@ -37,6 +37,9 @@ interface CardProps {
   // `protectionBubble` = bulle de la Protection, qui éclate au coup qui la consomme.
   tauntShield?: boolean;
   protectionBubble?: boolean;
+  // V2 : monstre gelé — couché à l'horizontale (comme un KO) et teinté de glace tant qu'il
+  // l'est (demande utilisateur).
+  frozen?: boolean;
   // Cadenas du marché, affiché et cliquable seulement si la prop est présente.
   lockBadge?: LockBadge;
   pose: Pose;
@@ -92,6 +95,7 @@ function Card({
   ko,
   tauntShield = false,
   protectionBubble = false,
+  frozen = false,
   lockBadge,
   pose,
   spawnPose,
@@ -129,6 +133,7 @@ function Card({
   const lunge = useRef<{ start: number; base: THREE.Vector3; target: THREE.Vector3 } | null>(null);
   const lastAttackId = useRef<number | null>(null);
   const koAmount = useRef(0); // 0 = debout, 1 = KO complet (amorti)
+  const frozenAmount = useRef(0); // V2 : 0 = libre, 1 = gelé (amorti)
   const shieldMaterialRef = useRef<THREE.MeshBasicMaterial>(null!);
   const bubbleGroupRef = useRef<THREE.Group>(null!);
   const bubbleMaterialRef = useRef<THREE.MeshBasicMaterial>(null!);
@@ -215,6 +220,9 @@ function Card({
     }
 
     koAmount.current = THREE.MathUtils.damp(koAmount.current, ko ? 1 : 0, DAMP_LAMBDA, delta);
+    frozenAmount.current = THREE.MathUtils.damp(frozenAmount.current, frozen ? 1 : 0, DAMP_LAMBDA, delta);
+    // Gelé ou KO : la carte est couchée d'un quart de tour (les deux ne se cumulent pas).
+    const lying = Math.max(koAmount.current, frozenAmount.current);
 
     if (!lunge.current) {
       const dragPoint = dragWorldRef?.current ?? null;
@@ -239,7 +247,7 @@ function Card({
       // repasse à `false` en fin de combat, via l'amortissement de `koAmount` (H1).
       group.rotation.z = THREE.MathUtils.damp(
         group.rotation.z,
-        effectivePose.rotation[2] + koAmount.current * (Math.PI / 2),
+        effectivePose.rotation[2] + lying * (Math.PI / 2),
         DAMP_LAMBDA,
         delta,
       );
@@ -334,7 +342,9 @@ function Card({
       );
       // Face assombrie pendant le KO (§6.4).
       const darken = 1 - koAmount.current * 0.65;
-      faceMaterialRef.current.color.setRGB(darken, darken, darken);
+      // V2 : reflet de glace sur un monstre gelé (rouge et vert baissés, le bleu reste).
+      const ice = frozenAmount.current;
+      faceMaterialRef.current.color.setRGB(darken * (1 - ice * 0.45), darken * (1 - ice * 0.2), darken);
       // Léger tremblement pendant le flash de dégâts.
       if (flashIntensity.current > 0.05) {
         group.position.x += (Math.random() - 0.5) * 0.02 * flashIntensity.current;

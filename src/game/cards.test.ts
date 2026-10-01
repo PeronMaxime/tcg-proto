@@ -110,6 +110,7 @@ describe('puissance', () => {
       keywords: 2,
       abilities: 1,
       aura: 0,
+      enchantment: 0,
     });
   });
 
@@ -204,6 +205,7 @@ describe('puissance', () => {
       keywords: 0,
       abilities: 0,
       aura: 0,
+      enchantment: 0,
     });
   });
 });

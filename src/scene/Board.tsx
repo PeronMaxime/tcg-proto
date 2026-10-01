@@ -1,7 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
-import { getCardDef, hasKeywordDef, isMonster } from '../game/cards';
+import { getCardDef, hasKeywordDef, isMonster, isV2Active } from '../game/cards';
 import {
   canMoveInZone,
   isActionLegal,
@@ -75,6 +75,9 @@ interface BoardProps {
   isOverFusionZone: (clientX: number, clientY: number) => boolean;
   isOverSellZone: (clientX: number, clientY: number) => boolean;
   onZoomCard: (uid: string) => void;
+  // V2 : choix de cible en cours (effet « monstre choisi ») — les cartes posées de `uids`
+  // s'allument et un clic sur l'une d'elles la désigne ; les autres ne réagissent plus.
+  targeting: { uids: Set<string>; onPick: (uid: string) => void } | null;
 }
 
 export interface ScreenRect {
@@ -149,6 +152,7 @@ interface RenderEntry {
   stats: MonsterFaceStats | null;
   ko: boolean;
   tauntShield?: boolean; // K2 Provocation : bouclier affiché tant que le monstre est debout
+  frozen?: boolean; // V2 : monstre gelé, couché à l'horizontale
   protectionBubble?: boolean; // K3 Protection encore intacte : bulle autour de la carte
   lockBadge?: LockBadge; // cadenas cliquable, uniquement sur les cartes de MON marché
   pose: Pose;
@@ -195,6 +199,7 @@ function Board({
   isOverFusionZone,
   isOverSellZone,
   onZoomCard,
+  targeting,
 }: BoardProps) {
   const opponentSeat: Seat = opponentOf(seat);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
@@ -209,7 +214,7 @@ function Board({
   const zoneCardIdByUid = new Map<string, string>();
 
   // --- Ma main ---
-  const canDrag = interactive && state.phase === 'main';
+  const canDrag = interactive && state.phase === 'main' && !targeting;
   for (const [index, card] of me.hand.entries()) {
     const def = getCardDef(card.cardId);
     const hasLegalSlot = isMonster(def)
@@ -303,6 +308,10 @@ function Board({
   // cartes pour lui faire place — les voisines s'écartent avant même le dépôt.
   const insertion = dropTarget?.kind === 'slot' ? dropTarget : null;
   // Cartes de ma rangée entre lesquelles la carte tenue peut s'insérer.
+  // Cartes d'une zone telles qu'affichées : en V2, pendant la lecture d'un combat, le board du
+  // coup en cours (armure entamée, créatures invoquées, monstres déplacés) ; sinon l'état.
+  const displayedCards = (owner: Seat, zone: Zone): CardInstance[] =>
+    combatView?.board && zone !== 'enchant' ? combatView.board[owner][zone] : zoneCards(state.players[owner], zone);
   const rowOthers = (zone: Zone): CardInstance[] => {
     const cards = zoneCards(me, zone);
     return drag?.origin?.zone === zone ? cards.filter((c) => c.uid !== drag.uid) : cards;
@@ -311,7 +320,7 @@ function Board({
   // Pose d'une carte posée, d'index `index` dans sa rangée, en tenant compte de l'insertion.
   const placedPose = (owner: Seat, zone: Zone, card: CardInstance, index: number): Pose => {
     const mine = owner === seat;
-    const cards = zoneCards(state.players[owner], zone);
+    const cards = displayedCards(owner, zone);
     if (!mine || insertion?.zone !== zone) return rowCardPose(zone, index, cards.length, mine);
     const others = rowOthers(zone);
     const count = others.length + 1;
@@ -323,7 +332,7 @@ function Board({
   for (const { owner, zone } of zonesToRender) {
     const ownerPlayer = state.players[owner];
     const mine = owner === seat;
-    for (const [index, slot] of zoneCards(ownerPlayer, zone).entries()) {
+    for (const [index, slot] of displayedCards(owner, zone).entries()) {
       const pose = placedPose(owner, zone, slot, index);
       zonePositionByUid.set(slot.uid, pose.position);
       zoneCardIdByUid.set(slot.uid, slot.cardId);
@@ -349,17 +358,23 @@ function Board({
         canDrag &&
         !myMarketOpen &&
         (zone === 'attack' || zone === 'defense') &&
-        canMoveInZone(ownerPlayer, zone as MonsterZone);
+        canMoveInZone(ownerPlayer, zone as MonsterZone) &&
+        slot.rootedBy === undefined; // V2 : enraciné (état), il ne bouge pas
       const dragged = slot.uid === drag?.uid;
 
       // K2 Provocation : le bouclier dit « frappez-moi d'abord », donc il reste tant que le
       // monstre tient debout.
-      const tauntShield = hasKeywordDef(def, 'taunt') && !ko;
+      // V2 : Provocation n'agit qu'en défense, son bouclier ne s'y montre donc que là.
+      const tauntShield = hasKeywordDef(def, 'taunt') && !ko && (!isV2Active() || zone === 'defense');
       // K3 Protection : la bulle tient tant que la protection n'a pas servi. Elle se recharge
       // à chaque combat, donc hors combat elle est toujours intacte ; pendant la lecture,
       // `protectionSpent` la fait éclater au coup exact qui l'a consommée.
+      // V2 : une protection reçue par effet (`shields`, à usage unique) garde aussi sa bulle.
       const protectionBubble =
-        hasKeywordDef(def, 'protection') && !ko && !(combatView?.protectionSpent.has(slot.uid) ?? false);
+        !ko &&
+        ((hasKeywordDef(def, 'protection') && !(combatView?.protectionSpent.has(slot.uid) ?? false)) ||
+          (slot.shields ?? 0) > 0);
+      const target = targeting?.uids.has(slot.uid) ?? false;
 
       entries.push({
         uid: slot.uid,
@@ -368,16 +383,18 @@ function Board({
         ko,
         tauntShield,
         protectionBubble,
+        frozen: slot.frozen === true,
         pose,
         hidden: false,
         mine,
-        halo: dragged ? 'selected' : 'none',
+        halo: dragged ? 'selected' : target ? 'target' : 'none',
         hoverable: false,
         // Une carte posée (la mienne ou celle de l'adversaire) s'ouvre en grand au clic ; le
-        // bouton Vendre n'apparaît que pour la mienne (géré dans GameScreen).
-        clickable: !myMarketOpen,
-        onSelect: () => onZoomCard(slot.uid),
-        onInspect: myMarketOpen ? undefined : () => onZoomCard(slot.uid),
+        // bouton Vendre n'apparaît que pour la mienne (géré dans GameScreen). Pendant un choix
+        // de cible (V2), seul un clic sur une cible compte.
+        clickable: targeting ? target : !myMarketOpen,
+        onSelect: targeting ? () => targeting.onPick(slot.uid) : () => onZoomCard(slot.uid),
+        onInspect: targeting || myMarketOpen ? undefined : () => onZoomCard(slot.uid),
         onDragStart: movable
           ? (x, y) => onDragStart(slot.uid, x, y, { zone: zone as MonsterZone, slot: index })
           : undefined,
@@ -505,7 +522,11 @@ function Board({
 
   const isLegalSlot = (zone: Zone, slot: number) => {
     if (drag === null) return false;
-    if (drag.origin) return zone === drag.origin.zone && isActionLegal(state, seat, { type: 'move', uid: drag.uid, slot });
+    if (drag.origin) {
+      // Dans sa zone, ou (V2, Vol) dans l'autre zone de monstres.
+      if (zone === drag.origin.zone) return isActionLegal(state, seat, { type: 'move', uid: drag.uid, slot });
+      return zone !== 'enchant' && isActionLegal(state, seat, { type: 'move', uid: drag.uid, slot, zone });
+    }
     return isActionLegal(state, seat, { type: 'place', uid: drag.uid, zone, slot });
   };
   // La carte tenue peut s'insérer quelque part dans cette rangée.
@@ -578,6 +599,7 @@ function Board({
           ko={entry.ko}
           tauntShield={entry.tauntShield}
           protectionBubble={entry.protectionBubble}
+          frozen={entry.frozen}
           lockBadge={entry.lockBadge}
           pose={entry.pose}
           spawnPose={spawnPoseFor(entry.uid, entry.mine)}

@@ -85,9 +85,45 @@ même règle de `firestore.rules`.
 - Dans le menu, on choisit la version à la **création d'une partie**, comme le nombre de
   cartes par zone. Elle est enregistrée dans la room (`Room.gameVersion`) et reprise à chaque
   revanche. Une version sans catalogue refuse la création (pas de repli sur les cartes V1).
-- Le **code des règles est commun** : une capacité ajoutée pour la V2 existe aussi en V1 (sans
-  effet si aucune carte V1 ne l'utilise). Une mécanique propre à une version devra lire la
-  version de la partie.
+- Un catalogue V2 porte `gameVersion: 'v2'` : c'est lui, figé dans la room, qui fait basculer
+  les règles. `rules.ts` reste le seul point d'entrée et délègue à `src/game/rulesV2.ts` dès
+  que le catalogue actif est V2 (`isV2Active` dans `cards.ts`) ; la V1 ne passe jamais par ce
+  module.
+- Habiletés et effets admis **par version** (`src/game/vocabulary.ts`) : la validation refuse en
+  V1 tout ce qui est propre à la V2, et inversement. À la lecture (et à la copie depuis la V1),
+  le catalogue V2 est débarrassé de ce qui n'existe pas en V2 (`migrateCatalogToV2`) : auras,
+  bonus permanents, dégâts bonus, bouclier de capacité, enchantements sans équivalent.
+
+#### Règles propres à la V2 (`modifsV2.md`)
+
+- **Plus d'avantage élémentaire** (ni « Efficace ! », ni roue des éléments) et **plus d'auras**.
+- **Armure** (`CardInstance.armor`, écusson gris sur la face) : encaisse les dégâts avant la
+  défense, sauf contre Percée ; ce qu'elle a encaissé est perdu (pas de régénération).
+- **États** : *gelé* — le monstre, couché et teinté de glace, ne participe pas au prochain
+  combat où il aurait combattu (attaquant du joueur actif ou défenseur adverse), puis dégèle à
+  la fin de ce combat ; *brûlé* (flamme sur la face, `burn`) — les brûlures se cumulent : à la
+  fin de chaque combat qu'il dispute, il perd définitivement 1 défense par brûlure (`wounds`) ;
+  à 0, il retourne sous le deck. L'effet *Éteint la brûlure* (eau) retire la brûlure, pas la
+  défense déjà perdue ; *silence* (bulle barrée, `silenced`) — ses capacités ne se déclenchent
+  plus jusqu'à la fin de son prochain combat (même rythme que le gel), ses habiletés restent ;
+  *enraciné* (racines, `rootedBy`, distinct de l'habileté) — ni effet ni son joueur ne peuvent
+  le changer de zone ou de position, jusqu'au début du prochain tour du joueur qui l'a enraciné.
+- **Effets à cible choisie** (armure / protection / extinction sur un allié, brûlure / gel /
+  silence d'un adversaire, enracinement d'un monstre quelconque, changement de zone ou de
+  position) : seulement sur Invoqué ou Vendu. La résolution s'arrête
+  sur `GameState.pendingChoice` ; le joueur clique une cible allumée (ou « Renoncer »), action
+  `chooseTarget`. Sans cible possible, l'effet est sans effet.
+- **Dépassement de zone** : seuls les effets (créature invoquée, changement de zone) peuvent
+  dépasser la capacité (`PlayerState.zoneSizes`) ; la rangée se resserre à l'écran.
+- **Habiletés V2** : Portée (attaque : 1 dégât aux voisins de la cible, qui déclenchent leurs
+  effets Défend, sans riposte), Furie (attaque : deux coups par cycle), Provocation (défense),
+  Protection, Toxic (tue dès qu'un dégât atteint la défense — l'armure le bloque), Percée,
+  Enraciné (aucun effet ne le déplace), Vol (change de zone pendant la phase principale, en
+  consommant le déplacement de sa zone de départ), Négociant.
+- **Enchantements V2** : soins doublés, bonus de stats (zone d'attaque, de défense ou tout le
+  board), cartes en plus à chaque marché, pièces en plus à la vente, pièces en plus par tour.
+- Pendant la lecture d'un combat V2, le plateau suit le board enregistré à chaque coup
+  (`CombatStep.board`) : armure entamée, créatures invoquées, monstres déplacés.
 
 ### Les quatre onglets
 

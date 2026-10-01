@@ -13,6 +13,13 @@ import type {
   PowerWeights,
   Trigger,
 } from './types';
+import type { GameVersion } from './versions';
+import {
+  abilityEffectTypesFor,
+  enchantmentEffectTypesFor,
+  isPositionalEffect,
+  needsChosenTarget,
+} from './vocabulary';
 
 // ---------------------------------------------------------------------------------------
 // Catalogue actif
@@ -51,8 +58,19 @@ export function getAllCardDefs(): CardDef[] {
   return activeCatalog.cards;
 }
 
+// Version du jeu dont le catalogue actif applique les règles (`Catalog.gameVersion`, absent =
+// V1). Les règles (`rules.ts`) et les textes des cartes la lisent ici, comme `getCardDef` lit
+// les cartes : une partie V2 installe un catalogue V2.
+export function activeGameVersion(): GameVersion {
+  return activeCatalog.gameVersion ?? 'v1';
+}
+
+export function isV2Active(): boolean {
+  return activeGameVersion() === 'v2';
+}
+
 export function getCardDef(cardId: string): CardDef {
-  const def = activeById.get(cardId);
+  const def = findCardDef(cardId);
   if (!def) throw new Error(`Carte inconnue: ${cardId}`);
   return def;
 }
@@ -61,7 +79,56 @@ export function getCardDef(cardId: string): CardDef {
 // légitimement être absent du catalogue actif — typiquement une room figée sur un catalogue
 // plus ancien, ou l'aperçu de l'admin pendant une saisie.
 export function findCardDef(cardId: string): CardDef | null {
-  return activeById.get(cardId) ?? null;
+  return activeById.get(cardId) ?? tokenDef(cardId);
+}
+
+// ---------------------------------------------------------------------------------------
+// Créatures invoquées (V2, effet `summonToken`). Elles n'existent dans aucun catalogue : leur
+// définition se déduit de leur id, `token-<élément>-<attaque>-<défense>`. Le tiret est refusé
+// dans un id de carte (`CARD_ID_PATTERN`), une carte du catalogue ne peut donc pas le porter.
+// ---------------------------------------------------------------------------------------
+
+const TOKEN_PREFIX = 'token-';
+const TOKEN_NAMES: Record<CardElement, string> = {
+  fire: 'Flammèche',
+  water: 'Ondine',
+  air: 'Zéphyr',
+  earth: 'Golemite',
+};
+
+export function tokenCardId(element: CardElement, attack: number, defense: number): string {
+  return `${TOKEN_PREFIX}${element}-${attack}-${defense}`;
+}
+
+export function isTokenCardId(cardId: string): boolean {
+  return cardId.startsWith(TOKEN_PREFIX);
+}
+
+// Une même définition par id : la scène compare les définitions par référence (`useMemo`).
+const tokenDefs = new Map<string, MonsterDef | null>();
+
+function tokenDef(cardId: string): MonsterDef | null {
+  if (!isTokenCardId(cardId)) return null;
+  if (!tokenDefs.has(cardId)) tokenDefs.set(cardId, buildTokenDef(cardId));
+  return tokenDefs.get(cardId)!;
+}
+
+function buildTokenDef(cardId: string): MonsterDef | null {
+  const [element, attack, defense] = cardId.slice(TOKEN_PREFIX.length).split('-');
+  if (!(element in TOKEN_NAMES)) return null;
+  const a = Number(attack);
+  const d = Number(defense);
+  if (!Number.isInteger(a) || !Number.isInteger(d)) return null;
+  return {
+    kind: 'monster',
+    id: cardId,
+    name: TOKEN_NAMES[element as CardElement],
+    cost: 0,
+    element: element as CardElement,
+    rarity: 'common',
+    attack: a,
+    defense: d,
+  };
 }
 
 export function isMonster(def: CardDef): def is MonsterDef {
@@ -122,6 +189,11 @@ export const KEYWORD_MERCHANT_BONUS = 1;
 // Protection : nombre d'attaques encaissées sans dégât, remis à neuf à chaque combat.
 export const KEYWORD_PROTECTION_USES = 1;
 
+// V2 : Portée inflige toujours 1 dégât aux voisins, doré ou non (modifsV2.md).
+export const KEYWORD_REACH_DAMAGE_V2 = 1;
+// V2 : nombre de coups que porte un monstre Furie à chaque cycle.
+export const KEYWORD_FURY_STRIKES_V2 = 2;
+
 export const KEYWORD_LABELS: Record<Keyword, string> = {
   reach: 'Portée',
   taunt: 'Provocation',
@@ -129,11 +201,39 @@ export const KEYWORD_LABELS: Record<Keyword, string> = {
   merchant: 'Négociant',
   fury: 'Furie',
   toxic: 'Toxic',
+  pierce: 'Percée',
+  rooted: 'Enraciné',
+  flying: 'Vol',
 };
 
+// Règle d'une habileté en V2 (modifsV2.md), énoncée sur la face de la carte.
+function describeKeywordEffectV2(keyword: Keyword): string {
+  switch (keyword) {
+    case 'reach':
+      return `en attaque, inflige aussi ${KEYWORD_REACH_DAMAGE_V2} dégât aux monstres autour de sa cible`;
+    case 'fury':
+      return 'en attaque, frappe deux fois';
+    case 'taunt':
+      return 'en défense, doit être attaqué en priorité';
+    case 'protection':
+      return 'annule le premier coup reçu à chaque combat';
+    case 'toxic':
+      return 'tue tout monstre à qui il inflige au moins 1 dégât';
+    case 'pierce':
+      return "ignore l'armure du monstre qu'il blesse";
+    case 'rooted':
+      return "ne peut pas être déplacé par l'effet d'une carte";
+    case 'flying':
+      return 'peut changer de zone pendant ta phase principale';
+    case 'merchant':
+      return `se vend ${KEYWORD_MERCHANT_BONUS} pièce de plus`;
+  }
+}
+
 // Texte affiché après le nom de l'habileté sur la face de la carte, ex. « Portée : … ».
-// `golden` ne change que Portée (seule habileté chiffrée à profiter de la dorure).
+// `golden` ne change que Portée (seule habileté chiffrée à profiter de la dorure), en V1.
 export function describeKeywordEffect(keyword: Keyword, golden = false): string {
+  if (isV2Active()) return describeKeywordEffectV2(keyword);
   switch (keyword) {
     case 'reach': {
       const damage = KEYWORD_REACH_DAMAGE + (golden ? KEYWORD_REACH_GOLDEN_BONUS : 0);
@@ -149,6 +249,11 @@ export function describeKeywordEffect(keyword: Keyword, golden = false): string 
       return 'reporte ses dégâts en excès sur le défenseur suivant';
     case 'toxic':
       return 'tue tout monstre à qui il inflige le moindre dégât';
+    // Habiletés V2 : un catalogue V1 ne peut pas les porter (`catalogSchema.ts`).
+    case 'pierce':
+    case 'rooted':
+    case 'flying':
+      return describeKeywordEffectV2(keyword);
   }
 }
 
@@ -171,9 +276,17 @@ export function describeKeywordTrigger(keyword: Keyword): string {
     case 'merchant':
       return `${KEYWORD_LABELS.merchant} : +${KEYWORD_MERCHANT_BONUS} pièce à la vente`;
     case 'fury':
-      return `${KEYWORD_LABELS.fury} : l'excédent passe au défenseur suivant`;
+      return isV2Active()
+        ? `${KEYWORD_LABELS.fury} : frappe une seconde fois`
+        : `${KEYWORD_LABELS.fury} : l'excédent passe au défenseur suivant`;
     case 'toxic':
       return `${KEYWORD_LABELS.toxic} : la cible touchée est tuée`;
+    case 'pierce':
+      return `${KEYWORD_LABELS.pierce} : l'armure est ignorée`;
+    case 'rooted':
+      return `${KEYWORD_LABELS.rooted} : il ne bouge pas`;
+    case 'flying':
+      return `${KEYWORD_LABELS.flying} : il change de zone`;
   }
 }
 
@@ -205,9 +318,14 @@ export function scaleEnchantmentEffect(effect: EnchantmentEffect, multiplier: nu
   if (multiplier === 1) return effect;
   switch (effect.type) {
     case 'coinsPerTurn':
+    case 'sellBonus':
       return { ...effect, amount: effect.amount * multiplier };
+    case 'marketSize':
+      return { ...effect, count: effect.count * multiplier };
     case 'monsterBuff':
       return { ...effect, attack: effect.attack * multiplier, defense: effect.defense * multiplier };
+    case 'healBoost':
+      return effect; // pas de valeur : le doublement des soins se cumule par enchantement (rulesV2.ts)
   }
 }
 
@@ -216,6 +334,12 @@ export function describeEffect(effect: EnchantmentEffect): string {
   switch (effect.type) {
     case 'coinsPerTurn':
       return `+${effect.amount} ${pluralize(effect.amount, 'pièce')} au début de ton tour`;
+    case 'healBoost':
+      return 'les soins reçus par ton héros sont doublés';
+    case 'marketSize':
+      return `+${effect.count} ${pluralize(effect.count, 'carte')} à chacun de tes marchés`;
+    case 'sellBonus':
+      return `tes ventes rapportent ${effect.amount} ${pluralize(effect.amount, 'pièce')} de plus`;
     case 'monsterBuff': {
       const stats =
         effect.attack > 0 && effect.defense > 0
@@ -244,6 +368,19 @@ export function scaleAbilityEffect(effect: AbilityEffect, multiplier: number): A
       return { ...effect, count: effect.count * multiplier };
     case 'buff':
       return { ...effect, attack: effect.attack * multiplier, defense: effect.defense * multiplier };
+    case 'summonToken':
+      return { ...effect, attack: effect.attack * multiplier, defense: effect.defense * multiplier };
+    // Effets sans valeur : un monstre doré les résout tels quels.
+    case 'grantShield':
+    case 'burn':
+    case 'freeze':
+    case 'moveZone':
+    case 'moveSlot':
+    case 'switchZone':
+    case 'extinguish':
+    case 'root':
+    case 'silence':
+      return effect;
     default:
       return { ...effect, amount: effect.amount * multiplier };
   }
@@ -300,6 +437,34 @@ function describeAbilityEffect(effect: AbilityEffect): string {
       return `subit ${effect.amount} ${pluralize(effect.amount, 'dégât')} de moins`;
     case 'extraMarketCard':
       return `+${effect.count} ${pluralize(effect.count, 'carte')} au marché au prochain tour`;
+    case 'armorChosen':
+      return `+${effect.amount} armure à un de tes monstres`;
+    case 'armorZone':
+      return `+${effect.amount} armure aux monstres de sa zone`;
+    case 'armorBoard':
+      return `+${effect.amount} armure à tous tes monstres`;
+    case 'armorSelf':
+      return `gagne ${effect.amount} armure`;
+    case 'grantShield':
+      return 'une protection à un de tes monstres';
+    case 'summonToken':
+      return `invoque une créature ${effect.attack}/${effect.defense}`;
+    case 'burn':
+      return 'brûle un monstre adverse';
+    case 'freeze':
+      return 'gèle un monstre adverse';
+    case 'moveZone':
+      return "change un monstre de zone";
+    case 'moveSlot':
+      return 'déplace un monstre dans sa zone';
+    case 'switchZone':
+      return 'change de zone';
+    case 'extinguish':
+      return "éteint la brûlure d'un de tes monstres";
+    case 'root':
+      return "enracine un monstre jusqu'à ton prochain tour";
+    case 'silence':
+      return 'réduit au silence un monstre adverse';
   }
 }
 
@@ -312,12 +477,23 @@ export function describeAbility(ability: CardAbility): string {
 // E12 (+ combat réservé aux monstres) : `bonusDamage` seulement sur Attaque, `shield`
 // seulement sur Défend ; `combatStart`/`attack`/`defend`/`ko` interdits sur un enchantement ; `amount`/
 // `count` doivent valoir au moins 1 (E16).
-export function isAbilityAllowed(def: CardDef, ability: CardAbility): boolean {
+//
+// V2 (`version`, par défaut celle du catalogue actif) : seuls les effets de la liste V2
+// existent ; un effet à cible choisie ne se déclenche que sur Invoqué ou Vendu (le joueur doit
+// pouvoir choisir) ; un effet qui part de la place de la carte demande un monstre, et pas Vendu.
+export function isAbilityAllowed(
+  def: CardDef,
+  ability: CardAbility,
+  version: GameVersion = activeGameVersion(),
+): boolean {
   const { trigger, effect } = ability;
+  if (!abilityEffectTypesFor(version).includes(effect.type)) return false;
   if (effect.type === 'bonusDamage' && trigger !== 'attack') return false;
   if (effect.type === 'shield' && trigger !== 'defend') return false;
   const combatTriggers: Trigger[] = ['combatStart', 'attack', 'defend', 'ko'];
   if (def.kind === 'enchantment' && combatTriggers.includes(trigger)) return false;
+  if (needsChosenTarget(effect.type) && trigger !== 'summon' && trigger !== 'sold') return false;
+  if (isPositionalEffect(effect.type) && (def.kind !== 'monster' || trigger === 'sold')) return false;
 
   switch (effect.type) {
     case 'gainCoins':
@@ -325,13 +501,36 @@ export function isAbilityAllowed(def: CardDef, ability: CardAbility): boolean {
     case 'healSelf':
     case 'bonusDamage':
     case 'shield':
+    case 'armorChosen':
+    case 'armorZone':
+    case 'armorBoard':
+    case 'armorSelf':
       return effect.amount >= 1;
     case 'drawCard':
     case 'extraMarketCard':
       return effect.count >= 1;
+    case 'summonToken':
+      return effect.attack >= 0 && effect.defense >= 1;
     case 'buff':
+    case 'grantShield':
+    case 'burn':
+    case 'freeze':
+    case 'moveZone':
+    case 'moveSlot':
+    case 'switchZone':
+    case 'extinguish':
+    case 'root':
+    case 'silence':
       return true;
   }
+}
+
+// V2 : effets d'enchantement admis par la version.
+export function isEnchantmentEffectAllowed(
+  effect: EnchantmentEffect,
+  version: GameVersion = activeGameVersion(),
+): boolean {
+  return enchantmentEffectTypesFor(version).includes(effect.type);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -374,12 +573,30 @@ export function abilityPower(effect: AbilityEffect['type'], weights?: PowerWeigh
   return Math.round(abilityWeight(effect, weights) * abilityCoefficient(effect, weights));
 }
 
+// Effet d'enchantement (V2, demande utilisateur) : même principe qu'une capacité, une valeur
+// par type d'effet et un coefficient. Ne compte que pour un catalogue V2 : la puissance des
+// enchantements V1 reste celle d'avant.
+export const POWER_PER_ENCHANTMENT = 1;
+
+export function enchantmentWeight(effect: EnchantmentEffect['type'], weights?: PowerWeights): number {
+  return weights?.enchantments?.[effect] ?? POWER_PER_ENCHANTMENT;
+}
+
+export function enchantmentCoefficient(effect: EnchantmentEffect['type'], weights?: PowerWeights): number {
+  return weights?.enchantmentCoefficients?.[effect] ?? POWER_COEFFICIENT;
+}
+
+export function enchantmentPower(effect: EnchantmentEffect['type'], weights?: PowerWeights): number {
+  return Math.round(enchantmentWeight(effect, weights) * enchantmentCoefficient(effect, weights));
+}
+
 export interface CardPower {
   total: number;
   stats: number; // attaque + défense (0 pour un enchantement, qui ne combat pas)
   keywords: number;
   abilities: number;
   aura: number;
+  enchantment: number; // effet d'un enchantement, en V2 seulement (0 sinon)
 }
 
 // `weights` par défaut : celui du catalogue actif. Le panneau d'administration installe son
@@ -396,5 +613,6 @@ export function cardPower(def: CardDef, weights: PowerWeights | undefined = acti
     0,
   );
   const aura = isMonster(def) && def.aura ? POWER_PER_AURA : 0;
-  return { total: stats + keywords + abilities + aura, stats, keywords, abilities, aura };
+  const enchantment = !isMonster(def) && isV2Active() ? enchantmentPower(def.effect.type, weights) : 0;
+  return { total: stats + keywords + abilities + aura + enchantment, stats, keywords, abilities, aura, enchantment };
 }

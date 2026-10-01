@@ -1,10 +1,8 @@
 import {
   ELEMENT_LABELS,
+  isAbilityAllowed,
   isMonster,
   KEYWORD_LABELS,
-  POWER_PER_ABILITY,
-  POWER_PER_AURA,
-  POWER_PER_KEYWORD,
   RARITY_LABELS,
   TRIGGER_LABELS,
   cardPower,
@@ -12,15 +10,15 @@ import {
   describeKeywordEffect,
 } from '../../game/cards';
 import {
-  ABILITY_EFFECT_TYPES,
   CARD_ELEMENTS,
   CARD_RARITIES,
-  ENCHANTMENT_EFFECT_TYPES,
-  KEYWORDS,
   MAX_COPIES,
   MAX_COST,
   MAX_STAT,
   TRIGGERS,
+  abilityEffectTypesFor,
+  enchantmentEffectTypesFor,
+  keywordsFor,
   parseCardDef,
 } from '../../game/catalogSchema';
 import type {
@@ -34,13 +32,15 @@ import type {
   MonsterDef,
   Trigger,
 } from '../../game/types';
+import type { GameVersion } from '../../game/versions';
 import CardPreview from './CardPreview';
 
 // Formulaire d'une carte. Il est piloté par les types de `game/types.ts` : chaque liste
-// déroulante est bâtie sur les constantes de `catalogSchema.ts`, donc ajouter un effet ou une
-// habileté au jeu le fait apparaître ici sans toucher à ce fichier.
+// déroulante est bâtie sur les listes de `vocabulary.ts` de la version éditée, donc ajouter un
+// effet ou une habileté au jeu le fait apparaître ici sans toucher à ce fichier.
 
-// Exporté : l'onglet « Puissances » nomme les mêmes effets.
+// Exporté : l'onglet « Puissances » nomme les mêmes effets. Les libellés V2 reprennent ceux de
+// modifsV2.md.
 export const ABILITY_EFFECT_LABELS: Record<AbilityEffect['type'], string> = {
   gainCoins: 'Gagne des pièces',
   damageOpponent: 'Inflige des dégâts au héros adverse',
@@ -50,11 +50,28 @@ export const ABILITY_EFFECT_LABELS: Record<AbilityEffect['type'], string> = {
   bonusDamage: 'Dégâts bonus sur ce coup',
   shield: 'Réduit les dégâts reçus',
   extraMarketCard: 'Cartes en plus au prochain marché',
+  armorChosen: 'Donne de l’armure au monstre choisi',
+  armorZone: 'Donne de l’armure aux monstres de sa zone',
+  armorBoard: 'Donne de l’armure à tous tes monstres',
+  armorSelf: 'Gagne de l’armure',
+  grantShield: 'Ajoute une protection au monstre choisi',
+  summonToken: 'Invoque une créature',
+  burn: 'Brûle le monstre ciblé',
+  freeze: 'Gèle le monstre ciblé',
+  moveZone: 'Change le monstre ciblé de zone',
+  moveSlot: 'Change le monstre ciblé de position',
+  switchZone: 'Change de zone',
+  extinguish: 'Éteint la brûlure du monstre choisi',
+  root: 'Enracine le monstre ciblé',
+  silence: 'Réduit au silence le monstre ciblé',
 };
 
-const ENCHANTMENT_EFFECT_LABELS: Record<EnchantmentEffect['type'], string> = {
+export const ENCHANTMENT_EFFECT_LABELS: Record<EnchantmentEffect['type'], string> = {
   monsterBuff: 'Bonus à tes monstres',
   coinsPerTurn: 'Pièces à chaque tour',
+  healBoost: 'Double les soins reçus',
+  marketSize: 'Cartes en plus à chaque marché',
+  sellBonus: 'Pièces en plus à la vente',
 };
 
 const BUFF_TARGET_LABELS = { self: 'Lui-même', otherAllies: 'Tes autres monstres' } as const;
@@ -69,15 +86,35 @@ function freshAbilityEffect(type: AbilityEffect['type']): AbilityEffect {
       return { type, count: 1 };
     case 'buff':
       return { type, target: 'self', attack: 1, defense: 0 };
+    case 'summonToken':
+      return { type, attack: 1, defense: 1 };
+    case 'grantShield':
+    case 'burn':
+    case 'freeze':
+    case 'moveZone':
+    case 'moveSlot':
+    case 'switchZone':
+    case 'extinguish':
+    case 'root':
+    case 'silence':
+      return { type };
     default:
       return { type, amount: 1 };
   }
 }
 
 function freshEnchantmentEffect(type: EnchantmentEffect['type']): EnchantmentEffect {
-  return type === 'coinsPerTurn'
-    ? { type, amount: 1 }
-    : { type, zone: 'all', attack: 1, defense: 0 };
+  switch (type) {
+    case 'coinsPerTurn':
+    case 'sellBonus':
+      return { type, amount: 1 };
+    case 'marketSize':
+      return { type, count: 1 };
+    case 'healBoost':
+      return { type };
+    case 'monsterBuff':
+      return { type, zone: 'all', attack: 1, defense: 0 };
+  }
 }
 
 export function freshCard(kind: CardDef['kind'], id: string): CardDef {
@@ -120,28 +157,34 @@ function NumberField({ label, value, min, max, onChange }: NumberFieldProps) {
 
 interface AbilityRowProps {
   ability: CardAbility;
-  kind: CardDef['kind'];
+  def: CardDef;
+  version: GameVersion;
   onChange: (next: CardAbility) => void;
   onRemove: () => void;
 }
 
-function AbilityRow({ ability, kind, onChange, onRemove }: AbilityRowProps) {
+// Effets permis pour ce déclencheur sur cette carte, selon les règles de la version
+// (`isAbilityAllowed` : bonus/bouclier sur leur déclencheur en V1, cible choisie seulement sur
+// Invoqué / Vendu en V2…).
+function allowedEffects(def: CardDef, trigger: Trigger, version: GameVersion): AbilityEffect['type'][] {
+  return abilityEffectTypesFor(version).filter((type) =>
+    isAbilityAllowed(def, { trigger, effect: freshAbilityEffect(type) }, version),
+  );
+}
+
+function AbilityRow({ ability, def, version, onChange, onRemove }: AbilityRowProps) {
   const { trigger, effect } = ability;
-  // E12 : un enchantement ne combat pas, ses capacités de combat ne se déclencheraient jamais.
-  const triggers = kind === 'enchantment' ? TRIGGERS.filter((t) => t === 'summon' || t === 'sold') : TRIGGERS;
-  // `bonusDamage` et `shield` ne sont lus que pendant un échange, sur leur déclencheur propre.
-  const effectTypes = ABILITY_EFFECT_TYPES.filter((type) => {
-    if (type === 'bonusDamage') return trigger === 'attack';
-    if (type === 'shield') return trigger === 'defend';
-    return true;
-  });
+  // Un déclencheur n'est proposé que s'il admet au moins un effet sur cette carte (E12 : un
+  // enchantement ne combat pas, ses capacités de combat ne se déclencheraient jamais).
+  const triggers = TRIGGERS.filter((t) => allowedEffects(def, t, version).length > 0);
+  const effectTypes = allowedEffects(def, trigger, version);
 
   function setTrigger(next: Trigger) {
     // Changer de déclencheur peut rendre l'effet courant interdit : on le ramène au premier
     // effet encore permis plutôt que de laisser une capacité invalide.
-    const stillAllowed =
-      (effect.type !== 'bonusDamage' || next === 'attack') && (effect.type !== 'shield' || next === 'defend');
-    onChange({ ...ability, trigger: next, effect: stillAllowed ? effect : freshAbilityEffect('gainCoins') });
+    const allowed = allowedEffects(def, next, version);
+    const stillAllowed = allowed.includes(effect.type);
+    onChange({ ...ability, trigger: next, effect: stillAllowed ? effect : freshAbilityEffect(allowed[0]) });
   }
 
   return (
@@ -198,6 +241,24 @@ function AbilityRow({ ability, kind, onChange, onRemove }: AbilityRowProps) {
             onChange={(count) => onChange({ ...ability, effect: { ...effect, count } })}
           />
         )}
+        {effect.type === 'summonToken' && (
+          <>
+            <NumberField
+              label="Attaque"
+              value={effect.attack}
+              min={0}
+              max={MAX_STAT}
+              onChange={(attack) => onChange({ ...ability, effect: { ...effect, attack } })}
+            />
+            <NumberField
+              label="Défense"
+              value={effect.defense}
+              min={1}
+              max={MAX_STAT}
+              onChange={(defense) => onChange({ ...ability, effect: { ...effect, defense } })}
+            />
+          </>
+        )}
         {effect.type === 'buff' && (
           <>
             <label className="admin-field">
@@ -251,25 +312,20 @@ function AbilityRow({ ability, kind, onChange, onRemove }: AbilityRowProps) {
 
 // Puissance de la carte en cours d'édition, avec le détail du calcul. Purement indicatif :
 // c'est un repère d'équilibrage pour l'admin, rien n'est stocké et aucune règle ne le lit
-// (le barème vit dans `cards.ts`, `cardPower`).
+// (le barème vit dans `cards.ts`, `cardPower`, réglable dans l'onglet « Puissances »).
 function PowerSummary({ def }: { def: CardDef }) {
   const power = cardPower(def);
   const parts: string[] = [];
   if (isMonster(def)) parts.push(`${def.attack} attaque + ${def.defense} défense`);
-  if (power.keywords > 0) {
-    const count = power.keywords / POWER_PER_KEYWORD;
-    parts.push(`${count} ${count > 1 ? 'habiletés' : 'habileté'} × ${POWER_PER_KEYWORD}`);
-  }
-  if (power.abilities > 0) {
-    const count = power.abilities / POWER_PER_ABILITY;
-    parts.push(`${count} ${count > 1 ? 'capacités' : 'capacité'} × ${POWER_PER_ABILITY}`);
-  }
-  if (power.aura > 0) parts.push(`aura × ${POWER_PER_AURA}`);
+  if (power.keywords > 0) parts.push(`habiletés ${power.keywords}`);
+  if (power.abilities > 0) parts.push(`capacités ${power.abilities}`);
+  if (power.aura > 0) parts.push(`aura ${power.aura}`);
+  if (power.enchantment > 0) parts.push(`effet ${power.enchantment}`);
 
   return (
     <div
       className="admin-power"
-      title="Attaque + défense, 2 points par habileté, 1 point par capacité ou aura. Indicatif : aucune règle ne s’en sert."
+      title="Attaque + défense, plus la valeur de chaque habileté, capacité, aura ou effet d’enchantement (onglet Puissances). Indicatif : aucune règle ne s’en sert."
     >
       <span className="admin-power-label">Puissance</span>
       <span className="admin-power-value">{power.total}</span>
@@ -279,6 +335,7 @@ function PowerSummary({ def }: { def: CardDef }) {
 }
 
 interface CardEditorProps {
+  version: GameVersion;
   def: CardDef;
   copies: number;
   onChange: (next: CardDef) => void;
@@ -286,8 +343,8 @@ interface CardEditorProps {
   onRemove: () => void;
 }
 
-function CardEditor({ def, copies, onChange, onCopiesChange, onRemove }: CardEditorProps) {
-  const parsed = parseCardDef(def, def.name || 'carte');
+function CardEditor({ version, def, copies, onChange, onCopiesChange, onRemove }: CardEditorProps) {
+  const parsed = parseCardDef(def, def.name || 'carte', version);
   const abilities = def.abilities ?? [];
 
   function setAbilities(next: CardAbility[]) {
@@ -413,7 +470,7 @@ function CardEditor({ def, copies, onChange, onCopiesChange, onRemove }: CardEdi
             <fieldset className="admin-fieldset">
               <legend>Habiletés</legend>
               <div className="admin-keywords">
-                {KEYWORDS.map((keyword) => (
+                {keywordsFor(version).map((keyword) => (
                   <label key={keyword} className="admin-checkbox" title={describeKeywordEffect(keyword)}>
                     <input
                       type="checkbox"
@@ -426,6 +483,8 @@ function CardEditor({ def, copies, onChange, onCopiesChange, onRemove }: CardEdi
               </div>
             </fieldset>
 
+            {/* Les auras n'existent plus en V2 (modifsV2.md). */}
+            {version === 'v1' && (
             <fieldset className="admin-fieldset">
               <legend>Aura</legend>
               <label className="admin-checkbox">
@@ -451,6 +510,7 @@ function CardEditor({ def, copies, onChange, onCopiesChange, onRemove }: CardEdi
                 </div>
               )}
             </fieldset>
+            )}
           </>
         )}
 
@@ -466,7 +526,7 @@ function CardEditor({ def, copies, onChange, onCopiesChange, onRemove }: CardEdi
                     onChange({ ...def, effect: freshEnchantmentEffect(e.target.value as EnchantmentEffect['type']) })
                   }
                 >
-                  {ENCHANTMENT_EFFECT_TYPES.map((type) => (
+                  {enchantmentEffectTypesFor(version).map((type) => (
                     <option key={type} value={type}>
                       {ENCHANTMENT_EFFECT_LABELS[type]}
                     </option>
@@ -481,6 +541,26 @@ function CardEditor({ def, copies, onChange, onCopiesChange, onRemove }: CardEdi
                   min={1}
                   max={MAX_STAT}
                   onChange={(amount) => onChange({ ...def, effect: { type: 'coinsPerTurn', amount } })}
+                />
+              )}
+
+              {def.effect.type === 'sellBonus' && (
+                <NumberField
+                  label="Pièces"
+                  value={def.effect.amount}
+                  min={1}
+                  max={MAX_STAT}
+                  onChange={(amount) => onChange({ ...def, effect: { type: 'sellBonus', amount } })}
+                />
+              )}
+
+              {def.effect.type === 'marketSize' && (
+                <NumberField
+                  label="Cartes"
+                  value={def.effect.count}
+                  min={1}
+                  max={MAX_STAT}
+                  onChange={(count) => onChange({ ...def, effect: { type: 'marketSize', count } })}
                 />
               )}
 
@@ -532,7 +612,8 @@ function CardEditor({ def, copies, onChange, onCopiesChange, onRemove }: CardEdi
               // n'est ni triée ni réordonnée.
               key={i}
               ability={ability}
-              kind={def.kind}
+              def={def}
+              version={version}
               onChange={(next) => setAbilities(abilities.map((a, j) => (j === i ? next : a)))}
               onRemove={() => setAbilities(abilities.filter((_, j) => j !== i))}
             />

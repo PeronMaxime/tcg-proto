@@ -7,7 +7,11 @@ export type Phase = 'start' | 'main';
 
 export type EnchantmentEffect =
   | { type: 'monsterBuff'; zone: MonsterZone | 'all'; attack: number; defense: number }
-  | { type: 'coinsPerTurn'; amount: number };
+  | { type: 'coinsPerTurn'; amount: number }
+  // V2 uniquement (`game/versions.ts`) : refusés par la validation d'un catalogue V1.
+  | { type: 'healBoost' } // double les soins reçus par le héros du propriétaire
+  | { type: 'marketSize'; count: number } // cartes en plus à CHAQUE marché, tant qu'il est posé
+  | { type: 'sellBonus'; amount: number }; // pièces en plus à chaque vente
 
 // Déclencheurs de capacité (E1-E17, PLAN-effets-triggers.md) : `summon`/`sold` hors combat,
 // `combatStart` une fois au début du combat, avant le premier coup (demande utilisateur),
@@ -24,7 +28,24 @@ export type AbilityEffect =
   | { type: 'buff'; target: 'self' | 'otherAllies'; attack: number; defense: number } // E9
   | { type: 'bonusDamage'; amount: number } // Attaque uniquement (E12)
   | { type: 'shield'; amount: number } // Défend uniquement (E12)
-  | { type: 'extraMarketCard'; count: number }; // cartes en plus au marché du prochain tour du propriétaire
+  | { type: 'extraMarketCard'; count: number } // cartes en plus au marché du prochain tour du propriétaire
+  // --- V2 uniquement (modifsV2.md) : refusés par la validation d'un catalogue V1. ---
+  // « Monstre choisi » = désigné par le joueur, donc seulement sur Invoqué / Vendu
+  // (`isAbilityAllowed`) : la résolution s'interrompt sur `GameState.pendingChoice`.
+  | { type: 'armorChosen'; amount: number } // armure à un de tes monstres, choisi
+  | { type: 'armorZone'; amount: number } // armure à tous les monstres de la zone de la carte
+  | { type: 'armorBoard'; amount: number } // armure à tous les monstres de son propriétaire
+  | { type: 'armorSelf'; amount: number } // la carte elle-même gagne de l'armure
+  | { type: 'grantShield' } // protection à usage unique sur un de tes monstres, choisi
+  | { type: 'summonToken'; attack: number; defense: number } // créature X/Y à côté de la carte
+  | { type: 'burn' } // brûlure (cumulable) sur un monstre adverse, choisi
+  | { type: 'freeze' } // gel sur un monstre adverse, choisi
+  | { type: 'extinguish' } // éteint la brûlure d'un de tes monstres, choisi
+  | { type: 'root' } // enracine un monstre choisi (des deux camps) jusqu'à ton prochain tour
+  | { type: 'silence' } // réduit au silence un monstre adverse, choisi
+  | { type: 'moveZone' } // un monstre choisi (des deux camps) change de zone
+  | { type: 'moveSlot' } // un monstre choisi (des deux camps) change de place dans sa zone
+  | { type: 'switchZone' }; // la carte elle-même change de zone
 
 export interface CardAbility {
   trigger: Trigger;
@@ -47,7 +68,21 @@ export type CardElement = 'fire' | 'water' | 'air' | 'earth';
 // - `merchant` Négociant : rapporte une pièce de plus à la vente ;
 // - `fury`     Furie : les dégâts en excès sur un défenseur tué passent au suivant ;
 // - `toxic`    Toxic : le moindre dégât infligé tue son opposant.
-export type Keyword = 'reach' | 'taunt' | 'protection' | 'merchant' | 'fury' | 'toxic';
+// V2 (modifsV2.md) : Portée, Furie, Provocation, Protection et Toxic y changent en partie de
+// règle (voir `rulesV2.ts`), et trois habiletés n'existent qu'en V2 :
+// - `pierce`   Percée : ignore l'armure adverse ;
+// - `rooted`   Enraciné : ne peut pas être déplacé par l'effet d'une carte ;
+// - `flying`   Vol : son propriétaire peut le changer de zone pendant sa phase principale.
+export type Keyword =
+  | 'reach'
+  | 'taunt'
+  | 'protection'
+  | 'merchant'
+  | 'fury'
+  | 'toxic'
+  | 'pierce'
+  | 'rooted'
+  | 'flying';
 
 // Rareté d'une carte (demande utilisateur) : purement indicative pour l'instant — elle
 // n'entre dans aucune règle, elle se lit sur la face (gemme et bandeau de type) et sert à
@@ -101,6 +136,10 @@ export interface PowerWeights {
   // le double pour un effet qui pèse plus que son barème ne le dit. Absent (ou barème
   // d'avant cette fonctionnalité) = `POWER_COEFFICIENT`, c'est-à-dire 1 : neutre.
   abilityCoefficients?: Partial<Record<AbilityEffect['type'], number>>;
+  // Valeur d'un effet d'enchantement (V2, demande utilisateur), avec son coefficient comme pour
+  // une capacité. Absent = `POWER_PER_ENCHANTMENT` et coefficient neutre.
+  enchantments?: Partial<Record<EnchantmentEffect['type'], number>>;
+  enchantmentCoefficients?: Partial<Record<EnchantmentEffect['type'], number>>;
 }
 
 // Catalogue complet : les cartes existantes et la composition du deck de départ. Éditable
@@ -118,6 +157,10 @@ export interface Catalog {
   // Barème de puissance, éditable depuis l'admin. Absent sur un catalogue écrit avant cette
   // fonctionnalité : à lire via `cardPower`, qui retombe sur les valeurs fixes.
   powerWeights?: PowerWeights;
+  // Version du jeu dont ce catalogue applique les règles. Écrite seulement pour la V2 (absent =
+  // V1, ce qui couvre tous les catalogues écrits avant les versions) : c'est par elle que
+  // `rules.ts` sait quelles règles appliquer, le catalogue étant figé dans la room.
+  gameVersion?: GameVersion;
 }
 
 export interface CardInstance {
@@ -129,6 +172,23 @@ export interface CardInstance {
   // Buff permanent cumulé via une capacité (E9), disparaît si la carte quitte le board.
   // Absent tant qu'aucun buff n'a été reçu ; jamais écrit `{ attack: 0, defense: 0 }`.
   buff?: { attack: number; defense: number };
+  // --- V2 uniquement (`rulesV2.ts`), tous absents tant qu'ils ne servent pas. Ils disparaissent
+  // quand la carte quitte le board (vente, retour au deck). ---
+  armor?: number; // armure restante : absorbe les dégâts avant la défense, ne se régénère pas
+  shields?: number; // protections à usage unique reçues par effet (« Ajoute une protection »)
+  frozen?: true; // gelé : ne participe pas à son prochain combat
+  // Brûlure cumulable (demande utilisateur) : nombre de brûlures reçues = défense perdue
+  // définitivement à la fin de chacun de ses combats. Une extinction (effet `extinguish`) la
+  // retire, pas la défense déjà perdue.
+  burn?: number;
+  // Silence : ses capacités ne se déclenchent plus jusqu'à la fin de son prochain combat (ses
+  // habiletés, elles, restent actives).
+  silenced?: true;
+  // Enraciné (état, distinct de l'habileté) : ni effet ni son joueur ne peuvent le changer de
+  // zone ou de position, jusqu'au début du prochain tour du joueur `rootedBy`, qui l'a enraciné.
+  rootedBy?: Seat;
+  wounds?: number; // défense perdue définitivement (brûlure)
+  token?: true; // créature invoquée par un effet : disparaît au lieu de retourner au deck
 }
 
 export type Slot = CardInstance | null;
@@ -157,6 +217,10 @@ export interface PlayerState {
   // déplacement par zone et par tour, donc au plus un en attaque et un en défense). Remis à
   // `{ attack: false, defense: false }` au début de chaque tour de CE joueur (`beginTurn`).
   movesUsed: Record<MonsterZone, boolean>;
+  // V2 : capacité nominale des zones. Un effet peut faire dépasser une zone (modifsV2.md), le
+  // tableau `zones[zone]` grandit alors au-delà : sa longueur n'est plus la capacité. Absent
+  // (V1, états plus anciens) = la longueur du tableau, qui ne dépasse jamais.
+  zoneSizes?: Record<Zone, number>;
 }
 
 export type Action =
@@ -171,7 +235,12 @@ export type Action =
   // position une fois déplacée, les cartes entre l'ancienne et la nouvelle se décalent d'un
   // cran. Un seul déplacement par zone et par tour (`PlayerState.movesUsed`) : les cartes
   // décalées ne comptent pas.
-  | { type: 'move'; uid: string; slot: number }
+  // V2 : `zone` présente et différente de celle de la carte = changement de zone, réservé à
+  // un monstre qui a Vol. Absente = même zone, comme en V1.
+  | { type: 'move'; uid: string; slot: number; zone?: MonsterZone }
+  // V2 : réponse au choix de cible en attente (`GameState.pendingChoice`). `uid: null` =
+  // renoncer à l'effet. `slot` : pour `moveSlot`, la nouvelle position du monstre choisi.
+  | { type: 'chooseTarget'; uid: string | null; slot?: number }
   // Relance le marché contre `MARKET_REROLL_COST` pièce (demande utilisateur) : les cartes
   // non verrouillées repartent au fond du deck et le marché est complété depuis le dessus
   // jusqu'à `MARKET_SIZE` cartes, même après un achat. Répétable tant que le joueur paie.
@@ -236,6 +305,24 @@ export interface CombatStep {
   absorbedUids?: string[];
   effects: EffectLog[]; // effets résolus pendant l'échange, dans l'ordre (E5)
   hp: Record<Seat, number>; // PV des deux joueurs après l'échange, effets compris
+  // V2 : zones de monstres des deux joueurs après l'échange (armure, cartes déplacées ou
+  // invoquées pendant le combat). Absent en V1, où le board ne change pas pendant un combat.
+  board?: BoardSnapshot;
+}
+
+// Zones de monstres des deux joueurs à un instant du combat (V2), pour la lecture animée.
+export type BoardSnapshot = Record<Seat, Record<MonsterZone, CardInstance[]>>;
+
+// V2 : effet de capacité en attente d'une cible choisie par le joueur `seat` (effets
+// « monstre choisi », voir `AbilityEffect`). `queue` : les effets suivants de la même carte et
+// du même déclencheur, à résoudre après celui-ci, dans l'ordre (E2).
+export interface PendingChoice {
+  seat: Seat;
+  sourceUid: string;
+  cardId: string;
+  trigger: Trigger;
+  effect: AbilityEffect;
+  queue: AbilityEffect[];
 }
 
 // Dernier événement joué, pour que LES DEUX clients rejouent la même animation.
@@ -257,7 +344,10 @@ export type GameEvent =
       zone: MonsterZone;
       from: number;
       to: number;
+      toZone?: MonsterZone; // V2 Vol : zone d'arrivée, si elle diffère de `zone`
     }
+  // V2 : un choix de cible vient d'être résolu (ou abandonné, `uid: null`).
+  | { id: number; type: 'choice'; seat: Seat; uid: string | null; effects: EffectLog[] }
   // `uid` : la carte en main devenue dorée ; `fusedUids` : les 2 exemplaires absorbés (posés ou en main).
   | { id: number; type: 'fuse'; seat: Seat; uid: string; fusedUids: string[] }
   | { id: number; type: 'sell'; seat: Seat; uid: string; zone: Zone | 'hand'; slot: number; effects: EffectLog[] }
@@ -271,6 +361,11 @@ export type GameEvent =
       // Absents sur un évènement écrit avant cette fonctionnalité (accès via `?? []` / `?? hpBefore`).
       startEffects?: EffectLog[];
       hpAfterStart?: Record<Seat, number>;
+      // V2 : board au début du combat et juste après les effets « Début du combat ».
+      boardBefore?: BoardSnapshot;
+      boardAfterStart?: BoardSnapshot;
+      // V2 : monstres renvoyés au fond du deck par leur brûlure à la fin du combat.
+      burnedOut?: { seat: Seat; uid: string; cardId: string }[];
       stalemate: boolean; // combat nul (E16)
     };
 
@@ -288,6 +383,9 @@ export interface GameState {
   winner: Seat | null;
   eventSeq: number;
   lastEvent: GameEvent | null;
+  // V2 : effet en attente d'une cible choisie par le joueur actif. Tant qu'il est là, seule
+  // l'action `chooseTarget` est permise. Absent = rien en attente.
+  pendingChoice?: PendingChoice;
 }
 
 export interface PlayerInfo {

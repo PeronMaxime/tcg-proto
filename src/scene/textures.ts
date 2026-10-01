@@ -41,6 +41,113 @@ export interface MonsterFaceStats {
   attackTone: StatTone;
   defenseTone: StatTone;
   golden: boolean; // carte dorée (fusion) : cadre et bandeau dorés
+  // V2 : armure restante (écusson d'acier au-dessus de la défense), brûlures cumulées
+  // (flamme sous l'élément), silence et état enraciné (pastilles à gauche). Absents en V1 et
+  // quand il n'y a rien à montrer.
+  armor?: number;
+  burn?: number;
+  silenced?: boolean;
+  rooted?: boolean;
+}
+
+// V2 : écusson d'acier portant l'armure restante du monstre.
+function drawArmorBadge(ctx: CanvasRenderingContext2D, x: number, y: number, armor: number): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x, y - 20);
+  ctx.lineTo(x + 17, y - 13);
+  ctx.lineTo(x + 15, y + 6);
+  ctx.quadraticCurveTo(x + 10, y + 16, x, y + 21);
+  ctx.quadraticCurveTo(x - 10, y + 16, x - 15, y + 6);
+  ctx.lineTo(x - 17, y - 13);
+  ctx.closePath();
+  const gradient = ctx.createLinearGradient(x - 17, y - 20, x + 17, y + 21);
+  gradient.addColorStop(0, '#d9dee6');
+  gradient.addColorStop(1, '#6b7584');
+  ctx.fillStyle = gradient;
+  ctx.fill();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = '#2b313b';
+  ctx.stroke();
+  ctx.restore();
+  outlinedNumber(ctx, armor, x, y, 22, '#ffffff');
+}
+
+// V2 : pastille ronde d'un état, sur fond sombre cerclé de `ring`.
+function drawStateDisc(ctx: CanvasRenderingContext2D, x: number, y: number, ring: string): void {
+  ctx.beginPath();
+  ctx.arc(x, y, 18, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(10, 12, 18, 0.85)';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = ring;
+  ctx.stroke();
+}
+
+// V2 : silence — bulle de parole barrée.
+function drawSilenceBadge(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+  ctx.save();
+  drawStateDisc(ctx, x, y, '#9fc4ff');
+  ctx.fillStyle = '#cfe0ff';
+  ctx.beginPath();
+  ctx.ellipse(x, y - 2, 10, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x - 4, y + 3);
+  ctx.lineTo(x - 7, y + 10);
+  ctx.lineTo(x + 1, y + 4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#ff5c5c';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x - 11, y - 11);
+  ctx.lineTo(x + 11, y + 11);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// V2 : enraciné (état) — racines sous une tige.
+function drawRootBadge(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+  ctx.save();
+  drawStateDisc(ctx, x, y, '#b98a4e');
+  ctx.strokeStyle = '#d9a866';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y - 11);
+  ctx.lineTo(x, y + 2);
+  ctx.moveTo(x, y + 2);
+  ctx.quadraticCurveTo(x - 6, y + 5, x - 9, y + 11);
+  ctx.moveTo(x, y + 2);
+  ctx.quadraticCurveTo(x + 6, y + 5, x + 9, y + 11);
+  ctx.moveTo(x, y + 2);
+  ctx.lineTo(x, y + 12);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// V2 : flamme d'un monstre brûlé, avec le nombre de brûlures cumulées au-delà d'une.
+function drawBurnBadge(ctx: CanvasRenderingContext2D, x: number, y: number, burn = 1): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, 18, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(40, 8, 0, 0.85)';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#ff7a1a';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x, y - 13);
+  ctx.bezierCurveTo(x + 11, y - 3, x + 10, y + 11, x, y + 12);
+  ctx.bezierCurveTo(x - 10, y + 11, x - 11, y - 1, x - 3, y - 6);
+  ctx.bezierCurveTo(x - 3, y - 1, x - 1, y + 1, x + 1, y + 2);
+  ctx.bezierCurveTo(x + 3, y - 4, x + 1, y - 9, x, y - 13);
+  ctx.closePath();
+  ctx.fillStyle = '#ff9a2e';
+  ctx.fill();
+  ctx.restore();
+  if (burn > 1) outlinedNumber(ctx, burn, x + 13, y + 12, 16, '#ffd0a0');
 }
 
 const faceCache = new Map<string, THREE.CanvasTexture>();
@@ -691,7 +798,11 @@ function watchFontLoading(): void {
 export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null): THREE.CanvasTexture {
   const key =
     def.kind === 'monster' && stats
-      ? `${def.id}:${stats.attack}:${stats.defense}:${stats.attackTone}:${stats.defenseTone}:${stats.golden}`
+      ? `${def.id}:${stats.attack}:${stats.defense}:${stats.attackTone}:${stats.defenseTone}:${stats.golden}` +
+        (stats.armor ? `:a${stats.armor}` : '') +
+        (stats.burn ? `:b${stats.burn}` : '') +
+        (stats.silenced ? ':sil' : '') +
+        (stats.rooted ? ':root' : '')
       : stats?.golden
         ? `${def.id}:golden`
         : def.id;
@@ -755,6 +866,10 @@ export function getCardFaceTexture(def: CardDef, stats: MonsterFaceStats | null)
     drawRarityGem(ctx, rarity, w / 2, h - 40);
     drawAttackStat(ctx, 44, h - 40, attack, stats?.attackTone ?? 'base');
     drawDefenseStat(ctx, w - 44, h - 42, defense, stats?.defenseTone ?? 'base');
+    if (stats?.armor) drawArmorBadge(ctx, w - 44, h - 92, stats.armor);
+    if (stats?.burn) drawBurnBadge(ctx, w - 32, 82, stats.burn);
+    if (stats?.silenced) drawSilenceBadge(ctx, 32, 82);
+    if (stats?.rooted) drawRootBadge(ctx, 32, stats.silenced ? 124 : 82);
   });
 
   faceCache.set(key, texture);

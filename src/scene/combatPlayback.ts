@@ -6,7 +6,7 @@
 // PLAN-effets-triggers.md §6.2 : un combat peut maintenant compter plusieurs dizaines de
 // coups (mêlée en cycles, E14) — cadence resserrée par rapport à la v1.
 
-import type { CombatStep, EffectLog, Seat } from '../game/types';
+import type { BoardSnapshot, CombatStep, EffectLog, Seat } from '../game/types';
 
 export const START_DELAY_MS = 400;
 export const STEP_MS = 550;
@@ -53,6 +53,9 @@ export interface CombatDisplay {
   cycle: number; // cycle du dernier coup appliqué (ou du coup en cours)
   phase: 'melee' | 'breakthrough'; // mêlée (E14) ou percée (E15) du coup courant
   complete: boolean; // tous les coups ont déjà leur impact affiché
+  // V2 : zones de monstres à afficher (armure, cartes invoquées ou déplacées pendant le
+  // combat) — celles du dernier coup appliqué. `null` en V1 : le board ne bouge pas.
+  board: BoardSnapshot | null;
 }
 
 export function combatDisplay(
@@ -61,6 +64,8 @@ export function combatDisplay(
   hpBefore: Record<Seat, number>,
   // Effets « Début du combat » et PV juste après eux, affichés dès que `startApplied`.
   start: { effects: EffectLog[]; hp: Record<Seat, number>; applied: boolean } | null = null,
+  // V2 : board au début du combat et juste après les effets « Début du combat ».
+  boards: { before?: BoardSnapshot; afterStart?: BoardSnapshot } = {},
 ): CombatDisplay {
   const defense = new Map<string, number>();
   const ko = new Set<string>();
@@ -91,5 +96,11 @@ export function combatDisplay(
   const cycle = currentStep?.cycle ?? 1;
   const phase: CombatDisplay['phase'] = currentStep?.target.kind === 'player' ? 'breakthrough' : 'melee';
 
-  return { defense, ko, protectionSpent, hp, appliedEffects, cycle, phase, complete: applied >= steps.length };
+  const board =
+    (applied > 0 ? steps[applied - 1].board : undefined) ??
+    (start?.applied ? boards.afterStart : undefined) ??
+    boards.before ??
+    null;
+
+  return { defense, ko, protectionSpent, hp, appliedEffects, cycle, phase, complete: applied >= steps.length, board };
 }

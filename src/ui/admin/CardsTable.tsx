@@ -227,8 +227,12 @@ function CardsTable({ admin }: CardsTableProps) {
   }, [order]);
 
   const columns = useMemo(
-    () => order.map((key) => COLUMNS.find((column) => column.key === key)!),
-    [order],
+    // Les auras n'existent pas en V2 : leur colonne n'y a pas de sens.
+    () =>
+      order
+        .filter((key) => key !== 'aura' || admin.version !== 'v2')
+        .map((key) => COLUMNS.find((column) => column.key === key)!),
+    [order, admin.version],
   );
   const isDefaultOrder = order.every((key, at) => key === DEFAULT_ORDER[at]);
 
