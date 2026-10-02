@@ -2949,6 +2949,11 @@ button {
   white-space: nowrap;
 }
 
+.admin-table .is-centered {
+  text-align: center;
+  white-space: nowrap;
+}
+
 .admin-table tbody tr:hover {
   background: rgb(255 255 255 / 4%);
 }

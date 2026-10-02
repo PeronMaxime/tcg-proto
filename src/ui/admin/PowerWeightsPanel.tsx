@@ -210,7 +210,7 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
               <tr>
                 <th>Pièces</th>
                 {POWER_TARGET_COSTS.map((cost) => (
-                  <th key={cost} className="is-numeric">
+                  <th key={cost} className="is-centered">
                     {cost}
                   </th>
                 ))}
@@ -221,7 +221,7 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
                 <tr key={rarity}>
                   <td>{RARITY_LABELS[rarity]}s</td>
                   {POWER_TARGET_COSTS.map((cost) => (
-                    <td key={cost} className="is-numeric">
+                    <td key={cost} className="is-centered">
                       <input
                         type="number"
                         min={0}
