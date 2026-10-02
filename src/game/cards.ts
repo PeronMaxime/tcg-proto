@@ -12,6 +12,7 @@ import type {
   MonsterDef,
   PowerWeights,
   Trigger,
+  WheelElement,
 } from './types';
 import type { GameVersion } from './versions';
 import {
@@ -94,6 +95,7 @@ const TOKEN_NAMES: Record<CardElement, string> = {
   water: 'Ondine',
   air: 'Zéphyr',
   earth: 'Golemite',
+  neutral: 'Automate',
 };
 
 export function tokenCardId(element: CardElement, attack: number, defense: number): string {
@@ -138,7 +140,8 @@ export function isMonster(def: CardDef): def is MonsterDef {
 // Roue des éléments (demande utilisateur) : chaque élément est efficace contre celui qu'il
 // pointe — eau > feu > air > terre > eau. Deux éléments non adjacents (eau/air, feu/terre)
 // ou identiques sont neutres l'un pour l'autre.
-export const ELEMENT_BEATS: Record<CardElement, CardElement> = {
+// Le neutre n'y figure pas : il n'est efficace contre rien, et rien ne l'est contre lui.
+export const ELEMENT_BEATS: Record<WheelElement, WheelElement> = {
   water: 'fire',
   fire: 'air',
   air: 'earth',
@@ -150,10 +153,11 @@ export const ELEMENT_LABELS: Record<CardElement, string> = {
   water: 'Eau',
   air: 'Air',
   earth: 'Terre',
+  neutral: 'Neutre',
 };
 
 export function isElementEffective(from: CardElement, against: CardElement): boolean {
-  return ELEMENT_BEATS[from] === against;
+  return from !== 'neutral' && ELEMENT_BEATS[from] === against;
 }
 
 // ---------------------------------------------------------------------------------------

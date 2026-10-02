@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { ELEMENT_LABELS, RARITY_LABELS, cardRarity } from '../../game/cards';
-import { CARD_ELEMENTS, CARD_RARITIES } from '../../game/catalogSchema';
+import { CARD_ELEMENTS_V2, CARD_RARITIES, elementsFor } from '../../game/catalogSchema';
 import type { CardElement, CardRarity } from '../../game/types';
 import AdminHeader from './AdminHeader';
 import type { CatalogAdmin } from './useCatalogAdmin';
@@ -23,7 +23,9 @@ function emptyCounts(): Counts {
   const grid = {} as Record<CardElement, Record<CardRarity, number>>;
   const byElement = {} as Record<CardElement, number>;
   const byRarity = {} as Record<CardRarity, number>;
-  for (const element of CARD_ELEMENTS) {
+  // Tous les éléments existants, toutes versions confondues : seuls ceux de la version éditée
+  // sont affichés (`elementsFor`).
+  for (const element of CARD_ELEMENTS_V2) {
     byElement[element] = 0;
     grid[element] = {} as Record<CardRarity, number>;
     for (const rarity of CARD_RARITIES) grid[element][rarity] = 0;
@@ -52,6 +54,7 @@ function CatalogStats({ admin }: CatalogStatsProps) {
   }, [cards]);
 
   if (!admin.draft) return null;
+  const elements = elementsFor(admin.version);
 
   return (
     <div className="admin-panel">
@@ -61,7 +64,7 @@ function CatalogStats({ admin }: CatalogStatsProps) {
         <section>
           <h2>Cartes par élément</h2>
           <div className="admin-stat-cards">
-            {CARD_ELEMENTS.map((element) => (
+            {elements.map((element) => (
               <div key={element} className="admin-stat-card">
                 <span className="admin-stat-label">{ELEMENT_LABELS[element]}</span>
                 <span className="admin-stat-value">{counts.byElement[element]}</span>
@@ -81,7 +84,7 @@ function CatalogStats({ admin }: CatalogStatsProps) {
               élément porte son propre décompte de raretés, ce qui se lit d'un bloc au lieu de
               suivre une ligne du regard. La dernière carte totalise tout le catalogue. */}
           <div className="admin-stat-cards">
-            {CARD_ELEMENTS.map((element) => (
+            {elements.map((element) => (
               <div key={element} className="admin-rarity-card">
                 <div className="admin-rarity-card-head">
                   <span className="admin-stat-label">{ELEMENT_LABELS[element]}</span>

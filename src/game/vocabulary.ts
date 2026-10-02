@@ -10,6 +10,8 @@ import type { AbilityEffect, CardElement, CardRarity, EnchantmentEffect, Keyword
 import type { GameVersion } from './versions';
 
 export const CARD_ELEMENTS = ['fire', 'water', 'air', 'earth'] as const satisfies readonly CardElement[];
+// V2 : le neutre en plus (demande utilisateur), pour les cartes aux effets génériques.
+export const CARD_ELEMENTS_V2 = [...CARD_ELEMENTS, 'neutral'] as const satisfies readonly CardElement[];
 // Raretés, de la plus commune à la plus rare : cet ordre est celui des listes de l'admin.
 export const CARD_RARITIES = [
   'common',
@@ -94,6 +96,10 @@ export const ENCHANTMENT_EFFECT_TYPES_V2 = [
   'sellBonus',
   'coinsPerTurn',
 ] as const satisfies readonly EnchantmentEffect['type'][];
+
+export function elementsFor(version: GameVersion): readonly CardElement[] {
+  return version === 'v2' ? CARD_ELEMENTS_V2 : CARD_ELEMENTS;
+}
 
 export function keywordsFor(version: GameVersion): readonly Keyword[] {
   return version === 'v2' ? KEYWORDS_V2 : KEYWORDS;

@@ -33,6 +33,11 @@ describe('parseCardDef', () => {
     expect(parseCardDef(monster({ element: 'fire', defense: 0 })).ok).toBe(false);
   });
 
+  it("n'accepte l'élément neutre qu'en V2", () => {
+    expect(parseCardDef(monster({ element: 'neutral' }), 'carte', 'v2').ok).toBe(true);
+    expect(parseCardDef(monster({ element: 'neutral' }), 'carte', 'v1').ok).toBe(false);
+  });
+
   it('refuse les valeurs non entières, qui traverseraient les comparaisons de rules.ts', () => {
     expect(parseCardDef(monster({ element: 'fire', attack: 1.5 })).ok).toBe(false);
     expect(parseCardDef(monster({ element: 'fire', cost: Number.NaN })).ok).toBe(false);

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ELEMENT_LABELS, RARITY_LABELS, cardPower, cardRarity, isMonster, powerBalance } from '../../game/cards';
 import { CARD_RARITIES } from '../../game/catalogSchema';
 import type { CardDef, CardElement, CardRarity } from '../../game/types';
+import { elementsFor } from '../../game/vocabulary';
 import { hasCardArt } from '../../scene/cardArt';
 import AdminHeader from './AdminHeader';
 import CardEditor, { freshCard } from './CardEditor';
@@ -115,7 +116,7 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
             </select>
             <select value={elementFilter} onChange={(e) => setElementFilter(e.target.value as ElementFilter)}>
               <option value="all">Tous les éléments</option>
-              {(Object.keys(ELEMENT_LABELS) as CardElement[]).map((element) => (
+              {elementsFor(admin.version).map((element) => (
                 <option key={element} value={element}>
                   {ELEMENT_LABELS[element]}
                 </option>

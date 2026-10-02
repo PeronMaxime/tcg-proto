@@ -57,7 +57,12 @@ export interface CardAbility {
 
 // Élément d'une carte (demande utilisateur) : fixe la couleur de sa face et, en combat, un
 // bonus de dégât contre l'élément qu'il domine (roue `ELEMENT_BEATS` dans cards.ts).
-export type CardElement = 'fire' | 'water' | 'air' | 'earth';
+// `neutral` (V2 uniquement, demande utilisateur) : carte sans élément particulier, aux effets
+// génériques utiles à tous les gameplays. Refusé par la validation d'un catalogue V1 ; hors de
+// la roue des affinités, qui n'existe de toute façon plus en V2.
+export type CardElement = 'fire' | 'water' | 'air' | 'earth' | 'neutral';
+// Éléments de la roue des affinités (V1) : tous sauf le neutre.
+export type WheelElement = Exclude<CardElement, 'neutral'>;
 
 // Habileté (demande utilisateur) : mot-clé porté par certains monstres, qui modifie une
 // règle du jeu au lieu de déclencher un effet ponctuel comme `CardAbility`. Les valeurs

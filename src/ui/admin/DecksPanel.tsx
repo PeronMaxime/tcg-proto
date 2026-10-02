@@ -58,7 +58,7 @@ function DecksPanel({ admin }: DecksPanelProps) {
   }
 
   const size = selected ? deckSize(selected) : 0;
-  const elementCounts = { fire: 0, water: 0, air: 0, earth: 0 };
+  const elementCounts = { fire: 0, water: 0, air: 0, earth: 0, neutral: 0 };
   if (selected) {
     for (const card of catalog.cards) elementCounts[card.element] += selected.counts[card.id] ?? 0;
   }

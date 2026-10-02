@@ -36,6 +36,8 @@ export const theme = {
     water: { light: '#8cc4f0', base: '#3f86cc', badge: '#163f73', icon: '#dff1ff' },
     air: { light: '#dff2ea', base: '#9ccbbd', badge: '#2f6c61', icon: '#f2fffb' },
     earth: { light: '#c9a877', base: '#96723f', badge: '#4a3416', icon: '#f0dcb0' },
+    // Neutre (V2) : gris acier, pour ne rappeler aucun des quatre éléments.
+    neutral: { light: '#d3d8de', base: '#8a94a0', badge: '#3a4049', icon: '#eef1f4' },
   },
   // Raretés (demande utilisateur) : couleurs de la gemme posée sur la face de la carte et du
   // bandeau de type qui porte le nom de la rareté. `light`/`base`/`dark` sont les trois
@@ -63,6 +65,10 @@ export const theme = {
     earth: {
       skyTop: '#fbe3ad', skyBottom: '#c98f4f', sun: '#fff6d8', hills: 'rgba(90, 60, 30, 0.45)',
       ground: '#4e3218', ink: '#24170b', light: '#fbe9c4', accent: '#8fd46a',
+    },
+    neutral: {
+      skyTop: '#eef1f5', skyBottom: '#9aa4b0', sun: '#ffffff', hills: 'rgba(50, 60, 75, 0.35)',
+      ground: '#4a525d', ink: '#1c2027', light: '#f4f6f8', accent: '#e0c27a',
     },
   },
   card: {

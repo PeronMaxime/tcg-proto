@@ -10,7 +10,7 @@ import {
   describeEffect,
   isMonster,
 } from '../../game/cards';
-import { CARD_ELEMENTS, CARD_RARITIES } from '../../game/catalogSchema';
+import { CARD_RARITIES, elementsFor } from '../../game/catalogSchema';
 import type { CardDef, CardElement, CardRarity } from '../../game/types';
 import AdminHeader from './AdminHeader';
 import type { CatalogAdmin } from './useCatalogAdmin';
@@ -308,7 +308,7 @@ function CardsTable({ admin }: CardsTableProps) {
         </select>
         <select value={elementFilter} onChange={(e) => setElementFilter(e.target.value as ElementFilter)}>
           <option value="all">Tous les éléments</option>
-          {CARD_ELEMENTS.map((element) => (
+          {elementsFor(admin.version).map((element) => (
             <option key={element} value={element}>
               {ELEMENT_LABELS[element]}
             </option>

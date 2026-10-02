@@ -1,5 +1,5 @@
 import { ELEMENT_BEATS, ELEMENT_LABELS } from '../game/cards';
-import type { CardElement } from '../game/types';
+import type { WheelElement } from '../game/types';
 import { theme } from '../scene/theme';
 
 // Petite roue des affinités élémentaires (demande utilisateur), affichée à gauche du HUD :
@@ -16,15 +16,15 @@ const ARROW_GAP = 26;
 const LABEL_RADIUS = RADIUS + NODE_RADIUS + 10;
 
 // Icônes dans une grille 24 × 24.
-const ICONS: Record<CardElement, { d: string; stroke?: true }> = {
+const ICONS: Record<WheelElement, { d: string; stroke?: true }> = {
   fire: { d: 'M12 2c1 4 6 6 6 12a6 6 0 0 1-12 0c0-3 2-5 3-7 1 2 2 3 3 3 0-3-1-5 0-8z' },
   water: { d: 'M12 2C9 7 5 11 5 15a7 7 0 0 0 14 0c0-4-4-8-7-13z' },
   earth: { d: 'M2 20L9 7l4 6 3-4 6 11z' },
   air: { d: 'M3 9h11a3 3 0 1 0-3-3M3 13h16M3 17h9a3 3 0 1 1-3 3', stroke: true },
 };
 
-function wheelOrder(): CardElement[] {
-  const order: CardElement[] = ['water'];
+function wheelOrder(): WheelElement[] {
+  const order: WheelElement[] = ['water'];
   while (order.length < Object.keys(ELEMENT_BEATS).length) {
     order.push(ELEMENT_BEATS[order[order.length - 1]]);
   }

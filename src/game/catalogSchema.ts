@@ -29,6 +29,7 @@ import {
   ABILITY_EFFECT_TYPES,
   ABILITY_EFFECT_TYPES_V2,
   CARD_ELEMENTS,
+  CARD_ELEMENTS_V2,
   CARD_RARITIES,
   ENCHANTMENT_EFFECT_TYPES,
   ENCHANTMENT_EFFECT_TYPES_V2,
@@ -36,6 +37,7 @@ import {
   KEYWORDS_V2,
   TRIGGERS,
   abilityEffectTypesFor,
+  elementsFor,
   enchantmentEffectTypesFor,
   keywordsFor,
 } from './vocabulary';
@@ -46,6 +48,7 @@ export {
   ABILITY_EFFECT_TYPES,
   ABILITY_EFFECT_TYPES_V2,
   CARD_ELEMENTS,
+  CARD_ELEMENTS_V2,
   CARD_RARITIES,
   ENCHANTMENT_EFFECT_TYPES,
   ENCHANTMENT_EFFECT_TYPES_V2,
@@ -53,6 +56,7 @@ export {
   KEYWORDS_V2,
   TRIGGERS,
   abilityEffectTypesFor,
+  elementsFor,
   enchantmentEffectTypesFor,
   keywordsFor,
 };
@@ -283,7 +287,7 @@ export function parseCardDef(raw: unknown, path = 'carte', version: GameVersion 
   }
   const name = checkName(raw.name, `${path}.name`, errors);
   const cost = checkInt(raw.cost, `${path}.cost`, 0, MAX_COST, errors);
-  const element = checkEnum(raw.element, `${path}.element`, CARD_ELEMENTS, errors);
+  const element = checkEnum(raw.element, `${path}.element`, elementsFor(version), errors);
   // Rareté absente = carte écrite avant les raretés (ou catalogue importé à la main) : on la
   // range en « commune » plutôt que de refuser le catalogue, et on l'écrit explicitement pour
   // que la carte ressorte complète de la validation.

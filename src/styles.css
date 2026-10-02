@@ -854,6 +854,7 @@ button {
 .deck-choice-elements .is-water { background: #2f6aa3; }
 .deck-choice-elements .is-air { background: #4f8576; }
 .deck-choice-elements .is-earth { background: #7a5c31; }
+.deck-choice-elements .is-neutral { background: #5d6672; }
 
 .deck-choice-detail {
   padding: 0.75rem 0.9rem;
@@ -892,6 +893,7 @@ button {
 .deck-choice-detail li.is-water { border-left-color: #3f86cc; }
 .deck-choice-detail li.is-air { border-left-color: #9ccbbd; }
 .deck-choice-detail li.is-earth { border-left-color: #96723f; }
+.deck-choice-detail li.is-neutral { border-left-color: #8a94a0; }
 
 .deck-choice-count,
 .deck-choice-meta {

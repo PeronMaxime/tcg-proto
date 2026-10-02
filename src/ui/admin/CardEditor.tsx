@@ -11,13 +11,13 @@ import {
   powerBalance,
 } from '../../game/cards';
 import {
-  CARD_ELEMENTS,
   CARD_RARITIES,
   MAX_COPIES,
   MAX_COST,
   MAX_STAT,
   TRIGGERS,
   abilityEffectTypesFor,
+  elementsFor,
   enchantmentEffectTypesFor,
   keywordsFor,
   parseCardDef,
@@ -434,7 +434,7 @@ function CardEditor({ version, def, copies, onChange, onCopiesChange, onRemove }
               value={def.element}
               onChange={(e) => onChange({ ...def, element: e.target.value as CardElement })}
             >
-              {CARD_ELEMENTS.map((element) => (
+              {elementsFor(version).map((element) => (
                 <option key={element} value={element}>
                   {ELEMENT_LABELS[element]}
                 </option>

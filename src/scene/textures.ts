@@ -717,6 +717,21 @@ function drawElementIcon(ctx: CanvasRenderingContext2D, element: CardElement, cx
       ctx.fill();
       break;
     }
+    case 'neutral': {
+      // Anneau plein et losange au centre : un symbole sans élément.
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 7);
+      ctx.lineTo(cx + 7, cy);
+      ctx.lineTo(cx, cy + 7);
+      ctx.lineTo(cx - 7, cy);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
   }
 }
 

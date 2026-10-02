@@ -23,7 +23,7 @@ const V2_SECTIONS: RulesSection[] = [
   {
     title: 'Les éléments (V2)',
     lines: [
-      "Chaque élément a son style de jeu : le Feu inflige beaucoup de dégâts, l'Air contrôle le board en déplaçant les monstres, l'Eau soigne et protège, la Terre renforce et blinde ses monstres.",
+      "Chaque élément a son style de jeu : le Feu inflige beaucoup de dégâts, l'Air contrôle le board en déplaçant les monstres, l'Eau soigne et protège, la Terre renforce et blinde ses monstres. Les cartes Neutres n'ont pas d'élément : leurs effets génériques servent tous les styles de jeu.",
       "Plus aucun élément n'en bat un autre : il n'y a plus de dégât bonus selon l'élément.",
     ],
   },

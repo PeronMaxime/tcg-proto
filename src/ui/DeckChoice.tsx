@@ -27,7 +27,7 @@ function deckEntries(deck: DeckDef, cardsById: Map<string, CardDef>): { def: Car
 }
 
 function elementCounts(deck: DeckDef, cardsById: Map<string, CardDef>): Record<CardElement, number> {
-  const counts = { fire: 0, water: 0, air: 0, earth: 0 };
+  const counts = { fire: 0, water: 0, air: 0, earth: 0, neutral: 0 };
   for (const { def, count } of deckEntries(deck, cardsById)) counts[def.element] += count;
   return counts;
 }
