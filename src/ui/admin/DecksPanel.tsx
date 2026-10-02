@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ELEMENT_LABELS, RARITY_LABELS, cardRarity, isMonster } from '../../game/cards';
 import { MAX_COPIES, MAX_DECK_NAME_LENGTH } from '../../game/catalogSchema';
-import { DECK_SIZE, deckProblems, deckSize } from '../../game/decks';
+import { DECK_SIZE, deckProblems, deckSize, maxCopiesFor } from '../../game/decks';
 import type { CardDef, CardElement } from '../../game/types';
 import AdminHeader from './AdminHeader';
 import type { CatalogAdmin } from './useCatalogAdmin';
@@ -186,8 +186,10 @@ function DecksPanel({ admin }: DecksPanelProps) {
                 <tbody>
                   {cards.map((card) => {
                     const count = selected.counts[card.id] ?? 0;
+                    // Limite de la rareté (onglet « Paramètres »), sinon le plafond technique.
+                    const max = maxCopiesFor(catalog, card) ?? MAX_COPIES;
                     const set = (next: number) =>
-                      admin.setDeckCount(selected.id, card.id, Math.max(0, Math.min(MAX_COPIES, next)));
+                      admin.setDeckCount(selected.id, card.id, Math.max(0, Math.min(max, next)));
                     return (
                       <tr key={card.id} className={count > 0 ? 'is-in-deck' : undefined}>
                         <td>{card.name || card.id}</td>
@@ -208,12 +210,17 @@ function DecksPanel({ admin }: DecksPanelProps) {
                             <input
                               type="number"
                               min={0}
-                              max={MAX_COPIES}
+                              max={max}
                               value={count}
                               aria-label={`Exemplaires de ${card.name}`}
                               onChange={(e) => set(Number(e.target.value) || 0)}
                             />
-                            <button type="button" aria-label={`Ajouter un ${card.name}`} onClick={() => set(count + 1)}>
+                            <button
+                              type="button"
+                              aria-label={`Ajouter un ${card.name}`}
+                              onClick={() => set(count + 1)}
+                              disabled={count >= max}
+                            >
                               +
                             </button>
                           </div>

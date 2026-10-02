@@ -548,7 +548,7 @@ export function isEnchantmentEffectAllowed(
 //
 // Barème : attaque + défense, plus la valeur de chaque habileté (mot-clé), de chaque
 // capacité et de l'aura. Les valeurs des habiletés et des capacités viennent du barème du
-// catalogue (`Catalog.powerWeights`, éditable dans l'onglet « Puissances » de l'admin) ; une
+// catalogue (`Catalog.powerWeights`, éditable dans l'onglet « Paramètres » de l'admin) ; une
 // entrée absente vaut la valeur fixe ci-dessous, celle d'avant le barème. Une capacité pèse
 // en plus son coefficient de valeur (`abilityPower`), neutre à 1 par défaut.
 // ---------------------------------------------------------------------------------------

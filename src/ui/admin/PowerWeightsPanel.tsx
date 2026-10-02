@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import {
   DEFAULT_POWER_TARGETS,
   KEYWORD_LABELS,
-  POWER_COEFFICIENT,
   POWER_TARGET_COSTS,
   RARITY_LABELS,
   POWER_PER_ABILITY,
@@ -14,7 +13,7 @@ import {
 } from '../../game/cards';
 import {
   CARD_RARITIES,
-  MAX_POWER_COEFFICIENT,
+  MAX_COPIES,
   MAX_POWER_WEIGHT,
   abilityEffectTypesFor,
   enchantmentEffectTypesFor,
@@ -25,12 +24,18 @@ import AdminHeader from './AdminHeader';
 import { ABILITY_EFFECT_LABELS, ENCHANTMENT_EFFECT_LABELS } from './CardEditor';
 import type { CatalogAdmin } from './useCatalogAdmin';
 
+// Onglet « Paramètres » de l'admin : la limite d'exemplaires par rareté, puis le barème de
+// puissance.
+//
 // Barème de puissance (demande utilisateur) : la liste des habiletés et des effets de
-// capacité, avec la valeur que chacun pèse dans la puissance d'une carte. Un effet de
-// capacité porte en plus un coefficient de valeur, qui multiplie cette valeur. Tant qu'une
-// case est laissée à vide, elle garde la valeur fixe historique (`POWER_PER_KEYWORD` /
-// `POWER_PER_ABILITY` / `POWER_COEFFICIENT`) — un barème vierge calcule donc exactement
-// comme avant cet onglet.
+// capacité, avec la valeur que chacun pèse dans la puissance d'une carte. Tant qu'une case est
+// laissée à vide, elle garde la valeur fixe historique (`POWER_PER_KEYWORD` /
+// `POWER_PER_ABILITY`) — un barème vierge calcule donc exactement comme avant cet onglet.
+//
+// Les coefficients de valeur des effets ne se règlent plus ici (demande utilisateur) : le
+// panneau ne les recopie pas, si bien que la première modification du barème retire ceux
+// qu'un catalogue plus ancien portait encore, et la puissance redevient lisible d'après les
+// seuls tableaux.
 //
 // Le barème vit dans le catalogue (`Catalog.powerWeights`) et s'enregistre avec lui : la
 // puissance reste un indicateur d'équilibrage pour l'admin, aucune règle de jeu ne la lit.
@@ -58,7 +63,7 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
   // au lieu de figer dans le catalogue un chiffre que personne n'a choisi.
   // Les deux groupes des enchantements n'existent qu'en V2 (refusés dans un catalogue V1).
   function setWeight(
-    group: 'keywords' | 'abilities' | 'abilityCoefficients' | 'enchantments' | 'enchantmentCoefficients',
+    group: 'keywords' | 'abilities' | 'enchantments',
     key: string,
     value: number | null,
   ) {
@@ -69,18 +74,12 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
     admin.setPowerWeights(next);
   }
 
-  // Copie modifiable du barème, toutes les cases déjà réglées comprises.
+  // Copie modifiable du barème, toutes les cases déjà réglées comprises, sauf les coefficients.
   function copyWeights(): PowerWeights {
     return {
       keywords: { ...(weights?.keywords ?? {}) },
       abilities: { ...(weights?.abilities ?? {}) },
-      abilityCoefficients: { ...(weights?.abilityCoefficients ?? {}) },
-      ...(v2
-        ? {
-            enchantments: { ...(weights?.enchantments ?? {}) },
-            enchantmentCoefficients: { ...(weights?.enchantmentCoefficients ?? {}) },
-          }
-        : {}),
+      ...(v2 ? { enchantments: { ...(weights?.enchantments ?? {}) } } : {}),
       targets: Object.fromEntries(
         Object.entries(weights?.targets ?? {}).map(([rarity, row]) => [rarity, { ...row }]),
       ),
@@ -100,20 +99,19 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
     admin.setPowerWeights(next);
   }
 
+  // Limite d'exemplaires : vide = sans limite.
+  function readMaxCopies(raw: string): number | null {
+    if (raw.trim() === '') return null;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 0 || value > MAX_COPIES) return null;
+    return value;
+  }
+
   // Une saisie vide (ou illisible) veut dire « par défaut », pas 0 : 0 se tape explicitement.
   function readInput(raw: string): number | null {
     if (raw.trim() === '') return null;
     const value = Number(raw);
     if (!Number.isInteger(value) || value < 0 || value > MAX_POWER_WEIGHT) return null;
-    return value;
-  }
-
-  // Les coefficients, eux, acceptent les décimales : c'est ce qui les distingue du champ de
-  // puissance, qui reste entier.
-  function readCoefficient(raw: string): number | null {
-    if (raw.trim() === '') return null;
-    const value = Number(raw);
-    if (!Number.isFinite(value) || value < 0 || value > MAX_POWER_COEFFICIENT) return null;
     return value;
   }
 
@@ -128,7 +126,7 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
   return (
     <div className="admin-panel">
       <AdminHeader
-        title="Puissances"
+        title="Paramètres"
         summary={
           custom === 0
             ? 'Aucune valeur personnalisée : la puissance se calcule avec le barème par défaut.'
@@ -142,8 +140,8 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
           onClick={() =>
             admin.setPowerWeights(
               v2
-                ? { keywords: {}, abilities: {}, abilityCoefficients: {}, enchantments: {}, enchantmentCoefficients: {}, targets: {} }
-                : { keywords: {}, abilities: {}, abilityCoefficients: {}, targets: {} },
+                ? { keywords: {}, abilities: {}, enchantments: {}, targets: {} }
+                : { keywords: {}, abilities: {}, targets: {} },
             )
           }
         >
@@ -151,6 +149,45 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
         </button>
       </AdminHeader>
 
+      <div className="admin-table-scroll">
+        {/* Limite d'exemplaires d'une même carte par deck, selon la rareté (demande utilisateur). */}
+        <section>
+          <h2>Exemplaires par deck</h2>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Rareté</th>
+                <th className="is-numeric">Nombre max d’exemplaires par deck</th>
+              </tr>
+            </thead>
+            <tbody>
+              {CARD_RARITIES.map((rarity) => (
+                <tr key={rarity}>
+                  <td>{RARITY_LABELS[rarity]}</td>
+                  <td className="is-numeric">
+                    <input
+                      type="number"
+                      min={0}
+                      max={MAX_COPIES}
+                      step={1}
+                      className="admin-weight-input"
+                      aria-label={`Exemplaires au plus, rareté ${RARITY_LABELS[rarity]}`}
+                      value={admin.draft?.maxCopiesByRarity?.[rarity] ?? ''}
+                      placeholder="∞"
+                      onChange={(e) => admin.setMaxCopies(rarity, readMaxCopies(e.target.value))}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="admin-table-note">
+            Case vide : pas de limite.{v2 ? ' Un deck qui dépasse la limite n’est pas proposé aux joueurs.' : ''}
+          </p>
+        </section>
+      </div>
+
+      <h2>Puissance</h2>
       <p className="admin-summary">
         La puissance d’une carte vaut son attaque plus sa défense, plus la valeur de chacune de ses
         habiletés et de chacune de ses capacités
@@ -163,10 +200,7 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
           </>
         )}
         .
-        Une capacité compte pour sa puissance multipliée par son coefficient, arrondie à
-        l’entier le plus proche : le coefficient (décimales admises, {POWER_COEFFICIENT} par
-        défaut) règle finement ce que le champ de puissance, entier, ne peut pas. Laisse une
-        case vide pour garder la valeur par défaut. C’est un repère d’équilibrage : aucune
+        Laisse une case vide pour garder la valeur par défaut. C’est un repère d’équilibrage : aucune
         règle du jeu ne s’en sert.
       </p>
 
@@ -252,31 +286,15 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
             <thead>
               <tr>
                 <th>Effet</th>
-                <th className="is-numeric">Coefficient</th>
                 <th className="is-numeric">Puissance</th>
               </tr>
             </thead>
             <tbody>
               {abilityEffectTypesFor(admin.version).map((effect) => {
                 const value = weights?.abilities?.[effect];
-                const coefficient = weights?.abilityCoefficients?.[effect];
                 return (
                   <tr key={effect}>
                     <td>{ABILITY_EFFECT_LABELS[effect]}</td>
-                    <td className="is-numeric">
-                      <input
-                        type="number"
-                        min={0}
-                        max={MAX_POWER_COEFFICIENT}
-                        step={0.5}
-                        className="admin-weight-input"
-                        value={coefficient ?? ''}
-                        placeholder={String(POWER_COEFFICIENT)}
-                        onChange={(e) =>
-                          setWeight('abilityCoefficients', effect, readCoefficient(e.target.value))
-                        }
-                      />
-                    </td>
                     <td className="is-numeric">
                       <input
                         type="number"
@@ -304,31 +322,15 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
               <thead>
                 <tr>
                   <th>Effet</th>
-                  <th className="is-numeric">Coefficient</th>
                   <th className="is-numeric">Puissance</th>
                 </tr>
               </thead>
               <tbody>
                 {enchantmentEffectTypesFor(admin.version).map((effect) => {
                   const value = weights?.enchantments?.[effect];
-                  const coefficient = weights?.enchantmentCoefficients?.[effect];
                   return (
                     <tr key={effect}>
                       <td>{ENCHANTMENT_EFFECT_LABELS[effect]}</td>
-                      <td className="is-numeric">
-                        <input
-                          type="number"
-                          min={0}
-                          max={MAX_POWER_COEFFICIENT}
-                          step={0.5}
-                          className="admin-weight-input"
-                          value={coefficient ?? ''}
-                          placeholder={String(POWER_COEFFICIENT)}
-                          onChange={(e) =>
-                            setWeight('enchantmentCoefficients', effect, readCoefficient(e.target.value))
-                          }
-                        />
-                      </td>
                       <td className="is-numeric">
                         <input
                           type="number"

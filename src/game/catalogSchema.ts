@@ -18,6 +18,7 @@ import type {
   AbilityEffect,
   CardAbility,
   CardDef,
+  CardRarity,
   Catalog,
   DeckDef,
   EnchantmentEffect,
@@ -469,6 +470,24 @@ function parsePowerWeights(raw: unknown, errors: string[], version: GameVersion)
   return weights;
 }
 
+// Limite d'exemplaires par rareté. Une rareté sans limite n'a pas de clé : rien n'est écrit
+// dans le catalogue tant que l'admin n'a rien réglé.
+function parseMaxCopies(raw: unknown, errors: string[]): Partial<Record<CardRarity, number>> | null {
+  if (!isRecord(raw)) {
+    errors.push('Catalogue.maxCopiesByRarity : objet attendu.');
+    return null;
+  }
+  const limits: Partial<Record<CardRarity, number>> = {};
+  for (const [rarity, value] of Object.entries(raw)) {
+    const path = `maxCopiesByRarity.${rarity}`;
+    const parsedRarity = checkEnum(rarity, path, CARD_RARITIES, errors);
+    if (parsedRarity === null) continue;
+    const parsed = checkInt(value, path, 0, MAX_COPIES, errors);
+    if (parsed !== null) limits[parsedRarity] = parsed;
+  }
+  return Object.keys(limits).length > 0 ? limits : null;
+}
+
 export const MAX_DECK_NAME_LENGTH = 40;
 
 // Decks à choisir (V2). Leur TAILLE n'est pas vérifiée ici : un deck en cours de composition
@@ -584,12 +603,16 @@ export function parseCatalog(raw: unknown, gameVersion: GameVersion = 'v1'): Par
   const powerWeights =
     raw.powerWeights === undefined ? null : parsePowerWeights(raw.powerWeights, errors, gameVersion);
 
+  const maxCopiesByRarity =
+    raw.maxCopiesByRarity === undefined ? null : parseMaxCopies(raw.maxCopiesByRarity, errors);
+
   const decks =
     gameVersion === 'v1' ? null : parseDecks(raw.decks, new Set(cards.map((card) => card.id)), errors);
 
   if (version === null || errors.length > 0) return { ok: false, errors };
   const catalog: Catalog = { version, cards, starterCounts };
   if (powerWeights) catalog.powerWeights = powerWeights;
+  if (maxCopiesByRarity) catalog.maxCopiesByRarity = maxCopiesByRarity;
   if (gameVersion !== 'v1') catalog.gameVersion = gameVersion;
   if (decks) catalog.decks = decks;
   return { ok: true, value: catalog };

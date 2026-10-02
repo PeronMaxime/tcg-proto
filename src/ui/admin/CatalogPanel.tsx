@@ -25,7 +25,7 @@ function nextFreeId(cards: CardDef[]): string {
 }
 
 // Repère d'équilibrage dans la liste : rien quand la carte est pile à la puissance visée pour
-// sa rareté et son coût, sinon l'écart (grille de l'onglet « Puissances »).
+// sa rareté et son coût, sinon l'écart (grille de l'onglet « Paramètres »).
 function BalanceBadge({ card }: { card: CardDef }) {
   const balance = powerBalance(card);
   if (!balance || balance.gap === 0) return null;

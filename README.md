@@ -160,7 +160,7 @@ le bouton « Enregistrer » écrit le catalogue entier d'où qu'on clique.
 - **Decks** (V2) — les decks proposés aux joueurs : leur ordre, leur nom, et le nombre
   d'exemplaires de chaque carte, avec le compteur sur 60.
 - **Chiffres** — le nombre de cartes par élément, puis le croisement élément × rareté.
-- **Puissances** — le **barème de puissance** (voir ci-dessous).
+- **Paramètres** — le nombre maximal d'exemplaires d'une carte par deck selon sa rareté, et le **barème de puissance** (voir ci-dessous).
 
 ### Le barème de puissance
 
@@ -169,7 +169,7 @@ jeu ne la lit**. Elle vaut l'attaque plus la défense, plus la valeur de chaque 
 chaque capacité, plus un point si la carte porte une aura.
 
 Par défaut, toutes les habiletés valent 2 points et toutes les capacités 1. L'onglet
-**Puissances** permet de peser chacune séparément — Provocation ne vaut pas Toxic, un soin ne
+**Paramètres** permet de peser chacune séparément — Provocation ne vaut pas Toxic, un soin ne
 vaut pas une pioche. Les valeurs choisies sont enregistrées avec le catalogue
 (`Catalog.powerWeights`) et remplacent le barème fixe partout où la puissance s'affiche. Une
 case laissée vide garde la valeur par défaut, et un catalogue sans barème calcule exactement

@@ -40,7 +40,7 @@ import CardPreview from './CardPreview';
 // déroulante est bâtie sur les listes de `vocabulary.ts` de la version éditée, donc ajouter un
 // effet ou une habileté au jeu le fait apparaître ici sans toucher à ce fichier.
 
-// Exporté : l'onglet « Puissances » nomme les mêmes effets. Les libellés V2 reprennent ceux de
+// Exporté : l'onglet « Paramètres » nomme les mêmes effets. Les libellés V2 reprennent ceux de
 // modifsV2.md.
 export const ABILITY_EFFECT_LABELS: Record<AbilityEffect['type'], string> = {
   gainCoins: 'Gagne des pièces',
@@ -313,7 +313,7 @@ function AbilityRow({ ability, def, version, onChange, onRemove }: AbilityRowPro
 
 // Puissance de la carte en cours d'édition, avec le détail du calcul. Purement indicatif :
 // c'est un repère d'équilibrage pour l'admin, rien n'est stocké et aucune règle ne le lit
-// (le barème vit dans `cards.ts`, `cardPower`, réglable dans l'onglet « Puissances »).
+// (le barème vit dans `cards.ts`, `cardPower`, réglable dans l'onglet « Paramètres »).
 function PowerSummary({ def }: { def: CardDef }) {
   const power = cardPower(def);
   const parts: string[] = [];
@@ -326,7 +326,7 @@ function PowerSummary({ def }: { def: CardDef }) {
   return (
     <div
       className="admin-power"
-      title="Attaque + défense, plus la valeur de chaque habileté, capacité, aura ou effet d’enchantement (onglet Puissances). Indicatif : aucune règle ne s’en sert."
+      title="Attaque + défense, plus la valeur de chaque habileté, capacité, aura ou effet d’enchantement (onglet Paramètres). Indicatif : aucune règle ne s’en sert."
     >
       <span className="admin-power-label">Puissance</span>
       <span className="admin-power-value">{power.total}</span>
@@ -337,7 +337,7 @@ function PowerSummary({ def }: { def: CardDef }) {
 }
 
 // Verdict d'équilibrage : la puissance comparée à celle visée pour la rareté et le coût de la
-// carte (grille de l'onglet « Puissances »).
+// carte (grille de l'onglet « Paramètres »).
 function PowerBalanceNote({ def }: { def: CardDef }) {
   const balance = powerBalance(def);
   if (!balance) {

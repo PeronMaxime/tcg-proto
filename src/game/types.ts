@@ -181,6 +181,10 @@ export interface Catalog {
   // Barème de puissance, éditable depuis l'admin. Absent sur un catalogue écrit avant cette
   // fonctionnalité : à lire via `cardPower`, qui retombe sur les valeurs fixes.
   powerWeights?: PowerWeights;
+  // Nombre maximal d'exemplaires d'une même carte dans un deck, selon sa rareté (onglet
+  // « Paramètres » de l'admin, demande utilisateur). Rareté absente = pas de limite. Un deck V2
+  // qui dépasse la limite n'est pas proposé aux joueurs (`decks.ts`).
+  maxCopiesByRarity?: Partial<Record<CardRarity, number>>;
   // Version du jeu dont ce catalogue applique les règles. Écrite seulement pour la V2 (absent =
   // V1, ce qui couvre tous les catalogues écrits avant les versions) : c'est par elle que
   // `rules.ts` sait quelles règles appliquer, le catalogue étant figé dans la room.

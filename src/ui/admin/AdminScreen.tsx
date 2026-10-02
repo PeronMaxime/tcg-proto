@@ -36,7 +36,7 @@ const TABS = [
   { id: 'decks', label: 'Decks', versions: ['v2'] },
   { id: 'table', label: 'Récapitulatif' },
   { id: 'stats', label: 'Chiffres' },
-  { id: 'power', label: 'Puissances' },
+  { id: 'settings', label: 'Paramètres' },
 ] as const satisfies readonly { id: string; label: string; versions?: readonly GameVersion[] }[];
 
 type TabId = (typeof TABS)[number]['id'];
@@ -241,7 +241,7 @@ function AdminScreen() {
       {activeTab === 'decks' && <DecksPanel admin={admin} />}
       {activeTab === 'table' && <CardsTable admin={admin} />}
       {activeTab === 'stats' && <CatalogStats admin={admin} />}
-      {activeTab === 'power' && <PowerWeightsPanel admin={admin} />}
+      {activeTab === 'settings' && <PowerWeightsPanel admin={admin} />}
 
       <footer className="admin-footer">
         <a href="/">← Retour au jeu</a>

@@ -40,6 +40,27 @@ describe('decks jouables', () => {
     expect(playableDecks(catalog)).toEqual([]);
   });
 
+  it('refuse un deck qui dépasse la limite d’exemplaires de la rareté', () => {
+    const catalog: Catalog = { ...v2Catalog([MIXED]), maxCopiesByRarity: { common: 30 } };
+    expect(deckProblems(MIXED, catalog)).toEqual([]);
+    const limited: Catalog = { ...catalog, maxCopiesByRarity: { common: 4 } };
+    expect(deckProblems(MIXED, limited)).toEqual([
+      'wall : 30 exemplaires, 4 au plus (commune)',
+      'oak : 30 exemplaires, 4 au plus (commune)',
+    ]);
+    // Une limite sur une autre rareté ne touche pas ces cartes.
+    expect(deckProblems(MIXED, { ...catalog, maxCopiesByRarity: { rare: 1 } })).toEqual([]);
+  });
+
+  it('lit la limite d’exemplaires par rareté et refuse une rareté inconnue', () => {
+    const raw = { ...v2Catalog([MIXED]), maxCopiesByRarity: { common: 3, legendary: 1 } };
+    const parsed = parseCatalog(raw, 'v2');
+    expect(parsed.ok && parsed.value.maxCopiesByRarity).toEqual({ common: 3, legendary: 1 });
+    expect(parseCatalog({ ...raw, maxCopiesByRarity: { mythic: 1 } }, 'v2').ok).toBe(false);
+    const empty = parseCatalog({ ...raw, maxCopiesByRarity: {} }, 'v2');
+    expect(empty.ok && 'maxCopiesByRarity' in empty.value).toBe(false);
+  });
+
   it('le deck par défaut est le premier deck jouable de la liste', () => {
     expect(defaultDeck(v2Catalog([SHORT, MIXED, FULL_GRUNT]))?.id).toBe('mixed');
     expect(defaultDeck(v2Catalog([SHORT]))).toBeNull();

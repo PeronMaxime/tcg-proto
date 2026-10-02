@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseCatalog } from '../../game/catalogSchema';
 import { nextFreeDeckId } from '../../game/decks';
-import type { CardDef, Catalog, DeckDef, PowerWeights } from '../../game/types';
+import type { CardDef, CardRarity, Catalog, DeckDef, PowerWeights } from '../../game/types';
 import type { GameVersion } from '../../game/versions';
 import { catalogStore, seedCatalog } from '../../net/catalogStore';
 import { applyCatalog } from '../applyCatalog';
@@ -34,6 +34,8 @@ export interface CatalogAdmin {
   removeCard: (id: string) => void;
   setCount: (id: string, count: number) => void;
   setPowerWeights: (weights: PowerWeights) => void;
+  // Limite d'exemplaires par rareté (onglet « Paramètres »). `null` = sans limite.
+  setMaxCopies: (rarity: CardRarity, max: number | null) => void;
   // Decks à choisir (V2, onglet « Decks »). `addDeck` rend l'id du deck créé ; `source` = deck
   // à dupliquer.
   addDeck: (source?: DeckDef) => string;
@@ -182,11 +184,24 @@ export function useCatalogAdmin(version: GameVersion): CatalogAdmin {
     [mutate],
   );
 
-  // Barème de puissance (onglet « Puissances »). Remplacé en bloc : le panneau reconstruit
+  // Barème de puissance (onglet « Paramètres »). Remplacé en bloc : le panneau reconstruit
   // l'objet entier à chaque frappe, ce qui garde le brouillon immuable comme le reste.
   const setPowerWeights = useCallback(
     (weights: PowerWeights) => {
       mutate((current) => ({ ...current, powerWeights: weights }));
+    },
+    [mutate],
+  );
+
+  const setMaxCopies = useCallback(
+    (rarity: CardRarity, max: number | null) => {
+      mutate((current) => {
+        const { [rarity]: _removed, ...rest } = current.maxCopiesByRarity ?? {};
+        const limits = max === null ? rest : { ...rest, [rarity]: max };
+        // Plus aucune limite : on retire la clé, comme la validation le ferait.
+        const { maxCopiesByRarity: _old, ...base } = current;
+        return Object.keys(limits).length > 0 ? { ...base, maxCopiesByRarity: limits } : base;
+      });
     },
     [mutate],
   );
@@ -308,5 +323,6 @@ export function useCatalogAdmin(version: GameVersion): CatalogAdmin {
     removeCard,
     setCount,
     setPowerWeights,
+    setMaxCopies,
   };
 }

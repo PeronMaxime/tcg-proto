@@ -4,7 +4,8 @@
 //
 // Module pur, comme `rules.ts` : pas de réseau, pas de React.
 
-import type { Catalog, DeckDef, Seat } from './types';
+import { RARITY_LABELS, cardRarity } from './cards';
+import type { CardDef, Catalog, DeckDef, Seat } from './types';
 
 // Taille d'un deck jouable (demande utilisateur) : ni plus, ni moins.
 export const DECK_SIZE = 60;
@@ -25,7 +26,20 @@ export function deckProblems(deck: DeckDef, catalog: Catalog): string[] {
   const ids = new Set(catalog.cards.map((card) => card.id));
   const unknown = Object.keys(deck.counts).filter((id) => !ids.has(id));
   if (unknown.length > 0) problems.push(`cartes inconnues : ${unknown.join(', ')}`);
+  // Limite d'exemplaires selon la rareté (onglet « Paramètres » de l'admin).
+  for (const card of catalog.cards) {
+    const max = maxCopiesFor(catalog, card);
+    const count = deck.counts[card.id] ?? 0;
+    if (max !== undefined && count > max) {
+      problems.push(`${card.name || card.id} : ${count} exemplaires, ${max} au plus (${RARITY_LABELS[cardRarity(card)].toLowerCase()})`);
+    }
+  }
   return problems;
+}
+
+// Nombre maximal d'exemplaires de `card` dans un deck, selon sa rareté. `undefined` = sans limite.
+export function maxCopiesFor(catalog: Catalog, card: CardDef): number | undefined {
+  return catalog.maxCopiesByRarity?.[cardRarity(card)];
 }
 
 export function isDeckPlayable(deck: DeckDef, catalog: Catalog): boolean {
