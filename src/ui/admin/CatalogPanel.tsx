@@ -69,6 +69,8 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
 
   if (!catalog) return null;
 
+  // V2 : pas de deck de départ commun, les exemplaires se règlent deck par deck (onglet « Decks »).
+  const hasStarterDeck = admin.version === 'v1';
   const totalCopies = Object.values(catalog.starterCounts).reduce((a, b) => a + b, 0);
   const missingArt = cards.filter((card) => !hasCardArt(card.id)).length;
 
@@ -84,7 +86,11 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
         title="Cartes"
         summary={
           <>
-            {cards.length} cartes · {totalCopies} exemplaires dans le deck de départ · version{' '}
+            {cards.length} cartes
+            {hasStarterDeck
+              ? ` · ${totalCopies} exemplaires dans le deck de départ`
+              : ` · ${catalog.decks?.length ?? 0} decks`}{' '}
+            · version{' '}
             {catalog.version}
             {missingArt > 0 && ` · ${missingArt} sans illustration`}
           </>
@@ -137,7 +143,8 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
                   <span className="admin-list-meta">
                     {ELEMENT_LABELS[card.element]} · {RARITY_LABELS[cardRarity(card)]} · {card.cost} ¤
                     {isMonster(card) ? ` · ${card.attack}/${card.defense}` : ' · ench.'}
-                    {` · ×${catalog.starterCounts[card.id] ?? 0} · P${cardPower(card).total}`}
+                    {hasStarterDeck && ` · ×${catalog.starterCounts[card.id] ?? 0}`}
+                    {` · P${cardPower(card).total}`}
                   </span>
                   <BalanceBadge card={card} />
                   {!hasCardArt(card.id) && <span className="admin-list-badge">sans illustration</span>}
@@ -156,12 +163,12 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
             <CardEditor
               version={admin.version}
               def={selected}
-              copies={catalog.starterCounts[selected.id] ?? 0}
+              copies={hasStarterDeck ? (catalog.starterCounts[selected.id] ?? 0) : undefined}
               onChange={(next) => {
                 admin.updateCard(selected.id, next);
                 setSelectedId(next.id);
               }}
-              onCopiesChange={(count) => admin.setCount(selected.id, count)}
+              onCopiesChange={hasStarterDeck ? (count) => admin.setCount(selected.id, count) : undefined}
               onRemove={() => {
                 admin.removeCard(selected.id);
                 setSelectedId(null);

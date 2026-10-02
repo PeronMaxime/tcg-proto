@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseCatalog } from '../../game/catalogSchema';
-import type { CardDef, Catalog, PowerWeights } from '../../game/types';
+import { nextFreeDeckId } from '../../game/decks';
+import type { CardDef, Catalog, DeckDef, PowerWeights } from '../../game/types';
 import type { GameVersion } from '../../game/versions';
 import { catalogStore, seedCatalog } from '../../net/catalogStore';
 import { applyCatalog } from '../applyCatalog';
@@ -33,6 +34,28 @@ export interface CatalogAdmin {
   removeCard: (id: string) => void;
   setCount: (id: string, count: number) => void;
   setPowerWeights: (weights: PowerWeights) => void;
+  // Decks à choisir (V2, onglet « Decks »). `addDeck` rend l'id du deck créé ; `source` = deck
+  // à dupliquer.
+  addDeck: (source?: DeckDef) => string;
+  renameDeck: (id: string, name: string) => void;
+  removeDeck: (id: string) => void;
+  // Déplace un deck dans la liste (-1 vers le haut). Le premier est le deck par défaut.
+  moveDeck: (id: string, delta: number) => void;
+  setDeckCount: (deckId: string, cardId: string, count: number) => void;
+}
+
+// Exemplaires d'une carte, sans la clé quand il n'y en a plus (même forme que la validation).
+function withCount(counts: Record<string, number>, cardId: string, count: number): Record<string, number> {
+  const { [cardId]: _removed, ...rest } = counts;
+  return count > 0 ? { ...rest, [cardId]: count } : rest;
+}
+
+// Applique `fn` aux exemplaires de chaque deck (renommage ou suppression d'une carte).
+function mapDeckCounts(
+  current: Catalog,
+  fn: (counts: Record<string, number>) => Record<string, number>,
+): Pick<Catalog, 'decks'> {
+  return current.decks ? { decks: current.decks.map((deck) => ({ ...deck, counts: fn(deck.counts) })) } : {};
 }
 
 function message(e: unknown): string {
@@ -115,12 +138,8 @@ export function useCatalogAdmin(version: GameVersion): CatalogAdmin {
         // L'id est aussi la clé de `starterCounts` : le renommer doit déplacer le compteur,
         // sinon la carte sortirait du deck de départ sans que rien ne le dise.
         if (next.id === id) return { ...current, cards };
-        const { [id]: count, ...rest } = current.starterCounts;
-        return {
-          ...current,
-          cards,
-          starterCounts: count === undefined ? rest : { ...rest, [next.id]: count },
-        };
+        const move = (counts: Record<string, number>) => withCount(withCount(counts, id, 0), next.id, counts[id] ?? 0);
+        return { ...current, cards, starterCounts: move(current.starterCounts), ...mapDeckCounts(current, move) };
       });
     },
     [mutate],
@@ -138,8 +157,13 @@ export function useCatalogAdmin(version: GameVersion): CatalogAdmin {
   const removeCard = useCallback(
     (id: string) => {
       mutate((current) => {
-        const { [id]: _removed, ...starterCounts } = current.starterCounts;
-        return { ...current, cards: current.cards.filter((card) => card.id !== id), starterCounts };
+        const drop = (counts: Record<string, number>) => withCount(counts, id, 0);
+        return {
+          ...current,
+          cards: current.cards.filter((card) => card.id !== id),
+          starterCounts: drop(current.starterCounts),
+          ...mapDeckCounts(current, drop),
+        };
       });
     },
     [mutate],
@@ -163,6 +187,63 @@ export function useCatalogAdmin(version: GameVersion): CatalogAdmin {
   const setPowerWeights = useCallback(
     (weights: PowerWeights) => {
       mutate((current) => ({ ...current, powerWeights: weights }));
+    },
+    [mutate],
+  );
+
+  const addDeck = useCallback(
+    (source?: DeckDef) => {
+      // L'id est calculé sur le brouillon du rendu courant : deux ajouts dans le même rendu sont
+      // impossibles depuis l'interface (un clic = un rendu).
+      const id = nextFreeDeckId(draft?.decks ?? []);
+      const deck: DeckDef = source
+        ? { id, name: `${source.name} (copie)`, counts: { ...source.counts } }
+        : { id, name: 'Nouveau deck', counts: {} };
+      mutate((current) => ({ ...current, decks: [...(current.decks ?? []), deck] }));
+      return id;
+    },
+    [draft, mutate],
+  );
+
+  const updateDeck = useCallback(
+    (id: string, fn: (deck: DeckDef) => DeckDef) => {
+      mutate((current) => ({
+        ...current,
+        decks: (current.decks ?? []).map((deck) => (deck.id === id ? fn(deck) : deck)),
+      }));
+    },
+    [mutate],
+  );
+
+  const renameDeck = useCallback(
+    (id: string, name: string) => updateDeck(id, (deck) => ({ ...deck, name })),
+    [updateDeck],
+  );
+
+  const setDeckCount = useCallback(
+    (deckId: string, cardId: string, count: number) =>
+      updateDeck(deckId, (deck) => ({ ...deck, counts: withCount(deck.counts, cardId, count) })),
+    [updateDeck],
+  );
+
+  const removeDeck = useCallback(
+    (id: string) => {
+      mutate((current) => ({ ...current, decks: (current.decks ?? []).filter((deck) => deck.id !== id) }));
+    },
+    [mutate],
+  );
+
+  const moveDeck = useCallback(
+    (id: string, delta: number) => {
+      mutate((current) => {
+        const decks = [...(current.decks ?? [])];
+        const from = decks.findIndex((deck) => deck.id === id);
+        const to = from + delta;
+        if (from < 0 || to < 0 || to >= decks.length) return current;
+        const [deck] = decks.splice(from, 1);
+        decks.splice(to, 0, deck);
+        return { ...current, decks };
+      });
     },
     [mutate],
   );
@@ -218,6 +299,11 @@ export function useCatalogAdmin(version: GameVersion): CatalogAdmin {
     save,
     reload,
     updateCard,
+    addDeck,
+    renameDeck,
+    removeDeck,
+    moveDeck,
+    setDeckCount,
     addCard,
     removeCard,
     setCount,

@@ -146,6 +146,17 @@ export interface PowerWeights {
   targets?: Partial<Record<CardRarity, Partial<Record<string, number>>>>;
 }
 
+// Deck prêt à jouer (V2, demande utilisateur) : composé dans l'admin, choisi par le joueur sur
+// l'écran de choix du deck avant chaque partie. Le joueur ne construit rien lui-même.
+export interface DeckDef {
+  id: string;
+  name: string;
+  // Nombre d'exemplaires de chaque carte, indexé par `CardDef.id` (même forme que
+  // `Catalog.starterCounts`). Jouable seulement à `DECK_SIZE` cartes pile (`decks.ts`) : un deck
+  // en cours de composition s'enregistre, mais n'est pas proposé aux joueurs.
+  counts: Record<string, number>;
+}
+
 // Catalogue complet : les cartes existantes et la composition du deck de départ. Éditable
 // depuis le panneau d'administration (`ui/admin`), un par version du jeu (`game/versions.ts`),
 // stocké dans `catalog/current` pour la V1 et `catalog/<version>` ensuite (`net/catalogStore.ts`) et recopié tel quel dans chaque `Room` à la création d'une partie,
@@ -157,7 +168,11 @@ export interface Catalog {
   cards: CardDef[];
   // Nombre d'exemplaires de chaque carte dans le deck de départ, indexé par `CardDef.id`.
   // Un id absent (ou à 0) veut dire que la carte existe mais n'est pas distribuée.
+  // V1 seulement : en V2, toujours vide, les decks à choisir (`decks`) le remplacent.
   starterCounts: Record<string, number>;
+  // V2 : decks proposés aux joueurs, dans l'ordre de l'écran de choix. Le premier deck JOUABLE
+  // est celui attribué d'office au joueur qui n'a pas choisi à temps. Absent en V1.
+  decks?: DeckDef[];
   // Barème de puissance, éditable depuis l'admin. Absent sur un catalogue écrit avant cette
   // fonctionnalité : à lire via `cardPower`, qui retombe sur les valeurs fixes.
   powerWeights?: PowerWeights;
@@ -399,7 +414,9 @@ export interface PlayerInfo {
 
 export interface Room {
   code: string;
-  status: 'waiting' | 'playing' | 'finished';
+  // `choosingDecks` (V2) : les deux joueurs sont assis et choisissent leur deck (`deckChoice`),
+  // `state` reste null jusqu'au démarrage de la partie.
+  status: 'waiting' | 'choosingDecks' | 'playing' | 'finished';
   players: { p1: PlayerInfo; p2: PlayerInfo | null };
   state: GameState | null; // null tant que p2 n'a pas rejoint
   createdAt: number; // Date.now()
@@ -424,4 +441,13 @@ export interface Room {
   // catalogue recopié dans `catalog`, à la première partie comme à chaque revanche. Absent sur
   // les rooms créées avant les versions : à lire via `room.gameVersion ?? DEFAULT_GAME_VERSION`.
   gameVersion?: GameVersion;
+  // V2 : deck validé par chaque siège (id dans `catalog.decks`), null tant qu'il n'a pas choisi.
+  // Conservé pendant la partie, remis à null à chaque revanche (on rechoisit son deck). Le choix
+  // adverse n'est pas affiché avant la partie, mais il est lisible dans la room : simple
+  // discrétion d'interface, pas un secret.
+  deckChoice?: Record<Seat, string | null>;
+  // V2 : fin du choix des decks (Date.now() du client qui a ouvert le choix + `DECK_CHOICE_MS`).
+  // Passé ce délai, le premier client qui le constate attribue le deck par défaut aux sièges qui
+  // n'ont pas validé et démarre la partie.
+  deckDeadline?: number;
 }

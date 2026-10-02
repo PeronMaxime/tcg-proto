@@ -125,7 +125,29 @@ même règle de `firestore.rules`.
 - Pendant la lecture d'un combat V2, le plateau suit le board enregistré à chaque coup
   (`CombatStep.board`) : armure entamée, créatures invoquées, monstres déplacés.
 
-### Les quatre onglets
+#### Decks à choisir (V2)
+
+En V2, il n'y a plus de deck de départ commun : chaque joueur **choisit son deck** avant chaque
+partie (revanches comprises), parmi ceux composés dans l'admin. Le joueur ne construit rien.
+
+- Les decks vivent dans le catalogue V2 (`Catalog.decks`, `src/game/decks.ts`) et sont donc
+  figés dans la room avec lui. Ils se composent dans l'onglet **Decks** (V2 uniquement).
+- Un deck n'est proposé aux joueurs qu'à **60 cartes pile** (`DECK_SIZE`). Un deck incomplet
+  s'enregistre quand même, pour pouvoir le composer en plusieurs fois. Sans aucun deck complet,
+  on ne peut pas créer de partie V2.
+- Quand le second joueur rejoint, la room passe en `choosingDecks` : chacun a **30 secondes**
+  (`DECK_CHOICE_MS`) pour valider un deck (choix définitif). La partie démarre dès que les deux
+  ont validé. Une fois le délai écoulé, le **premier deck jouable de la liste** est attribué à
+  qui n'a pas validé (les flèches ↑/↓ de l'onglet Decks règlent cet ordre).
+- Le choix adverse n'est pas affiché avant la partie. Il reste lisible dans la room : c'est
+  une discrétion d'interface, pas un secret.
+- Un catalogue V2 écrit avant les decks garde son ancien deck de départ comme premier deck,
+  « Deck de départ ». Il faudra peut-être le compléter à 60 cartes.
+
+Dans le menu, la version se choisit **en haut à droite** et change le menu entier
+(`src/ui/menu/MenuV1.tsx`, `MenuV2.tsx`, avec les briques communes dans `menuParts.tsx`).
+
+### Les onglets
 
 Le panneau partage **un seul brouillon** entre ses onglets : changer d'onglet ne perd rien, et
 le bouton « Enregistrer » écrit le catalogue entier d'où qu'on clique.
@@ -135,6 +157,8 @@ le bouton « Enregistrer » écrit le catalogue entier d'où qu'on clique.
 - **Récapitulatif** — tout le catalogue en un tableau (nom, coût, type, élément, attaque,
   défense, rareté, habiletés, auras, capacités, puissance). Filtres en haut, tri en cliquant
   sur un en-tête. Lecture seule.
+- **Decks** (V2) — les decks proposés aux joueurs : leur ordre, leur nom, et le nombre
+  d'exemplaires de chaque carte, avec le compteur sur 60.
 - **Chiffres** — le nombre de cartes par élément, puis le croisement élément × rareté.
 - **Puissances** — le **barème de puissance** (voir ci-dessous).
 

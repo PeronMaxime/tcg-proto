@@ -4,6 +4,7 @@ import { RULES_VERSION } from '../game/rules';
 import type { Room } from '../game/types';
 import { clearCurrentRoomCode, mySeat, rematch, subscribeToRoom } from '../net/rooms';
 import { applyCatalog } from './applyCatalog';
+import DeckChoice from './DeckChoice';
 import GameScreen from './GameScreen';
 import Lobby from './Lobby';
 
@@ -51,7 +52,8 @@ function RoomScreen({ code, onLeave }: RoomScreenProps) {
     );
   }
 
-  if (!room.state) {
+  const choosingDecks = room.status === 'choosingDecks';
+  if (!room.state && !choosingDecks) {
     return <Lobby room={room} onCancel={handleLeave} />;
   }
 
@@ -69,6 +71,11 @@ function RoomScreen({ code, onLeave }: RoomScreenProps) {
   if (appliedCatalog.current !== catalogKey) {
     applyCatalog(catalog);
     appliedCatalog.current = catalogKey;
+  }
+
+  // V2 : choix des decks avant la partie (première partie comme revanche).
+  if (choosingDecks || !room.state) {
+    return <DeckChoice room={room} seat={seat} onLeave={handleLeave} />;
   }
 
   // T7 : une room reçue avec un état d'une autre version de règles (ou sans `rulesVersion`)

@@ -299,12 +299,16 @@ export function createCardInstance(cardId: string, makeUid: () => string): CardI
   return { uid: makeUid(), cardId: def.id };
 }
 
-// Deck de départ : un exemplaire par unité déclarée dans `starterCounts` du catalogue actif.
+// Deck de départ : un exemplaire par unité déclarée dans `counts` — par défaut `starterCounts`
+// du catalogue actif (V1), sinon la composition du deck choisi (V2, `decks.ts`).
 // Les ids inconnus sont ignorés — `catalogSchema.ts` les refuse à l'enregistrement, ce filet
 // évite qu'un catalogue écrit par une version antérieure fasse planter la création de partie.
-export function buildStarterDeck(makeUid: () => string): CardInstance[] {
+export function buildStarterDeck(
+  makeUid: () => string,
+  counts: Record<string, number> = activeCatalog.starterCounts,
+): CardInstance[] {
   const deck: CardInstance[] = [];
-  for (const [cardId, count] of Object.entries(activeCatalog.starterCounts)) {
+  for (const [cardId, count] of Object.entries(counts)) {
     if (!activeById.has(cardId)) continue;
     for (let i = 0; i < count; i++) {
       deck.push(createCardInstance(cardId, makeUid));

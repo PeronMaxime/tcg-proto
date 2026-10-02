@@ -714,6 +714,213 @@ button {
   outline-offset: 2px;
 }
 
+/* --- Sélecteur de version du menu, en haut à droite (il change le menu entier) --- */
+
+.title-version {
+  /* Hors de `.title` : on reprend ses couleurs pour les segments. */
+  --title-parchment: #e8d4a8;
+  --title-ink: #22180c;
+  --title-field: #15171d;
+  --title-line: #2e323c;
+
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.title-version .title-label {
+  margin: 0;
+}
+
+.title-version .title-segments button {
+  min-height: 32px;
+  padding: 0 0.9rem;
+}
+
+/* --- Choix du deck (V2) --- */
+
+.title.deck-choice {
+  max-width: 760px;
+}
+
+.deck-choice-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.deck-choice-head .lobby-heading {
+  margin: 0;
+}
+
+.deck-choice-timer {
+  margin: 0;
+  min-width: 3ch;
+  font-family: var(--font-display);
+  font-size: 2.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--hud-gold-bright);
+}
+
+.deck-choice-timer.is-urgent {
+  color: var(--hud-hp);
+}
+
+.deck-choice-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 1rem;
+}
+
+.deck-choice-list,
+.deck-choice-detail ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.deck-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.deck-choice-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--title-line);
+  border-radius: 4px;
+  background: var(--title-field);
+  color: var(--hud-ink);
+  text-align: left;
+  transition: border-color 150ms, background-color 150ms;
+}
+
+.deck-choice-item:hover:not(:disabled) {
+  border-color: var(--hud-gold-dim);
+}
+
+.deck-choice-item[aria-checked='true'] {
+  border-color: var(--hud-gold);
+  background: rgba(201, 164, 65, 0.1);
+}
+
+.deck-choice-item:focus-visible {
+  outline: 2px solid var(--hud-gold-bright);
+  outline-offset: 2px;
+}
+
+.title .deck-choice-item:disabled {
+  opacity: 1;
+}
+
+.deck-choice-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.deck-choice-default {
+  font-size: 0.75rem;
+  color: var(--hud-ink-dim);
+}
+
+.deck-choice-elements {
+  display: flex;
+  gap: 0.3rem;
+  width: 100%;
+}
+
+.deck-choice-elements span {
+  padding: 0.05rem 0.45rem;
+  border-radius: 2px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+
+.deck-choice-elements .is-fire { background: #a8432d; }
+.deck-choice-elements .is-water { background: #2f6aa3; }
+.deck-choice-elements .is-air { background: #4f8576; }
+.deck-choice-elements .is-earth { background: #7a5c31; }
+
+.deck-choice-detail {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--title-line);
+  border-radius: 4px;
+  background: var(--title-field);
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.deck-choice-detail h2 {
+  margin: 0 0 0.6rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--hud-ink);
+}
+
+.deck-choice-detail h2 span {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 0.85rem;
+  color: var(--hud-ink-dim);
+}
+
+.deck-choice-detail li {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr auto;
+  gap: 0.5rem;
+  padding: 0.25rem 0 0.25rem 0.5rem;
+  border-left: 3px solid transparent;
+  font-size: 0.85rem;
+  color: var(--hud-ink);
+}
+
+.deck-choice-detail li.is-fire { border-left-color: #d2553a; }
+.deck-choice-detail li.is-water { border-left-color: #3f86cc; }
+.deck-choice-detail li.is-air { border-left-color: #9ccbbd; }
+.deck-choice-detail li.is-earth { border-left-color: #96723f; }
+
+.deck-choice-count,
+.deck-choice-meta {
+  font-variant-numeric: tabular-nums;
+  color: var(--hud-ink-dim);
+}
+
+.deck-choice-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+}
+
+.deck-choice-status {
+  margin: 0;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--hud-ink-dim);
+}
+
+@media (max-width: 640px) {
+  .deck-choice-body {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lobby-waiting-dots span {
     animation: none;
@@ -2526,6 +2733,95 @@ button {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+/* Onglet « Decks » (V2). */
+.admin-deck-row {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.admin-deck-row .admin-list-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-deck-order {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.admin-deck-order button {
+  flex: 1;
+  padding: 0 0.5rem;
+}
+
+.admin-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.admin-deck-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.admin-deck-head .admin-field {
+  flex: 1;
+}
+
+.admin-deck-size {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-danger);
+}
+
+.admin-deck-size.is-complete {
+  color: var(--color-success);
+}
+
+.admin-deck-cards {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.admin-deck-cards th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-text-dim);
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.3rem 0.5rem;
+}
+
+.admin-deck-cards td {
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.admin-deck-cards tr:not(.is-in-deck) td {
+  color: var(--color-text-dim);
+}
+
+.admin-deck-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.admin-deck-stepper button {
+  width: 1.8rem;
+  padding: 0.1rem 0;
+}
+
+.admin-deck-stepper input {
+  width: 3.5rem;
+  text-align: center;
 }
 
 /* Onglets du panneau (Cartes / Récapitulatif / Chiffres / Puissances). Un simple bandeau de

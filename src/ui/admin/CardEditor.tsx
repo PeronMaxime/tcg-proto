@@ -359,9 +359,11 @@ function PowerBalanceNote({ def }: { def: CardDef }) {
 interface CardEditorProps {
   version: GameVersion;
   def: CardDef;
-  copies: number;
+  // Exemplaires dans le deck de départ (V1). Absent en V2, où les exemplaires se règlent deck
+  // par deck (onglet « Decks ») : le champ n'est alors pas affiché.
+  copies?: number;
   onChange: (next: CardDef) => void;
-  onCopiesChange: (count: number) => void;
+  onCopiesChange?: (count: number) => void;
   onRemove: () => void;
 }
 
@@ -478,13 +480,15 @@ function CardEditor({ version, def, copies, onChange, onCopiesChange, onRemove }
             </>
           )}
 
-          <NumberField
-            label="Exemplaires"
-            value={copies}
-            min={0}
-            max={MAX_COPIES}
-            onChange={onCopiesChange}
-          />
+          {copies !== undefined && onCopiesChange && (
+            <NumberField
+              label="Exemplaires"
+              value={copies}
+              min={0}
+              max={MAX_COPIES}
+              onChange={onCopiesChange}
+            />
+          )}
         </div>
 
         {isMonster(def) && (

@@ -19,6 +19,7 @@ import type {
   CardAbility,
   CardDef,
   Catalog,
+  DeckDef,
   EnchantmentEffect,
   Keyword,
   PowerWeights,
@@ -464,6 +465,56 @@ function parsePowerWeights(raw: unknown, errors: string[], version: GameVersion)
   return weights;
 }
 
+export const MAX_DECK_NAME_LENGTH = 40;
+
+// Decks à choisir (V2). Leur TAILLE n'est pas vérifiée ici : un deck en cours de composition
+// doit pouvoir s'enregistrer, il n'est simplement pas proposé aux joueurs (`decks.ts`). On
+// refuse en revanche ce qui casserait la lecture : forme, identifiants, cartes inconnues.
+function parseDecks(raw: unknown, cardIds: Set<string>, errors: string[]): DeckDef[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    errors.push('Catalogue.decks : liste attendue.');
+    return [];
+  }
+  const decks: DeckDef[] = [];
+  const seen = new Set<string>();
+  raw.forEach((deck, i) => {
+    const path = `decks[${i}]`;
+    if (!isRecord(deck)) {
+      errors.push(`${path} : objet attendu.`);
+      return;
+    }
+    if (typeof deck.id !== 'string' || !CARD_ID_PATTERN.test(deck.id)) {
+      errors.push(`${path}.id : lettres et chiffres attendus, en commençant par une lettre.`);
+      return;
+    }
+    if (seen.has(deck.id)) {
+      errors.push(`${path} : l'identifiant « ${deck.id} » est déjà utilisé.`);
+      return;
+    }
+    seen.add(deck.id);
+    const name = typeof deck.name === 'string' ? deck.name.trim() : '';
+    if (!name) errors.push(`${path} : le deck doit avoir un nom.`);
+    else if (name.length > MAX_DECK_NAME_LENGTH)
+      errors.push(`${path} : nom trop long (${MAX_DECK_NAME_LENGTH} caractères au plus).`);
+    const counts: Record<string, number> = {};
+    if (!isRecord(deck.counts)) {
+      errors.push(`${path}.counts : objet attendu.`);
+    } else {
+      for (const [cardId, count] of Object.entries(deck.counts)) {
+        if (!cardIds.has(cardId)) {
+          errors.push(`Deck « ${name || deck.id} » : « ${cardId} » ne correspond à aucune carte du catalogue.`);
+          continue;
+        }
+        const parsed = checkInt(count, `${path}.counts.${cardId}`, 0, MAX_COPIES, errors);
+        if (parsed !== null && parsed > 0) counts[cardId] = parsed;
+      }
+    }
+    decks.push({ id: deck.id, name, counts });
+  });
+  return decks;
+}
+
 // `gameVersion` : version du jeu du catalogue (`game/versions.ts`), qui fixe les habiletés et
 // les effets admis. Le catalogue rendu porte `gameVersion` pour la V2 (absent pour la V1, comme
 // avant les versions) : c'est par lui que les règles savent quelle version appliquer.
@@ -494,8 +545,11 @@ export function parseCatalog(raw: unknown, gameVersion: GameVersion = 'v1'): Par
     if (raw.cards.length === 0) errors.push('Catalogue : il faut au moins une carte.');
   }
 
+  // V2 : plus de deck de départ commun, les decks à choisir (`decks`) le remplacent.
   const starterCounts: Record<string, number> = {};
-  if (!isRecord(raw.starterCounts)) {
+  if (gameVersion !== 'v1') {
+    // rien à lire : `starterCounts` reste vide
+  } else if (!isRecord(raw.starterCounts)) {
     errors.push('Catalogue.starterCounts : objet attendu.');
   } else {
     const ids = new Set(cards.map((card) => card.id));
@@ -512,7 +566,12 @@ export function parseCatalog(raw: unknown, gameVersion: GameVersion = 'v1'): Par
   }
 
   // Un deck vide ferait planter la première pioche : `beginTurn` sert le marché depuis le deck.
-  if (errors.length === 0 && Object.values(starterCounts).reduce((a, b) => a + b, 0) === 0) {
+  // En V2, un deck incomplet n'est simplement pas proposé aux joueurs (`decks.ts`).
+  if (
+    gameVersion === 'v1' &&
+    errors.length === 0 &&
+    Object.values(starterCounts).reduce((a, b) => a + b, 0) === 0
+  ) {
     errors.push('Catalogue : le deck de départ est vide, il faut au moins un exemplaire d’une carte.');
   }
 
@@ -521,10 +580,14 @@ export function parseCatalog(raw: unknown, gameVersion: GameVersion = 'v1'): Par
   const powerWeights =
     raw.powerWeights === undefined ? null : parsePowerWeights(raw.powerWeights, errors, gameVersion);
 
+  const decks =
+    gameVersion === 'v1' ? null : parseDecks(raw.decks, new Set(cards.map((card) => card.id)), errors);
+
   if (version === null || errors.length > 0) return { ok: false, errors };
   const catalog: Catalog = { version, cards, starterCounts };
   if (powerWeights) catalog.powerWeights = powerWeights;
   if (gameVersion !== 'v1') catalog.gameVersion = gameVersion;
+  if (decks) catalog.decks = decks;
   return { ok: true, value: catalog };
 }
 
@@ -572,10 +635,17 @@ export function migrateCatalogToV2(raw: unknown): unknown {
       })
     : raw.cards;
 
-  const next: Record<string, unknown> = { ...raw, cards };
-  if (isRecord(raw.starterCounts) && removedIds.size > 0) {
-    next.starterCounts = Object.fromEntries(Object.entries(raw.starterCounts).filter(([id]) => !removedIds.has(id)));
-  }
+  // Le deck de départ commun devient le premier deck à choisir (catalogue V2 écrit avant les
+  // decks, ou amorcé depuis la V1) : il n'est pas perdu, mais il faudra peut-être le compléter
+  // pour atteindre `DECK_SIZE` cartes.
+  const withoutRemoved = (counts: unknown) =>
+    isRecord(counts) ? Object.fromEntries(Object.entries(counts).filter(([id]) => !removedIds.has(id))) : counts;
+  const decks = Array.isArray(raw.decks)
+    ? raw.decks.map((deck) => (isRecord(deck) ? { ...deck, counts: withoutRemoved(deck.counts) } : deck))
+    : isRecord(raw.starterCounts)
+      ? [{ id: 'deck1', name: 'Deck de départ', counts: withoutRemoved(raw.starterCounts) }]
+      : [];
+  const next: Record<string, unknown> = { ...raw, cards, starterCounts: {}, decks };
   if (isRecord(raw.powerWeights)) {
     const weights: Record<string, unknown> = { ...raw.powerWeights };
     const keep = (group: string, allowed: Set<string>) => {

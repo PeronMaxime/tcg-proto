@@ -16,6 +16,7 @@ import { catalogStore } from '../../net/catalogStore';
 import CardsTable from './CardsTable';
 import CatalogPanel from './CatalogPanel';
 import CatalogStats from './CatalogStats';
+import DecksPanel from './DecksPanel';
 import LoginForm from './LoginForm';
 import PowerWeightsPanel from './PowerWeightsPanel';
 import { useCatalogAdmin } from './useCatalogAdmin';
@@ -29,14 +30,20 @@ import { useCatalogAdmin } from './useCatalogAdmin';
 // Onglets du panneau. Ils partagent tous LE MÊME brouillon (`useCatalogAdmin`) : changer
 // d'onglet ne perd rien, et le bouton « Enregistrer » de n'importe quel onglet écrit le
 // catalogue entier. L'ordre est celui du travail : éditer, relire, compter, peser.
+// « Decks » n'existe qu'en V2 : la V1 garde un deck de départ commun, réglé carte par carte.
 const TABS = [
   { id: 'cards', label: 'Cartes' },
+  { id: 'decks', label: 'Decks', versions: ['v2'] },
   { id: 'table', label: 'Récapitulatif' },
   { id: 'stats', label: 'Chiffres' },
   { id: 'power', label: 'Puissances' },
-] as const;
+] as const satisfies readonly { id: string; label: string; versions?: readonly GameVersion[] }[];
 
 type TabId = (typeof TABS)[number]['id'];
+
+function tabsFor(version: GameVersion) {
+  return TABS.filter((entry) => !('versions' in entry) || (entry.versions as readonly GameVersion[]).includes(version));
+}
 
 // Version du jeu éditée (sélecteur en haut à droite), retenue d'une visite à l'autre : on
 // retravaille en général plusieurs jours de suite sur la même.
@@ -140,6 +147,10 @@ function AdminScreen() {
     saveVersion(next);
   }
 
+  const visibleTabs = tabsFor(version);
+  // Onglet absent de la version affichée (« Decks » en V1) : on retombe sur les cartes.
+  const activeTab: TabId = visibleTabs.some((entry) => entry.id === tab) ? tab : 'cards';
+
   const versionPicker = <VersionPicker value={version} onChange={changeVersion} disabled={admin.saving} />;
   const label = GAME_VERSION_LABELS[version];
 
@@ -211,12 +222,12 @@ function AdminScreen() {
 
       <div className="admin-topbar">
         <nav className="admin-tabs">
-          {TABS.map((entry) => (
+          {visibleTabs.map((entry) => (
             <button
               key={entry.id}
               type="button"
-              className={entry.id === tab ? 'admin-tab is-active' : 'admin-tab'}
-              aria-current={entry.id === tab ? 'page' : undefined}
+              className={entry.id === activeTab ? 'admin-tab is-active' : 'admin-tab'}
+              aria-current={entry.id === activeTab ? 'page' : undefined}
               onClick={() => setTab(entry.id)}
             >
               {entry.label}
@@ -226,10 +237,11 @@ function AdminScreen() {
         {versionPicker}
       </div>
 
-      {tab === 'cards' && <CatalogPanel admin={admin} />}
-      {tab === 'table' && <CardsTable admin={admin} />}
-      {tab === 'stats' && <CatalogStats admin={admin} />}
-      {tab === 'power' && <PowerWeightsPanel admin={admin} />}
+      {activeTab === 'cards' && <CatalogPanel admin={admin} />}
+      {activeTab === 'decks' && <DecksPanel admin={admin} />}
+      {activeTab === 'table' && <CardsTable admin={admin} />}
+      {activeTab === 'stats' && <CatalogStats admin={admin} />}
+      {activeTab === 'power' && <PowerWeightsPanel admin={admin} />}
 
       <footer className="admin-footer">
         <a href="/">← Retour au jeu</a>

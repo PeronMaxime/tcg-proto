@@ -170,19 +170,22 @@ function emptyZones(monsterZoneSize: number): Record<Zone, Slot[]> {
 
 // `monsterZoneSize` : nombre maximal de cartes par zone de monstres (variante choisie dans le
 // menu, voir `MONSTER_ZONE_SIZES`).
+// `decks` : composition du deck de chaque siège (V2, deck choisi par le joueur, `decks.ts`).
+// Absent = les deux joueurs jouent le deck de départ du catalogue actif (V1).
 export function createInitialState(
   random: () => number = Math.random,
   monsterZoneSize: number = DEFAULT_MONSTER_ZONE_SIZE,
+  decks?: Record<Seat, Record<string, number>>,
 ): GameState {
   let uidCounter = 0;
   const makeUid = () => `c${uidCounter++}`;
 
-  function freshPlayer(bonusCoins = 0): PlayerState {
+  function freshPlayer(seat: Seat, bonusCoins = 0): PlayerState {
     return {
       hp: STARTING_HP,
       coins: STARTING_COINS + bonusCoins,
       turnsPlayed: 0,
-      deck: shuffle(buildStarterDeck(makeUid), random),
+      deck: shuffle(buildStarterDeck(makeUid, decks?.[seat]), random),
       market: [],
       hand: [],
       zones: emptyZones(monsterZoneSize),
@@ -209,8 +212,8 @@ export function createInitialState(
     phase: 'start',
     turnNumber: 1,
     players: {
-      p1: freshPlayer(starter === 'p1' ? 0 : SECOND_PLAYER_BONUS_COINS),
-      p2: freshPlayer(starter === 'p2' ? 0 : SECOND_PLAYER_BONUS_COINS),
+      p1: freshPlayer('p1', starter === 'p1' ? 0 : SECOND_PLAYER_BONUS_COINS),
+      p2: freshPlayer('p2', starter === 'p2' ? 0 : SECOND_PLAYER_BONUS_COINS),
     },
     winner: null,
     eventSeq: 0,

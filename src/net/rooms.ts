@@ -1,4 +1,5 @@
 import { setActiveCatalog } from '../game/cards';
+import { DECK_CHOICE_MS, playableDecks, resolveDecks } from '../game/decks';
 import { applyAction, createInitialState, DEFAULT_MONSTER_ZONE_SIZE } from '../game/rules';
 import type { Action, Catalog, GameState, Room, Seat } from '../game/types';
 import { DEFAULT_GAME_VERSION, type GameVersion } from '../game/versions';
@@ -39,10 +40,60 @@ async function freshGame(
   version: GameVersion | undefined,
 ): Promise<{ catalog: Catalog; start: (room: Room) => GameState }> {
   const catalog = await loadPlayableCatalog(version ?? DEFAULT_GAME_VERSION);
+  checkDecks(catalog);
   setActiveCatalog(catalog);
   return {
     catalog,
     start: (room) => createInitialState(Math.random, room.monsterZoneSize ?? DEFAULT_MONSTER_ZONE_SIZE),
+  };
+}
+
+// V2 : les joueurs choisissent leur deck, encore faut-il qu'il y en ait un de jouable.
+function checkDecks(catalog: Catalog): void {
+  if (catalog.gameVersion === 'v2' && playableDecks(catalog).length === 0) {
+    throw new RoomError('Aucun deck complet dans cette version : compose-en un depuis l’administration.');
+  }
+}
+
+// Démarrage d'une partie, figée sur le catalogue `catalog`. V1 : la partie démarre aussitôt, les
+// deux joueurs jouent le deck de départ. V2 : on passe d'abord par le choix des decks
+// (`chooseDeck`, `expireDeckChoice`), la partie ne démarrera qu'à la fin de celui-ci.
+function startOrChooseDecks(existing: Room, game: { catalog: Catalog; start: (room: Room) => GameState }): Room {
+  const base: Room = {
+    ...existing,
+    catalog: game.catalog,
+    leftAt: freshLeftAt(),
+    rematchReady: freshRematchReady(),
+  };
+  if (game.catalog.gameVersion !== 'v2') {
+    return { ...base, state: game.start(existing), status: 'playing' };
+  }
+  return {
+    ...base,
+    state: null,
+    status: 'choosingDecks',
+    deckChoice: { p1: null, p2: null },
+    deckDeadline: Date.now() + DECK_CHOICE_MS,
+  };
+}
+
+// Fin du choix des decks : chaque siège joue son choix, ou le deck par défaut s'il n'a pas
+// validé à temps. Appelé dans une transaction, sur la room telle qu'elle est stockée.
+function startWithDecks(existing: Room, choice: Record<Seat, string | null>): Room {
+  if (!existing.catalog) throw new RoomError('Catalogue de la partie introuvable.');
+  // `createInitialState` lit le catalogue actif (`getCardDef`, `isV2Active`) : c'est celui de la
+  // room, déjà installé par `RoomScreen`, mais on ne s'en remet pas à l'ordre des rendus.
+  setActiveCatalog(existing.catalog);
+  const decks = resolveDecks(existing.catalog, choice);
+  if (!decks) throw new RoomError('Aucun deck jouable dans cette partie.');
+  return {
+    ...existing,
+    state: createInitialState(Math.random, existing.monsterZoneSize ?? DEFAULT_MONSTER_ZONE_SIZE, {
+      p1: decks.p1.counts,
+      p2: decks.p2.counts,
+    }),
+    status: 'playing',
+    deckChoice: { p1: decks.p1.id, p2: decks.p2.id },
   };
 }
 
@@ -80,8 +131,8 @@ export async function createRoom(
   const player = { id: getPlayerId(), name: getPlayerName() };
   // Le catalogue n'est recopié dans la room qu'à l'arrivée du second joueur, mais on vérifie
   // dès maintenant qu'il existe : une V2 encore sans cartes doit refuser la création, pas
-  // laisser l'adversaire tomber sur une erreur en rejoignant.
-  await loadPlayableCatalog(gameVersion);
+  // laisser l'adversaire tomber sur une erreur en rejoignant. Même chose pour une V2 sans deck.
+  checkDecks(await loadPlayableCatalog(gameVersion));
 
   for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS; attempt++) {
     const code = generateRoomCode();
@@ -131,16 +182,7 @@ export async function joinRoom(rawCode: string): Promise<Room> {
     // La room a changé entre la lecture et la transaction (siège libéré entre-temps) : rare,
     // il suffit de recommencer.
     if (!game) throw new RoomError('La room a changé, réessaie.');
-    const joined: Room = {
-      ...existing,
-      players: { ...existing.players, p2: player },
-      state: game.start(existing),
-      catalog: game.catalog,
-      status: 'playing',
-      leftAt: freshLeftAt(),
-      rematchReady: freshRematchReady(),
-    };
-    return joined;
+    return startOrChooseDecks({ ...existing, players: { ...existing.players, p2: player } }, game);
   });
 
   // `fn` ne retourne jamais `null` ci-dessus : soit elle lève, soit elle renvoie une Room.
@@ -173,15 +215,7 @@ export async function rematch(room: Room): Promise<void> {
   const game = await freshGame(room.gameVersion);
   await roomStore.transact(room.code, (existing) => {
     if (!existing) return null;
-    const restarted: Room = {
-      ...existing,
-      state: game.start(existing),
-      catalog: game.catalog,
-      status: 'playing',
-      leftAt: freshLeftAt(),
-      rematchReady: freshRematchReady(),
-    };
-    return restarted;
+    return startOrChooseDecks(existing, game);
   });
 }
 
@@ -196,18 +230,32 @@ export async function requestRematch(room: Room, seat: Seat): Promise<void> {
   await roomStore.transact(room.code, (existing) => {
     if (!existing) return null;
     const ready = { ...(existing.rematchReady ?? freshRematchReady()), [seat]: true };
-    if (ready.p1 && ready.p2) {
-      const restarted: Room = {
-        ...existing,
-        state: game.start(existing),
-        catalog: game.catalog,
-        status: 'playing',
-        leftAt: freshLeftAt(),
-        rematchReady: freshRematchReady(),
-      };
-      return restarted;
-    }
+    // V2 : la revanche repasse par le choix des decks (demande utilisateur).
+    if (ready.p1 && ready.p2) return startOrChooseDecks(existing, game);
     return { ...existing, rematchReady: ready };
+  });
+}
+
+// V2 : le siège `seat` valide son deck. Définitif : un second choix est ignoré. La partie
+// démarre dès que les deux sièges ont validé.
+export async function chooseDeck(room: Room, seat: Seat, deckId: string): Promise<void> {
+  await roomStore.transact(room.code, (existing) => {
+    if (!existing || existing.status !== 'choosingDecks') return null;
+    const current = existing.deckChoice ?? { p1: null, p2: null };
+    if (current[seat]) return null;
+    const choice = { ...current, [seat]: deckId };
+    if (choice.p1 && choice.p2) return startWithDecks(existing, choice);
+    return { ...existing, deckChoice: choice };
+  });
+}
+
+// V2 : délai de choix écoulé. Appelé par chaque client qui le constate ; la transaction garantit
+// qu'un seul démarre la partie (les suivants trouvent une room déjà en jeu et n'écrivent rien).
+export async function expireDeckChoice(room: Room): Promise<void> {
+  await roomStore.transact(room.code, (existing) => {
+    if (!existing || existing.status !== 'choosingDecks') return null;
+    if (Date.now() < (existing.deckDeadline ?? 0)) return null;
+    return startWithDecks(existing, existing.deckChoice ?? { p1: null, p2: null });
   });
 }
 
