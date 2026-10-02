@@ -140,6 +140,10 @@ export interface PowerWeights {
   // une capacité. Absent = `POWER_PER_ENCHANTMENT` et coefficient neutre.
   enchantments?: Partial<Record<EnchantmentEffect['type'], number>>;
   enchantmentCoefficients?: Partial<Record<EnchantmentEffect['type'], number>>;
+  // Puissance visée selon la rareté et le coût en pièces (demande utilisateur), indexée par
+  // rareté puis par coût (clé '1' à '10', `POWER_TARGET_COSTS`). Repère d'équilibrage seulement.
+  // Case absente = `DEFAULT_POWER_TARGETS` (cards.ts).
+  targets?: Partial<Record<CardRarity, Partial<Record<string, number>>>>;
 }
 
 // Catalogue complet : les cartes existantes et la composition du deck de départ. Éditable

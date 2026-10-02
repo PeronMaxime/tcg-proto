@@ -2500,6 +2500,34 @@ button {
   color: var(--color-text-dim);
 }
 
+/* Verdict d'équilibrage : puissance comparée à celle visée pour la rareté et le coût. */
+.admin-power-balance {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-dim);
+}
+
+.admin-power-balance.is-balanced {
+  color: var(--color-success);
+}
+
+.admin-power-balance.is-strong,
+.admin-list-balance.is-strong {
+  color: var(--color-danger);
+}
+
+.admin-power-balance.is-weak,
+.admin-list-balance.is-weak {
+  color: var(--hud-gold);
+}
+
+.admin-list-balance {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 /* Onglets du panneau (Cartes / Récapitulatif / Chiffres / Puissances). Un simple bandeau de
    boutons : l'onglet actif est souligné à l'accent, les autres restent discrets. */
 .admin-tabs {

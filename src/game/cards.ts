@@ -590,6 +590,42 @@ export function enchantmentPower(effect: EnchantmentEffect['type'], weights?: Po
   return Math.round(enchantmentWeight(effect, weights) * enchantmentCoefficient(effect, weights));
 }
 
+// Puissance visée selon la rareté et le coût (demande utilisateur) : le repère auquel comparer
+// la puissance d'une carte. Une ligne par rareté, une colonne par coût de 1 à 10 pièces ; le
+// barème du catalogue (`PowerWeights.targets`) remplace case par case ces valeurs par défaut.
+export const POWER_TARGET_COSTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+
+export const DEFAULT_POWER_TARGETS: Record<CardRarity, readonly number[]> = {
+  common: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+  uncommon: [3, 5, 7, 9, 11, 13, 15, 17, 19, 21],
+  rare: [4, 7, 10, 13, 16, 19, 22, 25, 28, 31],
+  legendary: [5, 9, 13, 17, 21, 25, 29, 33, 37, 41],
+};
+
+// Puissance visée pour une rareté et un coût. `undefined` hors de la grille (coût 0 ou > 10).
+export function powerTarget(rarity: CardRarity, cost: number, weights?: PowerWeights): number | undefined {
+  return weights?.targets?.[rarity]?.[String(cost)] ?? DEFAULT_POWER_TARGETS[rarity][cost - 1];
+}
+
+// Écart entre la puissance d'une carte et celle visée pour sa rareté et son coût (demande
+// utilisateur) : positif = trop forte, négatif = trop faible, 0 = pile dans le barème.
+// `null` quand le coût sort de la grille (aucune valeur visée à comparer).
+export interface PowerBalance {
+  power: number;
+  target: number;
+  gap: number;
+}
+
+export function powerBalance(
+  def: CardDef,
+  weights: PowerWeights | undefined = activeCatalog.powerWeights,
+): PowerBalance | null {
+  const target = powerTarget(cardRarity(def), def.cost, weights);
+  if (target === undefined) return null;
+  const power = cardPower(def, weights).total;
+  return { power, target, gap: power - target };
+}
+
 export interface CardPower {
   total: number;
   stats: number; // attaque + défense (0 pour un enchantement, qui ne combat pas)

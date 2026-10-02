@@ -8,6 +8,7 @@ import {
   cardPower,
   cardRarity,
   describeKeywordEffect,
+  powerBalance,
 } from '../../game/cards';
 import {
   CARD_ELEMENTS,
@@ -330,7 +331,28 @@ function PowerSummary({ def }: { def: CardDef }) {
       <span className="admin-power-label">Puissance</span>
       <span className="admin-power-value">{power.total}</span>
       <span className="admin-power-detail">{parts.length > 0 ? parts.join(' + ') : 'aucun point'}</span>
+      <PowerBalanceNote def={def} />
     </div>
+  );
+}
+
+// Verdict d'équilibrage : la puissance comparée à celle visée pour la rareté et le coût de la
+// carte (grille de l'onglet « Puissances »).
+function PowerBalanceNote({ def }: { def: CardDef }) {
+  const balance = powerBalance(def);
+  if (!balance) {
+    return <span className="admin-power-balance">Pas de puissance visée pour un coût de {def.cost}.</span>;
+  }
+  const { target, gap } = balance;
+  const rarity = RARITY_LABELS[cardRarity(def)].toLowerCase();
+  const reference = `visée ${target} (${rarity}, ${def.cost} ¤)`;
+  if (gap === 0) {
+    return <span className="admin-power-balance is-balanced">Équilibrée · {reference}</span>;
+  }
+  return (
+    <span className={`admin-power-balance ${gap > 0 ? 'is-strong' : 'is-weak'}`}>
+      {gap > 0 ? `Trop forte de ${gap}` : `Trop faible de ${-gap}`} · {reference}
+    </span>
   );
 }
 

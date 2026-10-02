@@ -7,7 +7,13 @@
 //
 // Module pur, comme `rules.ts` : pas de réseau, pas de React. Il ne dépend que des types.
 
-import { describeAbility, describeEffect, isAbilityAllowed, isEnchantmentEffectAllowed } from './cards';
+import {
+  POWER_TARGET_COSTS,
+  describeAbility,
+  describeEffect,
+  isAbilityAllowed,
+  isEnchantmentEffectAllowed,
+} from './cards';
 import type {
   AbilityEffect,
   CardAbility,
@@ -424,6 +430,35 @@ function parsePowerWeights(raw: unknown, errors: string[], version: GameVersion)
     }
   } else if (raw.enchantments !== undefined || raw.enchantmentCoefficients !== undefined) {
     errors.push("powerWeights : le barème des enchantements n'existe qu'en V2.");
+  }
+
+  // Puissance visée par rareté et par coût : même règle, la clé n'est écrite que si une case a
+  // été réglée.
+  if (raw.targets !== undefined) {
+    if (!isRecord(raw.targets)) {
+      errors.push('powerWeights.targets : objet attendu.');
+    } else {
+      const costs = POWER_TARGET_COSTS.map(String);
+      const targets: NonNullable<PowerWeights['targets']> = {};
+      for (const [rarity, row] of Object.entries(raw.targets)) {
+        const rowPath = `powerWeights.targets.${rarity}`;
+        const parsedRarity = checkEnum(rarity, rowPath, CARD_RARITIES, errors);
+        if (parsedRarity === null) continue;
+        if (!isRecord(row)) {
+          errors.push(`${rowPath} : objet attendu.`);
+          continue;
+        }
+        const entries: Partial<Record<string, number>> = {};
+        for (const [cost, entry] of Object.entries(row)) {
+          const parsedCost = checkEnum(cost, `${rowPath}.${cost}`, costs, errors);
+          if (parsedCost === null) continue;
+          const parsed = checkInt(entry, `${rowPath}.${cost}`, 0, MAX_POWER_WEIGHT, errors);
+          if (parsed !== null) entries[parsedCost] = parsed;
+        }
+        if (Object.keys(entries).length > 0) targets[parsedRarity] = entries;
+      }
+      if (Object.keys(targets).length > 0) weights.targets = targets;
+    }
   }
 
   return weights;

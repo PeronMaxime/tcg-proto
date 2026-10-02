@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ELEMENT_LABELS, RARITY_LABELS, cardPower, cardRarity, isMonster } from '../../game/cards';
+import { ELEMENT_LABELS, RARITY_LABELS, cardPower, cardRarity, isMonster, powerBalance } from '../../game/cards';
 import { CARD_RARITIES } from '../../game/catalogSchema';
 import type { CardDef, CardElement, CardRarity } from '../../game/types';
 import { hasCardArt } from '../../scene/cardArt';
@@ -21,6 +21,22 @@ function nextFreeId(cards: CardDef[]): string {
     const id = `carte${i}`;
     if (!taken.has(id)) return id;
   }
+}
+
+// Repère d'équilibrage dans la liste : rien quand la carte est pile à la puissance visée pour
+// sa rareté et son coût, sinon l'écart (grille de l'onglet « Puissances »).
+function BalanceBadge({ card }: { card: CardDef }) {
+  const balance = powerBalance(card);
+  if (!balance || balance.gap === 0) return null;
+  const strong = balance.gap > 0;
+  return (
+    <span
+      className={`admin-list-balance ${strong ? 'is-strong' : 'is-weak'}`}
+      title={`Puissance ${balance.power}, visée ${balance.target}`}
+    >
+      {strong ? `trop forte +${balance.gap}` : `trop faible ${balance.gap}`}
+    </span>
+  );
 }
 
 interface CatalogPanelProps {
@@ -123,6 +139,7 @@ function CatalogPanel({ admin }: CatalogPanelProps) {
                     {isMonster(card) ? ` · ${card.attack}/${card.defense}` : ' · ench.'}
                     {` · ×${catalog.starterCounts[card.id] ?? 0} · P${cardPower(card).total}`}
                   </span>
+                  <BalanceBadge card={card} />
                   {!hasCardArt(card.id) && <span className="admin-list-badge">sans illustration</span>}
                 </button>
               </li>

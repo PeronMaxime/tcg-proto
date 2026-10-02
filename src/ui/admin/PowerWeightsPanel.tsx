@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
 import {
+  DEFAULT_POWER_TARGETS,
   KEYWORD_LABELS,
   POWER_COEFFICIENT,
+  POWER_TARGET_COSTS,
+  RARITY_LABELS,
   POWER_PER_ABILITY,
   POWER_PER_AURA,
   POWER_PER_ENCHANTMENT,
@@ -10,13 +13,14 @@ import {
   isMonster,
 } from '../../game/cards';
 import {
+  CARD_RARITIES,
   MAX_POWER_COEFFICIENT,
   MAX_POWER_WEIGHT,
   abilityEffectTypesFor,
   enchantmentEffectTypesFor,
   keywordsFor,
 } from '../../game/catalogSchema';
-import type { PowerWeights } from '../../game/types';
+import type { CardRarity, PowerWeights } from '../../game/types';
 import AdminHeader from './AdminHeader';
 import { ABILITY_EFFECT_LABELS, ENCHANTMENT_EFFECT_LABELS } from './CardEditor';
 import type { CatalogAdmin } from './useCatalogAdmin';
@@ -58,7 +62,16 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
     key: string,
     value: number | null,
   ) {
-    const next: PowerWeights = {
+    const next = copyWeights();
+    const target = next[group] as Record<string, number>;
+    if (value === null) delete target[key];
+    else target[key] = value;
+    admin.setPowerWeights(next);
+  }
+
+  // Copie modifiable du barème, toutes les cases déjà réglées comprises.
+  function copyWeights(): PowerWeights {
+    return {
       keywords: { ...(weights?.keywords ?? {}) },
       abilities: { ...(weights?.abilities ?? {}) },
       abilityCoefficients: { ...(weights?.abilityCoefficients ?? {}) },
@@ -68,10 +81,22 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
             enchantmentCoefficients: { ...(weights?.enchantmentCoefficients ?? {}) },
           }
         : {}),
+      targets: Object.fromEntries(
+        Object.entries(weights?.targets ?? {}).map(([rarity, row]) => [rarity, { ...row }]),
+      ),
     };
-    const target = next[group] as Record<string, number>;
-    if (value === null) delete target[key];
-    else target[key] = value;
+  }
+
+  // Écrit une case de la grille des puissances visées (même convention : `null` = par défaut).
+  function setTarget(rarity: CardRarity, cost: number, value: number | null) {
+    const next = copyWeights();
+    const targets = next.targets ?? {};
+    const row = { ...(targets[rarity] ?? {}) };
+    if (value === null) delete row[String(cost)];
+    else row[String(cost)] = value;
+    if (Object.keys(row).length > 0) targets[rarity] = row;
+    else delete targets[rarity];
+    next.targets = targets;
     admin.setPowerWeights(next);
   }
 
@@ -97,7 +122,8 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
     Object.keys(weights?.abilities ?? {}).length +
     Object.keys(weights?.abilityCoefficients ?? {}).length +
     Object.keys(weights?.enchantments ?? {}).length +
-    Object.keys(weights?.enchantmentCoefficients ?? {}).length;
+    Object.keys(weights?.enchantmentCoefficients ?? {}).length +
+    Object.values(weights?.targets ?? {}).reduce((sum, row) => sum + Object.keys(row ?? {}).length, 0);
 
   return (
     <div className="admin-panel">
@@ -116,8 +142,8 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
           onClick={() =>
             admin.setPowerWeights(
               v2
-                ? { keywords: {}, abilities: {}, abilityCoefficients: {}, enchantments: {}, enchantmentCoefficients: {} }
-                : { keywords: {}, abilities: {}, abilityCoefficients: {} },
+                ? { keywords: {}, abilities: {}, abilityCoefficients: {}, enchantments: {}, enchantmentCoefficients: {}, targets: {} }
+                : { keywords: {}, abilities: {}, abilityCoefficients: {}, targets: {} },
             )
           }
         >
@@ -145,6 +171,45 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
       </p>
 
       <div className="admin-table-scroll">
+        {/* Puissance visée selon la rareté et le coût (demande utilisateur). */}
+        <section>
+          <h2>Puissance visée par rareté et coût</h2>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Pièces</th>
+                {POWER_TARGET_COSTS.map((cost) => (
+                  <th key={cost} className="is-numeric">
+                    {cost}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {CARD_RARITIES.map((rarity) => (
+                <tr key={rarity}>
+                  <td>{RARITY_LABELS[rarity]}s</td>
+                  {POWER_TARGET_COSTS.map((cost) => (
+                    <td key={cost} className="is-numeric">
+                      <input
+                        type="number"
+                        min={0}
+                        max={MAX_POWER_WEIGHT}
+                        step={1}
+                        className="admin-weight-input"
+                        aria-label={`${RARITY_LABELS[rarity]}, ${cost} pièce${cost > 1 ? 's' : ''}`}
+                        value={weights?.targets?.[rarity]?.[String(cost)] ?? ''}
+                        placeholder={String(DEFAULT_POWER_TARGETS[rarity][cost - 1])}
+                        onChange={(e) => setTarget(rarity, cost, readInput(e.target.value))}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
         <section>
           <h2>Habiletés</h2>
           <table className="admin-table">

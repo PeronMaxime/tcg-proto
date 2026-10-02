@@ -168,6 +168,23 @@ describe('parseCatalog', () => {
     expect(parseCatalog(withWeights({ abilityCoefficients: 1 })).ok).toBe(false);
   });
 
+  it('garde la puissance visée par rareté et coût et refuse les cases invalides', () => {
+    const cards = [monster({ element: 'fire' })];
+    const withWeights = (powerWeights: unknown) => ({
+      ...(catalog(cards, { test: 3 }) as Record<string, unknown>),
+      powerWeights,
+    });
+
+    const parsed = parseCatalog(withWeights({ keywords: {}, abilities: {}, targets: { rare: { '3': 12 }, common: {} } }));
+    if (!parsed.ok) throw new Error(parsed.errors.join('\n'));
+    expect(parsed.value.powerWeights?.targets).toEqual({ rare: { '3': 12 } });
+
+    expect(parseCatalog(withWeights({ keywords: {}, abilities: {}, targets: { epic: { '1': 2 } } })).ok).toBe(false);
+    expect(parseCatalog(withWeights({ keywords: {}, abilities: {}, targets: { rare: { '11': 2 } } })).ok).toBe(false);
+    expect(parseCatalog(withWeights({ keywords: {}, abilities: {}, targets: { rare: { '1': 1.5 } } })).ok).toBe(false);
+    expect(parseCatalog(withWeights({ keywords: {}, abilities: {}, targets: 3 })).ok).toBe(false);
+  });
+
   it('un barème sans coefficient n’en écrit pas un', () => {
     const parsed = parseCatalog({
       ...(catalog([monster({ element: 'fire' })], { test: 3 }) as Record<string, unknown>),
