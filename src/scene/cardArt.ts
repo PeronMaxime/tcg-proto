@@ -705,6 +705,301 @@ const DRAWERS: Record<string, Drawer> = {
     ctx.fillStyle = c.light;
     ellipse(ctx, 128, 50, 26, 3);
   },
+
+  // --- V2 : cartes neutres (catalogue `catalog/v2`, identifiants préfixés « N ») ---
+
+  NOurs(ctx, c) {
+    // Sapins en arrière-plan.
+    ctx.fillStyle = c.ink;
+    ctx.globalAlpha = 0.4;
+    poly(ctx, [36, 138, 52, 70, 68, 138]);
+    poly(ctx, [204, 138, 222, 60, 240, 138]);
+    ctx.globalAlpha = 1;
+    // Ours à quatre pattes, en marche vers la droite.
+    poly(ctx, [78, 108, 96, 108, 96, 138, 80, 138]);
+    poly(ctx, [100, 112, 114, 112, 112, 138, 100, 138]);
+    poly(ctx, [128, 112, 142, 112, 140, 138, 126, 138]);
+    poly(ctx, [148, 108, 164, 108, 166, 138, 150, 138]);
+    ellipse(ctx, 122, 100, 50, 24);
+    ellipse(ctx, 140, 82, 26, 16, 0.15); // bosse des épaules
+    circle(ctx, 172, 88, 16);
+    poly(ctx, [178, 80, 202, 88, 200, 100, 176, 102]); // museau
+    circle(ctx, 162, 73, 6);
+    circle(ctx, 177, 72, 6);
+    ctx.fillStyle = c.light;
+    circle(ctx, 182, 85, 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    circle(ctx, 200, 92, 3);
+  },
+
+  NNegociateur(ctx, c) {
+    ctx.fillStyle = c.ink;
+    poly(ctx, [96, 106, 108, 106, 106, 138, 94, 138]);
+    poly(ctx, [112, 106, 124, 106, 128, 138, 116, 138]);
+    poly(ctx, [94, 68, 124, 68, 132, 112, 88, 112]); // redingote
+    circle(ctx, 110, 56, 10);
+    ellipse(ctx, 110, 47, 16, 3.5); // bord du chapeau
+    ctx.fillRect(101, 31, 18, 16);
+    poly(ctx, [122, 72, 150, 84, 147, 91, 120, 82]); // bras tendu vers la balance
+    ctx.fillStyle = c.accent;
+    ctx.fillRect(101, 41, 18, 3);
+    ctx.fillStyle = c.light;
+    circle(ctx, 115, 55, 1.6);
+    // Table et balance : l'or pèse plus que le contrat.
+    ctx.fillStyle = c.ink;
+    ctx.fillRect(146, 108, 76, 6);
+    ctx.fillRect(152, 114, 5, 24);
+    ctx.fillRect(211, 114, 5, 24);
+    ctx.fillRect(182, 62, 4, 46);
+    ellipse(ctx, 184, 107, 14, 3);
+    ctx.strokeStyle = c.ink;
+    ctx.lineCap = 'round';
+    line(ctx, 160, 70, 208, 58, 3);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(160, 70);
+    ctx.lineTo(150, 92);
+    ctx.moveTo(160, 70);
+    ctx.lineTo(170, 92);
+    ctx.moveTo(208, 58);
+    ctx.lineTo(198, 80);
+    ctx.moveTo(208, 58);
+    ctx.lineTo(218, 80);
+    ctx.stroke();
+    ellipse(ctx, 160, 93, 12, 3);
+    ellipse(ctx, 208, 81, 12, 3);
+    circle(ctx, 184, 62, 4);
+    for (const y of [89, 85, 81]) {
+      ctx.fillStyle = GOLD;
+      ellipse(ctx, 160, y, 7, 2.5);
+    }
+    ctx.fillStyle = c.light;
+    ctx.beginPath();
+    ctx.roundRect(198, 72, 20, 8, 3);
+    ctx.fill();
+  },
+
+  NBrocanteur(ctx, c) {
+    // Brocanteur penché qui pousse sa charrette.
+    ctx.fillStyle = c.ink;
+    poly(ctx, [70, 104, 80, 106, 70, 138, 60, 138]);
+    poly(ctx, [84, 106, 94, 104, 102, 138, 92, 138]);
+    poly(ctx, [70, 70, 94, 66, 100, 108, 70, 110]);
+    circle(ctx, 94, 58, 10);
+    poly(ctx, [84, 54, 104, 50, 110, 56, 86, 58]); // casquette
+    poly(ctx, [92, 76, 118, 90, 115, 97, 88, 86]);
+    ctx.fillStyle = c.light;
+    circle(ctx, 99, 58, 1.6);
+    // Charrette et sa roue.
+    ctx.fillStyle = c.ink;
+    poly(ctx, [114, 96, 214, 96, 206, 116, 120, 116]);
+    ctx.strokeStyle = c.ink;
+    ctx.lineCap = 'round';
+    line(ctx, 114, 98, 110, 90, 4);
+    circle(ctx, 176, 122, 16);
+    ctx.strokeStyle = c.light;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI;
+      ctx.moveTo(176 + Math.cos(a) * 12, 122 + Math.sin(a) * 12);
+      ctx.lineTo(176 - Math.cos(a) * 12, 122 - Math.sin(a) * 12);
+    }
+    ctx.stroke();
+    // Bric-à-brac empilé : vase, cadre, caisse, pendule, bouteille.
+    ctx.fillStyle = c.accent;
+    ellipse(ctx, 130, 86, 9, 11);
+    ctx.fillRect(126, 70, 8, 8);
+    ctx.save();
+    ctx.translate(152, 80);
+    ctx.rotate(-0.2);
+    ctx.strokeStyle = c.light;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-12, -14, 24, 20);
+    ctx.restore();
+    ctx.fillStyle = c.ink;
+    ctx.fillRect(168, 72, 28, 24);
+    ctx.strokeStyle = c.light;
+    ctx.globalAlpha = 0.4;
+    line(ctx, 168, 84, 196, 84, 1.5);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = GOLD;
+    circle(ctx, 182, 60, 10);
+    ctx.strokeStyle = c.ink;
+    line(ctx, 182, 60, 182, 54, 2);
+    line(ctx, 182, 60, 187, 62, 2);
+    ctx.fillStyle = c.light;
+    ctx.globalAlpha = 0.8;
+    ellipse(ctx, 204, 86, 5, 9);
+    ctx.fillRect(202, 72, 4, 8);
+    ctx.globalAlpha = 1;
+  },
+
+  NBanquier(ctx, c) {
+    // Colonnes de la banque.
+    ctx.fillStyle = c.ink;
+    ctx.globalAlpha = 0.4;
+    for (const x of [28, 58, 190, 220]) {
+      ctx.fillRect(x, 34, 12, 104);
+      ctx.fillRect(x - 4, 28, 20, 7);
+    }
+    ctx.fillRect(18, 18, 220, 10);
+    ctx.globalAlpha = 1;
+    // Banquier en haut-de-forme derrière son comptoir.
+    poly(ctx, [106, 66, 150, 66, 154, 106, 102, 106]);
+    circle(ctx, 128, 52, 11);
+    ellipse(ctx, 128, 42, 17, 3.5);
+    ctx.fillRect(118, 20, 20, 22);
+    ctx.fillStyle = c.accent;
+    ctx.fillRect(118, 36, 20, 3);
+    poly(ctx, [122, 66, 134, 74, 134, 66, 122, 74]); // nœud papillon
+    ctx.strokeStyle = c.light;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(133, 52, 4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = c.light;
+    circle(ctx, 123, 52, 1.6);
+    ctx.fillStyle = c.ink;
+    ctx.fillRect(66, 104, 124, 34);
+    ctx.fillStyle = c.light;
+    ctx.globalAlpha = 0.3;
+    ctx.fillRect(66, 104, 124, 3);
+    ctx.globalAlpha = 1;
+    // Piles de pièces et sac d'or sur le comptoir.
+    for (const [x, n] of [[80, 4], [96, 6], [112, 3]] as [number, number][]) {
+      for (let i = 0; i < n; i++) {
+        ctx.fillStyle = GOLD;
+        ellipse(ctx, x, 101 - i * 5, 7, 3);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        ctx.fillRect(x - 7, 101 - i * 5, 14, 1);
+      }
+    }
+    ctx.fillStyle = GOLD;
+    ellipse(ctx, 166, 92, 15, 13);
+    poly(ctx, [158, 82, 174, 82, 170, 74, 162, 74]);
+    ctx.fillStyle = c.ink;
+    ctx.fillRect(160, 80, 12, 3);
+    circle(ctx, 166, 94, 4);
+  },
+
+  NGarde(ctx, c) {
+    // Porte fortifiée derrière : elle garde l'entrée.
+    ctx.fillStyle = c.ink;
+    ctx.globalAlpha = 0.45;
+    ctx.fillRect(56, 30, 144, 108);
+    for (let x = 56; x < 200; x += 24) ctx.fillRect(x, 20, 14, 12);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.beginPath();
+    ctx.moveTo(90, 138);
+    ctx.lineTo(90, 70);
+    ctx.quadraticCurveTo(128, 34, 166, 70);
+    ctx.lineTo(166, 138);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = c.light;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let x = 98; x < 166; x += 12) {
+      ctx.moveTo(x, 58);
+      ctx.lineTo(x, 138);
+    }
+    for (let y = 72; y < 138; y += 16) {
+      ctx.moveTo(90, y);
+      ctx.lineTo(166, y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    // Garde au chapeau de fer.
+    ctx.fillStyle = c.ink;
+    poly(ctx, [116, 108, 128, 108, 126, 138, 114, 138]);
+    poly(ctx, [134, 108, 146, 108, 150, 138, 138, 138]);
+    poly(ctx, [114, 68, 150, 68, 152, 112, 112, 112]);
+    circle(ctx, 132, 56, 11);
+    ellipse(ctx, 132, 48, 21, 4);
+    ctx.beginPath();
+    ctx.arc(132, 48, 11, Math.PI, 0);
+    ctx.fill();
+    poly(ctx, [148, 74, 166, 88, 162, 94, 146, 86]);
+    ctx.fillStyle = c.light;
+    circle(ctx, 136, 56, 1.6);
+    // Hallebarde.
+    ctx.strokeStyle = c.ink;
+    ctx.lineCap = 'round';
+    line(ctx, 166, 138, 166, 22, 4);
+    ctx.fillStyle = c.light;
+    poly(ctx, [166, 8, 170, 22, 162, 22]);
+    poly(ctx, [168, 28, 184, 22, 188, 38, 184, 50, 168, 44]);
+    // Grand bouclier levé et cri de défi.
+    ctx.fillStyle = c.ink;
+    poly(ctx, [92, 64, 124, 64, 124, 118, 108, 128, 92, 118]);
+    ctx.fillStyle = c.accent;
+    poly(ctx, [100, 72, 116, 72, 116, 112, 108, 118, 100, 112]);
+    ctx.fillStyle = c.ink;
+    circle(ctx, 108, 92, 5);
+    ctx.strokeStyle = c.light;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(148, 49);
+    ctx.lineTo(158, 43);
+    ctx.moveTo(149, 56);
+    ctx.lineTo(161, 56);
+    ctx.moveTo(148, 63);
+    ctx.lineTo(158, 68);
+    ctx.stroke();
+  },
+
+  NMarchand(ctx, c) {
+    // Étal de marché : auvent rayé, poteaux, comptoir garni.
+    ctx.fillStyle = c.ink;
+    ctx.fillRect(62, 44, 6, 94);
+    ctx.fillRect(188, 44, 6, 94);
+    poly(ctx, [50, 40, 206, 40, 192, 24, 64, 24]);
+    for (let i = 0; i < 8; i++) {
+      const x = 52 + i * 19;
+      ctx.fillStyle = i % 2 === 0 ? c.accent : c.light;
+      ctx.fillRect(x, 40, 19, 18);
+      ctx.beginPath();
+      ctx.arc(x + 9.5, 58, 9.5, 0, Math.PI);
+      ctx.fill();
+    }
+    // Enseigne : une pièce suspendue.
+    ctx.fillStyle = GOLD;
+    circle(ctx, 128, 74, 7);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    circle(ctx, 128, 74, 4);
+    ctx.fillStyle = c.ink;
+    ctx.fillRect(56, 100, 144, 38);
+    ctx.fillStyle = c.light;
+    ctx.globalAlpha = 0.3;
+    ctx.fillRect(56, 100, 144, 3);
+    ctx.globalAlpha = 1;
+    // Marchandises : pommes, jarres, pain, rouleau d'étoffe.
+    ctx.fillStyle = c.accent;
+    for (const [x, y] of [[74, 94], [84, 94], [79, 86], [94, 95]] as [number, number][]) circle(ctx, x, y, 5.5);
+    ctx.fillStyle = c.light;
+    ctx.globalAlpha = 0.85;
+    ellipse(ctx, 114, 90, 8, 10);
+    ellipse(ctx, 134, 94, 6, 7);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = GOLD;
+    ellipse(ctx, 156, 95, 14, 6, -0.1);
+    ctx.fillStyle = c.accent;
+    ctx.beginPath();
+    ctx.roundRect(170, 84, 22, 14, 6);
+    ctx.fill();
+    // Caisses posées au sol.
+    ctx.fillStyle = c.ink;
+    ctx.fillRect(204, 112, 26, 26);
+    ctx.fillRect(28, 116, 22, 22);
+    ctx.strokeStyle = c.light;
+    ctx.globalAlpha = 0.35;
+    line(ctx, 204, 125, 230, 125, 1.5);
+    line(ctx, 28, 127, 50, 127, 1.5);
+    ctx.globalAlpha = 1;
+  },
 };
 
 // Vrai si la carte a sa propre silhouette : sans elle, `drawCardArt` ne dessine que le décor
