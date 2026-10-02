@@ -167,6 +167,9 @@ le bouton « Enregistrer » écrit le catalogue entier d'où qu'on clique.
 La puissance d'une carte est un repère d'équilibrage affiché dans l'admin : **aucune règle du
 jeu ne la lit**. Elle vaut l'attaque plus la défense, plus la valeur de chaque habileté et de
 chaque capacité, plus un point si la carte porte une aura.
+La valeur d'une capacité (ou d'un effet d'enchantement) est celle de l'effet à une seule
+unité : chaque unité en plus ajoute 1 point (des dégâts à 3 pesant 3 au barème valent 5). Pour
+un effet à deux valeurs (+X/+Y, créature X/Y), chaque paire au-delà de +1/+1 ajoute 1 point.
 
 Par défaut, toutes les habiletés valent 2 points et toutes les capacités 1. L'onglet
 **Paramètres** permet de peser chacune séparément — Provocation ne vaut pas Toxic, un soin ne

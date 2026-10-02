@@ -32,11 +32,6 @@ import type { CatalogAdmin } from './useCatalogAdmin';
 // laissée à vide, elle garde la valeur fixe historique (`POWER_PER_KEYWORD` /
 // `POWER_PER_ABILITY`) — un barème vierge calcule donc exactement comme avant cet onglet.
 //
-// Les coefficients de valeur des effets ne se règlent plus ici (demande utilisateur) : le
-// panneau ne les recopie pas, si bien que la première modification du barème retire ceux
-// qu'un catalogue plus ancien portait encore, et la puissance redevient lisible d'après les
-// seuls tableaux.
-//
 // Le barème vit dans le catalogue (`Catalog.powerWeights`) et s'enregistre avec lui : la
 // puissance reste un indicateur d'équilibrage pour l'admin, aucune règle de jeu ne la lit.
 
@@ -74,7 +69,7 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
     admin.setPowerWeights(next);
   }
 
-  // Copie modifiable du barème, toutes les cases déjà réglées comprises, sauf les coefficients.
+  // Copie modifiable du barème, toutes les cases déjà réglées comprises.
   function copyWeights(): PowerWeights {
     return {
       keywords: { ...(weights?.keywords ?? {}) },
@@ -118,9 +113,7 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
   const custom =
     Object.keys(weights?.keywords ?? {}).length +
     Object.keys(weights?.abilities ?? {}).length +
-    Object.keys(weights?.abilityCoefficients ?? {}).length +
     Object.keys(weights?.enchantments ?? {}).length +
-    Object.keys(weights?.enchantmentCoefficients ?? {}).length +
     Object.values(weights?.targets ?? {}).reduce((sum, row) => sum + Object.keys(row ?? {}).length, 0);
 
   return (
@@ -149,7 +142,9 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
         </button>
       </AdminHeader>
 
-      <div className="admin-table-scroll">
+      {/* Une seule page qui défile (demande utilisateur) : pas de sous-fenêtres qui se
+          partagent la hauteur et écrasent les tableaux. */}
+      <div className="admin-settings">
         {/* Limite d'exemplaires d'une même carte par deck, selon la rareté (demande utilisateur). */}
         <section>
           <h2>Exemplaires par deck</h2>
@@ -185,26 +180,28 @@ function PowerWeightsPanel({ admin }: PowerWeightsPanelProps) {
             Case vide : pas de limite.{v2 ? ' Un deck qui dépasse la limite n’est pas proposé aux joueurs.' : ''}
           </p>
         </section>
-      </div>
 
-      <h2>Puissance</h2>
-      <p className="admin-summary">
-        La puissance d’une carte vaut son attaque plus sa défense, plus la valeur de chacune de ses
-        habiletés et de chacune de ses capacités
-        {v2 ? (
-          <>, plus, pour un enchantement, la valeur de son effet</>
-        ) : (
-          <>
-            , plus {POWER_PER_AURA} si elle porte une aura
-            {auras > 0 ? ` (${auras} carte${auras > 1 ? 's' : ''} concernée${auras > 1 ? 's' : ''})` : ''}
-          </>
-        )}
-        .
-        Laisse une case vide pour garder la valeur par défaut. C’est un repère d’équilibrage : aucune
-        règle du jeu ne s’en sert.
-      </p>
+        <section>
+          <h2>Puissance</h2>
+          <p className="admin-summary">
+            La puissance d’une carte vaut son attaque plus sa défense, plus la valeur de chacune de ses
+            habiletés et de chacune de ses capacités
+            {v2 ? (
+              <>, plus, pour un enchantement, la valeur de son effet</>
+            ) : (
+              <>
+                , plus {POWER_PER_AURA} si elle porte une aura
+                {auras > 0 ? ` (${auras} carte${auras > 1 ? 's' : ''} concernée${auras > 1 ? 's' : ''})` : ''}
+              </>
+            )}
+            .
+            La valeur d’un effet compte pour une seule unité : chaque unité en plus ajoute 1 point
+            (des dégâts à 3 valent 2 de plus), et pour un effet +X/+Y, chaque paire au-delà de
+            +1/+1 ajoute 1 point. Laisse une case vide pour garder la valeur par défaut. C’est un repère d’équilibrage : aucune
+            règle du jeu ne s’en sert.
+          </p>
+        </section>
 
-      <div className="admin-table-scroll">
         {/* Puissance visée selon la rareté et le coût (demande utilisateur). */}
         <section>
           <h2>Puissance visée par rareté et coût</h2>

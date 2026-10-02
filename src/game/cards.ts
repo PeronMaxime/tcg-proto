@@ -549,15 +549,12 @@ export function isEnchantmentEffectAllowed(
 // Barème : attaque + défense, plus la valeur de chaque habileté (mot-clé), de chaque
 // capacité et de l'aura. Les valeurs des habiletés et des capacités viennent du barème du
 // catalogue (`Catalog.powerWeights`, éditable dans l'onglet « Paramètres » de l'admin) ; une
-// entrée absente vaut la valeur fixe ci-dessous, celle d'avant le barème. Une capacité pèse
-// en plus son coefficient de valeur (`abilityPower`), neutre à 1 par défaut.
+// entrée absente vaut la valeur fixe ci-dessous, celle d'avant le barème.
 // ---------------------------------------------------------------------------------------
 
 export const POWER_PER_KEYWORD = 2;
 export const POWER_PER_ABILITY = 1;
 export const POWER_PER_AURA = 1;
-// Coefficient neutre : un effet sans coefficient réglé pèse exactement sa valeur.
-export const POWER_COEFFICIENT = 1;
 
 // Valeur d'une habileté et d'un type d'effet de capacité selon un barème. `weights` absent
 // (catalogue d'avant le barème, ou barème incomplet) = valeur fixe historique.
@@ -569,33 +566,35 @@ export function abilityWeight(effect: AbilityEffect['type'], weights?: PowerWeig
   return weights?.abilities?.[effect] ?? POWER_PER_ABILITY;
 }
 
-export function abilityCoefficient(effect: AbilityEffect['type'], weights?: PowerWeights): number {
-  return weights?.abilityCoefficients?.[effect] ?? POWER_COEFFICIENT;
-}
-
-// Ce que pèse UNE capacité : sa valeur multipliée par son coefficient. Le coefficient admet
-// des décimales, pas la puissance affichée — un demi-point ne se lit pas sur une face de
-// carte : on arrondit donc capacité par capacité, et non sur le total, pour que le chiffre
-// annoncé pour une capacité reste le même quelles que soient les autres capacités de la carte.
-export function abilityPower(effect: AbilityEffect['type'], weights?: PowerWeights): number {
-  return Math.round(abilityWeight(effect, weights) * abilityCoefficient(effect, weights));
-}
-
 // Effet d'enchantement (V2, demande utilisateur) : même principe qu'une capacité, une valeur
-// par type d'effet et un coefficient. Ne compte que pour un catalogue V2 : la puissance des
-// enchantements V1 reste celle d'avant.
+// par type d'effet. Ne compte que pour un catalogue V2 : la puissance des enchantements V1
+// reste celle d'avant.
 export const POWER_PER_ENCHANTMENT = 1;
 
 export function enchantmentWeight(effect: EnchantmentEffect['type'], weights?: PowerWeights): number {
   return weights?.enchantments?.[effect] ?? POWER_PER_ENCHANTMENT;
 }
 
-export function enchantmentCoefficient(effect: EnchantmentEffect['type'], weights?: PowerWeights): number {
-  return weights?.enchantmentCoefficients?.[effect] ?? POWER_COEFFICIENT;
+// Points ajoutés selon la valeur de l'effet (demande utilisateur) : le barème donne ce que
+// vaut l'effet à une seule unité, et chaque unité au-delà de la première ajoute 1 point —
+// des dégâts à 3 pesant 3 au barème valent donc 5. Pour un effet à deux valeurs (+X/+Y,
+// créature X/Y), 1 point par paire au-delà de la première : +2/+2 ajoute 1, +3/+3 ajoute 2,
+// +2/+1 n'ajoute rien. Un effet sans valeur (gel, silence…) n'ajoute rien.
+export function effectAmountBonus(effect: AbilityEffect | EnchantmentEffect): number {
+  if ('attack' in effect) return Math.max(0, Math.floor((effect.attack + effect.defense) / 2) - 1);
+  if ('amount' in effect) return Math.max(0, effect.amount - 1);
+  if ('count' in effect) return Math.max(0, effect.count - 1);
+  return 0;
 }
 
-export function enchantmentPower(effect: EnchantmentEffect['type'], weights?: PowerWeights): number {
-  return Math.round(enchantmentWeight(effect, weights) * enchantmentCoefficient(effect, weights));
+// Ce que pèse un effet de capacité ou d'enchantement : sa valeur au barème, plus son bonus de
+// valeur.
+export function abilityPower(effect: AbilityEffect, weights?: PowerWeights): number {
+  return abilityWeight(effect.type, weights) + effectAmountBonus(effect);
+}
+
+export function enchantmentPower(effect: EnchantmentEffect, weights?: PowerWeights): number {
+  return enchantmentWeight(effect.type, weights) + effectAmountBonus(effect);
 }
 
 // Puissance visée selon la rareté et le coût (demande utilisateur) : le repère auquel comparer
@@ -653,10 +652,10 @@ export function cardPower(def: CardDef, weights: PowerWeights | undefined = acti
     ? (def.keywords ?? []).reduce((sum, keyword) => sum + keywordWeight(keyword, weights), 0)
     : 0;
   const abilities = (def.abilities ?? []).reduce(
-    (sum, ability) => sum + abilityPower(ability.effect.type, weights),
+    (sum, ability) => sum + abilityPower(ability.effect, weights),
     0,
   );
   const aura = isMonster(def) && def.aura ? POWER_PER_AURA : 0;
-  const enchantment = !isMonster(def) && isV2Active() ? enchantmentPower(def.effect.type, weights) : 0;
+  const enchantment = !isMonster(def) && isV2Active() ? enchantmentPower(def.effect, weights) : 0;
   return { total: stats + keywords + abilities + aura + enchantment, stats, keywords, abilities, aura, enchantment };
 }

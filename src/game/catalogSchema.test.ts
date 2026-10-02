@@ -154,25 +154,6 @@ describe('parseCatalog', () => {
     expect(parseCatalog(withWeights('barème')).ok).toBe(false);
   });
 
-  it('garde les coefficients de valeur et refuse les coefficients invalides', () => {
-    const cards = [monster({ element: 'fire' })];
-    const withWeights = (powerWeights: unknown) => ({
-      ...(catalog(cards, { test: 3 }) as Record<string, unknown>),
-      powerWeights,
-    });
-
-    // Contrairement aux valeurs du barème, un coefficient décimal est admis.
-    const parsed = parseCatalog(withWeights({ abilityCoefficients: { drawCard: 0.5 } }));
-    if (!parsed.ok) throw new Error(parsed.errors.join('\n'));
-    expect(parsed.value.powerWeights?.abilityCoefficients).toEqual({ drawCard: 0.5 });
-
-    expect(parseCatalog(withWeights({ abilityCoefficients: { voler: 1 } })).ok).toBe(false);
-    expect(parseCatalog(withWeights({ abilityCoefficients: { drawCard: -1 } })).ok).toBe(false);
-    expect(parseCatalog(withWeights({ abilityCoefficients: { drawCard: 999 } })).ok).toBe(false);
-    expect(parseCatalog(withWeights({ abilityCoefficients: { drawCard: NaN } })).ok).toBe(false);
-    expect(parseCatalog(withWeights({ abilityCoefficients: 1 })).ok).toBe(false);
-  });
-
   it('garde la puissance visée par rareté et coût et refuse les cases invalides', () => {
     const cards = [monster({ element: 'fire' })];
     const withWeights = (powerWeights: unknown) => ({
@@ -190,13 +171,13 @@ describe('parseCatalog', () => {
     expect(parseCatalog(withWeights({ keywords: {}, abilities: {}, targets: 3 })).ok).toBe(false);
   });
 
-  it('un barème sans coefficient n’en écrit pas un', () => {
+  it('lit un ancien barème à coefficients en les laissant de côté', () => {
     const parsed = parseCatalog({
       ...(catalog([monster({ element: 'fire' })], { test: 3 }) as Record<string, unknown>),
-      powerWeights: { keywords: { toxic: 4 }, abilityCoefficients: {} },
+      powerWeights: { keywords: { toxic: 4 }, abilities: {}, abilityCoefficients: { drawCard: 0.5 } },
     });
     if (!parsed.ok) throw new Error(parsed.errors.join('\n'));
-    expect(parsed.value.powerWeights?.abilityCoefficients).toBeUndefined();
+    expect(parsed.value.powerWeights).toEqual({ keywords: { toxic: 4 }, abilities: {} });
   });
 
   it('un catalogue sans barème n’en invente pas un', () => {

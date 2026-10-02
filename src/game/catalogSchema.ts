@@ -77,11 +77,6 @@ export const CARD_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9]*$/;
 // c'est ainsi qu'on déclare qu'une habileté ou un effet ne pèse rien dans l'équilibrage.
 export const MAX_POWER_WEIGHT = 99;
 
-// Plafond du coefficient de valeur d'un effet de capacité. Contrairement aux valeurs du
-// barème, il admet des décimales (un demi-point, une fois et demie) : c'est tout son intérêt
-// face au champ de puissance, qui ne prend que des entiers. 0 annule la capacité.
-export const MAX_POWER_COEFFICIENT = 9;
-
 export const MAX_COST = 99;
 export const MAX_STAT = 99;
 export const MAX_COPIES = 99;
@@ -103,26 +98,6 @@ function checkInt(
 ): number | null {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     errors.push(`${path} : entier attendu.`);
-    return null;
-  }
-  if (value < min || value > max) {
-    errors.push(`${path} : doit être compris entre ${min} et ${max}.`);
-    return null;
-  }
-  return value;
-}
-
-// Comme `checkInt`, mais pour une valeur qui admet des décimales (le coefficient de valeur).
-// On refuse quand même `NaN` et l'infini, qui contamineraient toute puissance calculée.
-function checkNumber(
-  value: unknown,
-  path: string,
-  min: number,
-  max: number,
-  errors: string[],
-): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    errors.push(`${path} : nombre attendu.`);
     return null;
   }
   if (value < min || value > max) {
@@ -380,13 +355,12 @@ export function parseCardDef(raw: unknown, path = 'carte', version: GameVersion 
 // historique (voir `cardPower`). On ne garde donc que les clés effectivement écrites, ce qui
 // évite de figer dans le catalogue des valeurs que personne n'a choisies.
 //
-// Lit un groupe du barème (`group`) : des valeurs entières (`coefficient` faux) ou des
-// coefficients décimaux, indexés par les clés de `allowed`. Rend `null` pour un groupe absent.
+// Lit un groupe du barème (`group`) : des valeurs entières indexées par les clés de `allowed`.
+// Rend `null` pour un groupe absent.
 function parseWeightGroup<K extends string>(
   raw: Record<string, unknown>,
   group: string,
   allowed: readonly K[],
-  coefficient: boolean,
   errors: string[],
 ): Partial<Record<K, number>> | null {
   const value = raw[group];
@@ -400,9 +374,7 @@ function parseWeightGroup<K extends string>(
     const path = `powerWeights.${group}.${key}`;
     const parsedKey = checkEnum(key, path, allowed, errors);
     if (parsedKey === null) continue;
-    const parsed = coefficient
-      ? checkNumber(entry, path, 0, MAX_POWER_COEFFICIENT, errors)
-      : checkInt(entry, path, 0, MAX_POWER_WEIGHT, errors);
+    const parsed = checkInt(entry, path, 0, MAX_POWER_WEIGHT, errors);
     if (parsed !== null) entries[parsedKey] = parsed;
   }
   return entries;
@@ -413,28 +385,18 @@ function parsePowerWeights(raw: unknown, errors: string[], version: GameVersion)
     errors.push('Catalogue.powerWeights : objet attendu.');
     return null;
   }
-  const abilities = abilityEffectTypesFor(version);
   const weights: PowerWeights = {
-    keywords: parseWeightGroup(raw, 'keywords', keywordsFor(version), false, errors) ?? {},
-    abilities: parseWeightGroup(raw, 'abilities', abilities, false, errors) ?? {},
+    keywords: parseWeightGroup(raw, 'keywords', keywordsFor(version), errors) ?? {},
+    abilities: parseWeightGroup(raw, 'abilities', abilityEffectTypesFor(version), errors) ?? {},
   };
 
-  // `abilityCoefficients` reste absent tant qu'aucun coefficient n'a été réglé : un barème
-  // écrit avant cette fonctionnalité se relit tel quel, et on n'écrit pas une clé de plus
-  // dans le catalogue pour y stocker le coefficient neutre. Même règle pour les deux groupes
-  // des enchantements (V2).
-  const coefficients = parseWeightGroup(raw, 'abilityCoefficients', abilities, true, errors);
-  if (coefficients && Object.keys(coefficients).length > 0) weights.abilityCoefficients = coefficients;
-
+  // Les coefficients de valeur (`abilityCoefficients`, `enchantmentCoefficients`) ont été
+  // retirés (demande utilisateur) : un catalogue qui en porte encore est lu sans eux, et le
+  // prochain enregistrement les efface.
   if (version === 'v2') {
-    const types = enchantmentEffectTypesFor(version);
-    const enchantments = parseWeightGroup(raw, 'enchantments', types, false, errors);
+    const enchantments = parseWeightGroup(raw, 'enchantments', enchantmentEffectTypesFor(version), errors);
     if (enchantments && Object.keys(enchantments).length > 0) weights.enchantments = enchantments;
-    const enchantmentCoefficients = parseWeightGroup(raw, 'enchantmentCoefficients', types, true, errors);
-    if (enchantmentCoefficients && Object.keys(enchantmentCoefficients).length > 0) {
-      weights.enchantmentCoefficients = enchantmentCoefficients;
-    }
-  } else if (raw.enchantments !== undefined || raw.enchantmentCoefficients !== undefined) {
+  } else if (raw.enchantments !== undefined) {
     errors.push("powerWeights : le barème des enchantements n'existe qu'en V2.");
   }
 
@@ -681,9 +643,7 @@ export function migrateCatalogToV2(raw: unknown): unknown {
     };
     keep('keywords', keywords);
     keep('abilities', abilityTypes);
-    keep('abilityCoefficients', abilityTypes);
     keep('enchantments', enchantmentTypes);
-    keep('enchantmentCoefficients', enchantmentTypes);
     next.powerWeights = weights;
   }
   next.gameVersion = 'v2';

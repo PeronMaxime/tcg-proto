@@ -3024,6 +3024,32 @@ button {
   text-align: right;
 }
 
+/* Onglet « Paramètres » : une seule zone qui défile, chaque tableau à sa taille réelle. */
+.admin-settings {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.admin-settings h2 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  margin: 0 0 0.5rem;
+}
+
+.admin-settings .admin-table {
+  border: 1px solid var(--color-border);
+}
+
+/* Les en-têtes collants supposent un tableau qui défile seul : ici, ils chevaucheraient le
+   tableau voisin. */
+.admin-settings .admin-table th {
+  position: static;
+}
+
 /* Onglet « Chiffres ». */
 .admin-stats {
   flex: 1;

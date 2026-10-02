@@ -135,16 +135,9 @@ export type CardDef = MonsterDef | EnchantmentDef;
 export interface PowerWeights {
   keywords: Partial<Record<Keyword, number>>;
   abilities: Partial<Record<AbilityEffect['type'], number>>;
-  // Coefficient de valeur d'un effet de capacité (demande utilisateur) : ce qui compte dans la
-  // puissance, c'est la valeur de l'effet MULTIPLIÉE par ce coefficient. Il donne un réglage
-  // fin là où la valeur entière ne suffit pas — un demi-point pour un effet à peine notable,
-  // le double pour un effet qui pèse plus que son barème ne le dit. Absent (ou barème
-  // d'avant cette fonctionnalité) = `POWER_COEFFICIENT`, c'est-à-dire 1 : neutre.
-  abilityCoefficients?: Partial<Record<AbilityEffect['type'], number>>;
-  // Valeur d'un effet d'enchantement (V2, demande utilisateur), avec son coefficient comme pour
-  // une capacité. Absent = `POWER_PER_ENCHANTMENT` et coefficient neutre.
+  // Valeur d'un effet d'enchantement (V2, demande utilisateur), comme pour une capacité.
+  // Absent = `POWER_PER_ENCHANTMENT`.
   enchantments?: Partial<Record<EnchantmentEffect['type'], number>>;
-  enchantmentCoefficients?: Partial<Record<EnchantmentEffect['type'], number>>;
   // Puissance visée selon la rareté et le coût en pièces (demande utilisateur), indexée par
   // rareté puis par coût (clé '1' à '10', `POWER_TARGET_COSTS`). Repère d'équilibrage seulement.
   // Case absente = `DEFAULT_POWER_TARGETS` (cards.ts).

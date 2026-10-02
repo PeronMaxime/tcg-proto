@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  abilityPower,
   buildStarterDeck,
   cardPower,
   cardRarity,
@@ -143,6 +144,19 @@ describe('puissance', () => {
     expect(power).toMatchObject({ total: 15, stats: 9, keywords: 1, abilities: 5 });
   });
 
+  it('chaque unité d’un effet au-delà de la première ajoute 1 point', () => {
+    const weights = { keywords: {}, abilities: { damageOpponent: 3, buff: 3, drawCard: 2 } };
+    expect(abilityPower({ type: 'damageOpponent', amount: 1 }, weights)).toBe(3);
+    expect(abilityPower({ type: 'damageOpponent', amount: 3 }, weights)).toBe(5);
+    expect(abilityPower({ type: 'drawCard', count: 2 }, weights)).toBe(3);
+    // Deux valeurs : 1 point par paire au-delà de +1/+1.
+    expect(abilityPower({ type: 'buff', target: 'self', attack: 1, defense: 1 }, weights)).toBe(3);
+    expect(abilityPower({ type: 'buff', target: 'self', attack: 2, defense: 2 }, weights)).toBe(4);
+    expect(abilityPower({ type: 'buff', target: 'self', attack: 3, defense: 3 }, weights)).toBe(5);
+    expect(abilityPower({ type: 'buff', target: 'self', attack: 2, defense: 1 }, weights)).toBe(3);
+    expect(abilityPower({ type: 'buff', target: 'self', attack: 1, defense: 0 }, weights)).toBe(3);
+  });
+
   it('une entrée absente du barème garde la valeur fixe', () => {
     // Rien de pesé ici : on doit retrouver le calcul d'avant le barème.
     expect(cardPower(getCardDef('golem'), { keywords: {}, abilities: {} })).toEqual(
@@ -156,45 +170,6 @@ describe('puissance', () => {
       abilities: { damageOpponent: 0 },
     });
     expect(power).toMatchObject({ total: 9, keywords: 0, abilities: 0 });
-  });
-
-  it('le coefficient de valeur multiplie la puissance d’un effet de capacité', () => {
-    // Golem de pierre : 1/8, Protection, capacité « Défend : dégâts au héros adverse ».
-    // Les dégâts directs valent 4, doublés par le coefficient → 9 + 2 + 8 = 19.
-    const power = cardPower(getCardDef('golem'), {
-      keywords: {},
-      abilities: { damageOpponent: 4 },
-      abilityCoefficients: { damageOpponent: 2 },
-    });
-    expect(power).toMatchObject({ total: 19, abilities: 8 });
-  });
-
-  it('un coefficient décimal arrondit la puissance de la capacité', () => {
-    // 5 × 0,5 = 2,5 → 3 : la puissance affichée reste un entier.
-    const power = cardPower(getCardDef('golem'), {
-      keywords: {},
-      abilities: { damageOpponent: 5 },
-      abilityCoefficients: { damageOpponent: 0.5 },
-    });
-    expect(power).toMatchObject({ abilities: 3 });
-  });
-
-  it('un coefficient absent est neutre, un coefficient à zéro annule la capacité', () => {
-    const neutral = cardPower(getCardDef('golem'), { keywords: {}, abilities: {} });
-    expect(
-      cardPower(getCardDef('golem'), {
-        keywords: {},
-        abilities: {},
-        abilityCoefficients: { damageOpponent: 1 },
-      }),
-    ).toEqual(neutral);
-    expect(
-      cardPower(getCardDef('golem'), {
-        keywords: {},
-        abilities: {},
-        abilityCoefficients: { damageOpponent: 0 },
-      }),
-    ).toMatchObject({ abilities: 0 });
   });
 
   it('un enchantement n’a ni stats ni habileté : seules ses capacités comptent', () => {
