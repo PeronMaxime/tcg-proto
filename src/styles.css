@@ -951,6 +951,13 @@ button {
 /* ---------- Écran de jeu plein écran (E6/E7) ---------- */
 
 .game-screen {
+  /* Hauteur du bout de ma main qui dépasse du bas de l'écran (`HAND_SCREEN_HEIGHT` ×
+     `HAND_VISIBLE` dans scene/layout.ts), plus une marge : ce qui s'affiche au-dessus de la
+     main (aide, consigne de choix) s'y cale. */
+  --hand-peek: calc(30dvh * 0.4 + 0.5rem);
+  /* Idem pour la main adverse qui dépasse du haut (`OPPONENT_HAND_SCREEN_HEIGHT` ×
+     `OPPONENT_HAND_VISIBLE`) : les bannières s'affichent juste en dessous. */
+  --opp-peek: calc(17dvh * 0.32 + 0.6rem);
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -970,16 +977,11 @@ button {
 
 /* -- Zone de fusion (visible pendant le glisser-déposer d'une carte fusionnable) --
    Posée sur le board adverse (rangées d'attaque et de défense), loin de mes rangées pour ne
-   pas gêner la pose de la carte. En vh : la caméra a un champ vertical fixe, la table suit
-   donc la hauteur d'écran (valeurs projetées depuis `CAMERA` de scene/layout.ts ; le
-   cadrage compact a les siennes plus bas). */
+   pas gêner la pose de la carte. Position et taille écrites à chaque frame par `TableAnchor`
+   (scene/Board.tsx), qui projette son rectangle de table : le cadrage suit l'écran. */
 
 .fusion-zone {
   position: absolute;
-  left: 50%;
-  top: calc(50% - 14.4vh); /* milieu des deux rangées adverses */
-  width: 42vh;
-  height: 18vh;
   transform: translate(-50%, -50%);
   border-radius: 18px;
   border: 2px dashed var(--hud-gold);
@@ -1022,13 +1024,9 @@ button {
 }
 
 /* Zone de vente : posée sur mon deck, où la carte vendue retourne (demande utilisateur).
-   Même projection que la zone de fusion, centrée sur `DECK_MINE` de scene/layout.ts. */
+   Placée comme la zone de fusion, sur `sellZoneRect` de scene/layout.ts. */
 .sell-zone {
   position: absolute;
-  left: calc(50% + 35.5vh);
-  top: calc(50% + 11.7vh);
-  width: 15vh;
-  height: 21vh;
   transform: translate(-50%, -50%);
   border-radius: 14px;
   border: 2px dashed var(--hud-gold);
@@ -1457,9 +1455,11 @@ button {
   position: absolute;
   right: clamp(0.6rem, 2vw, 1.4rem);
   bottom: calc(clamp(0.6rem, 2vw, 1.4rem) + 4.4rem);
+  max-width: 220px;
   margin: 0;
   text-align: right;
-  color: var(--hud-ink-dim);
+  color: var(--hud-ink);
+  text-shadow: 0 1px 3px #000, 0 0 10px rgba(0, 0, 0, 0.9);
   font-family: var(--font-display);
   font-size: 0.75rem;
   letter-spacing: 0.04rem;
@@ -1470,7 +1470,7 @@ button {
 
 .combat-banner {
   position: absolute;
-  top: clamp(3.4rem, 8vw, 4.5rem);
+  top: var(--opp-peek);
   left: 50%;
   transform: translateX(-50%);
   padding: 0.45rem 2rem;
@@ -1489,7 +1489,7 @@ button {
 
 .turn-banner {
   position: absolute;
-  top: clamp(3.4rem, 8vw, 4.5rem);
+  top: var(--opp-peek);
   left: 50%;
   transform: translateX(-50%);
   padding: 0.45rem 2rem;
@@ -1533,8 +1533,8 @@ button {
 .element-wheel {
   position: absolute;
   left: clamp(0.6rem, 2vw, 1.4rem);
-  top: 50%;
-  transform: translateY(-50%);
+  /* Sous la plaque adverse, à gauche du héros adverse. */
+  top: calc(clamp(0.6rem, 2vw, 1.4rem) + 5.4rem);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1580,12 +1580,16 @@ button {
 
 .effect-toasts {
   position: absolute;
+  /* Colonne gauche, dans le vide à gauche de la rangée d'attaque adverse, juste au-dessus de
+     la ligne de front : l'aide occupe le même vide de mon côté. Les toasts s'empilent vers
+     le haut. */
   left: clamp(0.6rem, 2vw, 1.4rem);
-  top: clamp(6rem, 16vw, 8rem);
+  bottom: calc(50% + 0.6rem);
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 0.35rem;
-  max-width: min(70vw, 320px);
+  max-width: min(24vw, 300px);
   pointer-events: none;
 }
 
@@ -1667,23 +1671,34 @@ button {
   opacity: 0.6;
 }
 
+/* Aide : colonne gauche, dans le vide à gauche de ma rangée d'attaque (juste sous la ligne
+   de front, voir scene/layout.ts). */
 .hint {
   position: absolute;
-  bottom: calc(clamp(0.6rem, 2vw, 1.4rem) + 4.4rem);
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
-  color: var(--hud-ink-dim);
-  font-size: 0.78rem;
-  white-space: nowrap;
+  left: clamp(0.6rem, 2vw, 1.4rem);
+  top: calc(50% + 0.8rem);
+  max-width: 200px;
+  margin: 0;
+  padding: 0.45rem 0.65rem;
+  border-left: 2px solid var(--hud-gold-dim);
+  border-radius: 0 4px 4px 0;
+  background: rgba(12, 10, 8, 0.72);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  color: var(--hud-ink);
+  font-size: 0.72rem;
+  line-height: 1.4;
   pointer-events: none;
+}
+
+.hint:empty {
+  display: none;
 }
 
 /* V2 : choix de cible en attente (effet « monstre choisi ») — consigne bien visible et bouton
    pour renoncer à l'effet. */
 .choice-banner {
   position: absolute;
-  bottom: calc(clamp(0.6rem, 2vw, 1.4rem) + 4.2rem);
+  top: var(--opp-peek);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -1715,9 +1730,8 @@ button {
   }
 
   .hint {
-    white-space: normal;
-    max-width: 90vw;
-    font-size: 0.7rem;
+    max-width: 150px;
+    font-size: 0.66rem;
   }
 
   .end-turn {
@@ -2174,22 +2188,9 @@ button {
    de la caméra), le HUD doit donc se faire petit pour lui laisser la place. */
 @media (max-height: 500px) {
   .game-screen {
+    --hand-peek: calc(36dvh * 0.4 + 0.4rem);
     --hud-edge: 0.45rem;
     --coin-toss-height: 4.5rem;
-  }
-
-  /* Cadrage compact (`CAMERA_COMPACT`) : le board adverse est plus haut et plus large. */
-  .fusion-zone {
-    top: calc(50% - 23.3vh);
-    width: 56vh;
-    height: 24vh;
-  }
-
-  .sell-zone {
-    left: calc(50% + 48.9vh);
-    top: calc(50% + 13.6vh);
-    width: 20vh;
-    height: 28vh;
   }
 
   .hud-plate {
@@ -2298,7 +2299,7 @@ button {
     font-size: 0.6rem;
   }
 
-  /* L'aide recouvrirait la main, déjà petite : l'indicateur de phase et la zone de fusion
+  /* Pas la place pour l'aide à côté du plateau : l'indicateur de phase et la zone de fusion
      (libellée) suffisent. */
   .hint {
     display: none;
@@ -2320,11 +2321,8 @@ button {
   }
 
   .effect-toasts {
-    top: 3.6rem;
-    left: 50%;
-    transform: translateX(-50%);
-    align-items: center;
-    max-width: 50vw;
+    left: var(--hud-edge);
+    max-width: 30vw;
   }
 
   .effect-toast {

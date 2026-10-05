@@ -2,6 +2,7 @@ import { useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { Zone } from '../game/types';
+import { BOARD_CARD_SCALE } from './layout';
 import { theme } from './theme';
 
 // Rangée d'une zone : toujours affichée (même vide), pas une carte — ne fait pas partie de
@@ -18,7 +19,7 @@ interface ZoneRowProps {
   // Abscisse de l'emplacement fantôme (position d'insertion survolée), absente sinon.
   ghostX: number | null;
   // Vrai quand le marché est masqué : le plateau passe alors à un éclairage plus clair
-  // (demande utilisateur), donc les rangées suivent avec une teinte/opacité plus vive.
+  // (demande utilisateur), donc les rangées suivent avec une opacité plus vive.
   bright: boolean;
 }
 
@@ -28,33 +29,45 @@ const ZONE_COLOR: Record<Zone, string> = {
   enchant: theme.colors.zoneEnchant,
 };
 
-const ZONE_COLOR_BRIGHT: Record<Zone, string> = {
-  attack: theme.colors.zoneAttackBright,
-  defense: theme.colors.zoneDefenseBright,
-  enchant: theme.colors.zoneEnchantBright,
-};
-
 // Contour dessiné à la proportion du rectangle (`aspect` = largeur / hauteur), pour que le
 // trait garde la même épaisseur sur les côtés et en haut/bas une fois la texture étirée.
-function outlineTexture(color: string, aspect: number): THREE.CanvasTexture {
+// Peint en blanc : le matériau le teinte de la couleur de la zone.
+function outlineTexture(aspect: number): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(128 * aspect);
-  canvas.height = 128;
+  canvas.width = Math.round(160 * aspect);
+  canvas.height = 160;
   const ctx = canvas.getContext('2d')!;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 6;
-  ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
+  // Fond à peine teinté, plus sombre au centre : un emplacement imprimé sur le feutre.
+  const fill = ctx.createRadialGradient(
+    canvas.width / 2,
+    canvas.height / 2,
+    0,
+    canvas.width / 2,
+    canvas.height / 2,
+    canvas.width / 2,
+  );
+  fill.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
+  fill.addColorStop(1, 'rgba(255, 255, 255, 0.34)');
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.roundRect(4, 4, canvas.width - 8, canvas.height - 8, 14);
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.roundRect(5, 5, canvas.width - 10, canvas.height - 10, 13);
+  ctx.stroke();
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
 
 const cachedOutlines = new Map<string, THREE.CanvasTexture>();
-function getOutlineTexture(color: string, aspect: number): THREE.CanvasTexture {
-  const key = `${color}-${aspect.toFixed(3)}`;
+function getOutlineTexture(aspect: number): THREE.CanvasTexture {
+  const key = aspect.toFixed(3);
   let cached = cachedOutlines.get(key);
   if (!cached) {
-    cached = outlineTexture(color, aspect);
+    cached = outlineTexture(aspect);
     cachedOutlines.set(key, cached);
   }
   return cached;
@@ -63,9 +76,8 @@ function getOutlineTexture(color: string, aspect: number): THREE.CanvasTexture {
 function ZoneRow({ center, halfW, zone, highlighted, ghostX, bright }: ZoneRowProps) {
   const { width, height } = theme.card;
   const bandW = halfW * 2;
-  const bandH = height * 0.72 + 0.08;
-  const outlineColor = bright ? theme.colors.zoneOutlineBright : theme.colors.zoneOutline;
-  const outlineMap = useMemo(() => getOutlineTexture(outlineColor, bandW / bandH), [outlineColor, bandW, bandH]);
+  const bandH = height * BOARD_CARD_SCALE + 0.12;
+  const outlineMap = useMemo(() => getOutlineTexture(bandW / bandH), [bandW, bandH]);
   const haloRef = useRef<THREE.MeshBasicMaterial>(null!);
 
   useFrame(() => {
@@ -79,20 +91,21 @@ function ZoneRow({ center, halfW, zone, highlighted, ghostX, bright }: ZoneRowPr
       <mesh>
         <planeGeometry args={[bandW, bandH]} />
         <meshBasicMaterial
-          color={bright ? ZONE_COLOR_BRIGHT[zone] : ZONE_COLOR[zone]}
+          color={ZONE_COLOR[zone]}
           map={outlineMap}
           transparent
-          opacity={bright ? 0.8 : 0.55}
+          depthWrite={false}
+          opacity={bright ? 0.85 : 0.65}
         />
       </mesh>
       <mesh position={[0, 0, 0.001]}>
         <planeGeometry args={[bandW + 0.12, bandH + 0.12]} />
-        <meshBasicMaterial ref={haloRef} color={theme.colors.haloPlayable} transparent opacity={0} />
+        <meshBasicMaterial ref={haloRef} color={theme.colors.haloPlayable} transparent depthWrite={false} opacity={0} />
       </mesh>
       {ghostX !== null && (
         <mesh position={[ghostX - center[0], 0, 0.002]}>
-          <planeGeometry args={[width * 0.72 + 0.2, height * 0.72 + 0.2]} />
-          <meshBasicMaterial color={theme.colors.haloPlayable} transparent opacity={0.9} />
+          <planeGeometry args={[width * BOARD_CARD_SCALE + 0.16, height * BOARD_CARD_SCALE + 0.16]} />
+          <meshBasicMaterial color={theme.colors.haloPlayable} transparent depthWrite={false} opacity={0.9} />
         </mesh>
       )}
     </group>

@@ -760,7 +760,9 @@ function makeTexture(draw: (ctx: CanvasRenderingContext2D, w: number, h: number)
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
+  // Les cartes posées sont vues de biais et en petit : filtrage anisotrope plus poussé pour
+  // garder leur texte net.
+  texture.anisotropy = 8;
 
   const render = () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);

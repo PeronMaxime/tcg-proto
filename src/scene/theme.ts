@@ -2,11 +2,14 @@
 // en dur ailleurs dans la scène 3D).
 export const theme = {
   colors: {
-    tableTop: '#1c1f26',
-    tableTopBright: '#30343f',
+    lampKey: '#ffe1b3',
+    lampAmbient: '#fff0dc',
     cardBack: '#2a2e38',
+    deckEdge: '#d9ccb0', // tranche de la pioche : bords de cartes empilées
     heroMine: '#4f8cff',
     heroOpponent: '#ff5c5c',
+    heroRim: '#22232a',
+    heroCore: '#0d0e12',
     haloPlayable: '#4fd67a',
     haloSelected: '#f5c344',
     haloTarget: '#ff5c5c',
@@ -20,14 +23,21 @@ export const theme = {
     gold: '#d4a82a',
     goldLight: '#fff1a8',
     goldDark: '#7a5a0c',
-    zoneAttack: '#5a2a2a',
-    zoneDefense: '#26385a',
-    zoneEnchant: '#3a2a5a',
-    zoneOutline: 'rgba(255, 255, 255, 0.18)',
-    zoneAttackBright: '#8a4444',
-    zoneDefenseBright: '#3a5a8f',
-    zoneEnchantBright: '#5c3f96',
-    zoneOutlineBright: 'rgba(255, 255, 255, 0.4)',
+    // Rangées imprimées sur le tapis : contour net, fond à peine teinté (ZoneRow).
+    zoneAttack: '#d0644f',
+    zoneDefense: '#5f8fd8',
+    zoneEnchant: '#a07ad8',
+    rimLight: '#9fb4ff',
+    void: '#05060a',
+  },
+  // Table de taverne (Table.tsx) : teintes des planches, feutre du tapis (centre → bords),
+  // rebord de cuir et sa couture.
+  table: {
+    woodTones: ['#4a2f1b', '#553620', '#43291a', '#5b3b22', '#4f3320'],
+    felt: '#24493c',
+    feltDark: '#11251d',
+    leather: '#3a2415',
+    stitch: 'rgba(214, 178, 84, 0.75)',
   },
   // Couleurs des faces selon l'élément de la carte : `light`→`base` en dégradé de fond,
   // `badge`/`icon` pour la pastille du logo d'élément.

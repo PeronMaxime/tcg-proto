@@ -2,7 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import * as THREE from 'three';
 import { getCardDef } from '../game/cards';
-import { handHoverPose, isCompactViewport, type Pose } from './layout';
+import { computeView, handHoverPose, type Pose } from './layout';
 import { theme } from './theme';
 import {
   getBubbleTexture,
@@ -65,8 +65,8 @@ const DRAG_SCALE = 0.8;
 const LUNGE_DURATION = 0.45; // s
 const SHIELD_SIZE = 0.62; // côté du plan portant l'emblème de bouclier (K2 Provocation)
 // La bulle (K3 Protection) déborde juste assez de la carte pour l'envelopper sans mordre
-// sur l'emplacement voisin (cartes espacées de 1.05 pour 1.2 de large, voir layout.ts).
-const BUBBLE_WIDTH_RATIO = 1.14;
+// sur l'emplacement voisin (cartes espacées de 1.08 pour 0.96 de large, voir layout.ts).
+const BUBBLE_WIDTH_RATIO = 1.12;
 const BUBBLE_HEIGHT_RATIO = 1.1;
 // Côté du cadenas du marché : assez grand pour être visé au clic sur une carte agrandie du
 // marché (échelle ~1.6), assez petit pour ne pas masquer l'illustration.
@@ -110,7 +110,8 @@ function Card({
   onInspect,
 }: CardProps) {
   const def = getCardDef(cardId);
-  const compact = useThree((s) => isCompactViewport(s.size.height));
+  const viewWidth = useThree((s) => s.size.width);
+  const viewHeight = useThree((s) => s.size.height);
   const faceTexture = useMemo(() => getCardFaceTexture(def, stats), [def, stats]);
   const backTexture = useMemo(() => getCardBackTexture(), []);
   const shieldTexture = useMemo(() => getShieldTexture(), []);
@@ -229,7 +230,7 @@ function Card({
       const effectivePose: Pose = dragPoint
         ? { position: [dragPoint.x, dragPoint.y, dragPoint.z], rotation: [-Math.PI / 2, 0, 0], scale: DRAG_SCALE }
         : hovered && hoverable
-          ? handHoverPose(pose, compact)
+          ? handHoverPose(pose, computeView(viewWidth, viewHeight))
           : pose;
       const moveLambda = dragPoint ? DRAG_DAMP_LAMBDA : DAMP_LAMBDA;
       group.position.x = THREE.MathUtils.damp(group.position.x, effectivePose.position[0], moveLambda, delta);

@@ -87,7 +87,7 @@ function DragController(props: DragControllerProps) {
       for (const zone of ['attack', 'defense', 'enchant'] as Zone[]) {
         const row = rowBounds(zone, capacity(zone), true);
         if (Math.abs(hit.x - row.x) > row.halfW + HIT_MARGIN_X || Math.abs(hit.z - row.z) > row.halfH + HIT_MARGIN_Z) continue;
-        const slot = insertionIndexAt(rowCount(zone), hit.x);
+        const slot = insertionIndexAt(zone, rowCount(zone), hit.x);
         return isLegalSlot(zone, slot) ? { kind: 'slot', zone, slot } : null;
       }
       return null;

@@ -1,6 +1,21 @@
 // Poses cibles par zone (fonctions pures). Toutes les poses sont exprimées du point de
 // vue de « moi » : mon camp est toujours vers +Z, l'adversaire vers -Z (§6.1).
+//
+// Plateau plein écran (demande utilisateur) : seules les rangées de monstres s'empilent au
+// centre, les enchantements passent à droite des rangées de défense, pour que quatre rangées
+// (et non six) se partagent la hauteur de l'écran et que les cartes posées se lisent sans zoom.
+//
+//   ligne de défense :  [Héros] [D D D D D] [E E E]
+//   ligne d'attaque  :          [A A A A A] [Deck]
+//   ──────────────── ligne de front ────────────────
+//   (miroir pour l'adversaire)
+//
+// La caméra n'a plus de cadrage fixe : `computeView` la place pour que ce plateau remplisse
+// l'écran moins les colonnes du HUD, quel que soit le ratio. Ce qui doit rester collé à l'écran
+// (ma main qui dépasse du bas, celle de l'adversaire qui dépasse du haut, la carte survolée,
+// le marché) est posé dans le repère de la caméra par `screenPose`.
 
+import * as THREE from 'three';
 import type { Zone } from '../game/types';
 import { theme } from './theme';
 
@@ -16,53 +31,233 @@ export interface CameraFraming {
   fov: number;
 }
 
-export const CAMERA: CameraFraming = {
-  position: [0, 14, 7],
-  lookAt: [0, 0, 0.6],
-  fov: 45,
+// Cadrage calculé pour un canvas donné, partagé par la caméra (CameraRig) et toutes les poses
+// qui dépendent de l'écran.
+export interface View {
+  framing: CameraFraming;
+  width: number;
+  height: number;
+}
+
+export const CAMERA_FOV = 32;
+// Plongée de la caméra sous l'horizontale : presque à la verticale, pour que les rangées du
+// fond ne rapetissent presque pas, avec juste assez de perspective pour garder du relief.
+const CAMERA_PITCH = THREE.MathUtils.degToRad(78);
+
+export const BOARD_CARD_SCALE = 0.8;
+const CARD_W = theme.card.width * BOARD_CARD_SCALE;
+const CARD_H = theme.card.height * BOARD_CARD_SCALE;
+const SLOT_SPACING = 1.08;
+// V2 : une rangée peut dépasser sa capacité par effet. Au-delà de sa capacité usuelle, elle se
+// resserre pour tenir dans la largeur d'une rangée pleine (sans déborder sur ses voisines).
+const ROW_MAX_CARDS: Record<Zone, number> = { attack: 5, defense: 5, enchant: 3 };
+
+function rowSpacing(zone: Zone, count: number): number {
+  const max = ROW_MAX_CARDS[zone];
+  return count <= max ? SLOT_SPACING : (SLOT_SPACING * (max - 1)) / (count - 1);
+}
+
+// Position des rangées, de mon côté (z positif ; l'adversaire est en miroir sur z). Pas de
+// miroir en x (R4) : l'emplacement d'index i a le même x pour les deux joueurs.
+const ROW_Z_ATTACK = 0.84;
+const ROW_Z_DEFENSE = ROW_Z_ATTACK + CARD_H + 0.16;
+const ROW_GAP_X = 0.4; // écart entre une rangée et ses voisines de ligne (héros, enchantements, deck)
+const MONSTER_HALF_W = (ROW_MAX_CARDS.attack * SLOT_SPACING) / 2;
+const ENCHANT_HALF_W = (ROW_MAX_CARDS.enchant * SLOT_SPACING) / 2;
+const HERO_RADIUS = 0.55;
+// Rangées de monstres décalées à gauche pour centrer l'ensemble (héros + monstres +
+// enchantements) sur l'écran.
+const MONSTER_X = -1.05;
+const ENCHANT_X = MONSTER_X + MONSTER_HALF_W + ROW_GAP_X + ENCHANT_HALF_W;
+const HERO_X = MONSTER_X - MONSTER_HALF_W - ROW_GAP_X - HERO_RADIUS;
+const DECK_X = MONSTER_X + MONSTER_HALF_W + ROW_GAP_X + CARD_W / 2;
+
+const ROW_X: Record<Zone, number> = { attack: MONSTER_X, defense: MONSTER_X, enchant: ENCHANT_X };
+const ROW_Z: Record<Zone, number> = { attack: ROW_Z_ATTACK, defense: ROW_Z_DEFENSE, enchant: ROW_Z_DEFENSE };
+
+// Rectangle de table que la caméra doit montrer en entier (tout le plateau des deux joueurs).
+export const BOARD_BOUNDS = {
+  minX: HERO_X - HERO_RADIUS,
+  maxX: ENCHANT_X + ENCHANT_HALF_W,
+  minZ: -(ROW_Z_DEFENSE + CARD_H / 2 + 0.08),
+  maxZ: ROW_Z_DEFENSE + CARD_H / 2 + 0.08,
 };
 
-// Écran bas (téléphone en paysage) : la caméra a un champ vertical fixe, donc tout se règle sur
-// la hauteur d'écran et les cartes y deviennent minuscules, alors que la largeur, elle, est
-// en trop. Cadrage « compact » : caméra plus proche et plus plongeante, qui remplit la hauteur
-// avec les six rangées et laisse la main adverse hors champ (son nombre de cartes reste dans
-// le HUD). Même seuil que `@media (max-height: 500px)` dans styles.css.
-export const COMPACT_MAX_HEIGHT = 500;
+// --- Cadrage ---
 
-export const CAMERA_COMPACT: CameraFraming = {
-  position: [0, 10.5, 4.6],
-  lookAt: [0, 0, 0.9],
-  fov: 45,
-};
+// Main : hauteur d'une carte (fraction de la hauteur d'écran) et part visible au repos — le
+// haut de la carte (nom, coût) dépasse du bas de l'écran, elle monte en grand au survol.
+const HAND_SCREEN_HEIGHT = 0.3;
+const HAND_SCREEN_HEIGHT_LOW = 0.36; // écran bas (téléphone en paysage)
+const HAND_VISIBLE = 0.4;
+const OPPONENT_HAND_SCREEN_HEIGHT = 0.17;
+const OPPONENT_HAND_VISIBLE = 0.32;
+// Même seuil que `@media (max-height: 500px)` dans styles.css.
+const LOW_SCREEN_MAX_HEIGHT = 500;
 
-export function isCompactViewport(height: number): boolean {
-  return height <= COMPACT_MAX_HEIGHT;
+function isLowScreen(height: number): boolean {
+  return height <= LOW_SCREEN_MAX_HEIGHT;
 }
 
-export function cameraFraming(compact: boolean): CameraFraming {
-  return compact ? CAMERA_COMPACT : CAMERA;
+function handScreenHeight(view: View): number {
+  return isLowScreen(view.height) ? HAND_SCREEN_HEIGHT_LOW : HAND_SCREEN_HEIGHT;
 }
 
-export const BOARD_CARD_SCALE = 0.7;
-const SLOT_SPACING = 1.05;
-// V2 : une rangée peut dépasser sa capacité par effet. Au-delà de `ROW_MAX_CARDS` cartes, elles
-// se resserrent pour tenir dans la largeur d'une rangée pleine (sans déborder sur les héros et
-// les decks). Une rangée de 5 cartes au plus (toute la V1) garde l'écart d'origine.
-const ROW_MAX_CARDS = 5;
-
-function rowSpacing(count: number): number {
-  return count <= ROW_MAX_CARDS ? SLOT_SPACING : (SLOT_SPACING * (ROW_MAX_CARDS - 1)) / (count - 1);
+// Marges d'écran (px) où le plateau ne doit pas aller : bout de la main adverse en haut, bout
+// de ma main en bas, colonnes du HUD sur les côtés. Les colonnes restent étroites : le HUD
+// tient surtout dans les coins et, au milieu, dans les vides des lignes d'attaque (à gauche
+// des monstres, à droite des pioches). Sur un écran large, c'est la hauteur qui fixe la taille
+// du plateau et ces marges ne servent qu'aux écrans plus carrés.
+function screenInsets(width: number, height: number) {
+  const low = isLowScreen(height);
+  const hand = low ? HAND_SCREEN_HEIGHT_LOW : HAND_SCREEN_HEIGHT;
+  return {
+    side: THREE.MathUtils.clamp(width * 0.1, 60, 200),
+    top: height * (OPPONENT_HAND_SCREEN_HEIGHT * OPPONENT_HAND_VISIBLE + 0.012),
+    bottom: height * (hand * HAND_VISIBLE + 0.012),
+  };
 }
 
-// Rangées de zones, en Z, de mon côté (positif) et adverse (négatif). Pas de miroir (R4) :
-// l'emplacement d'index i a le même x pour les deux joueurs.
-const ROW_Z: Record<Zone, number> = { attack: 0.85, defense: 2.2, enchant: 3.55 };
+// Vecteurs du repère caméra (caméra sans lacet ni roulis, plongée de CAMERA_PITCH).
+const FORWARD = new THREE.Vector3(0, -Math.sin(CAMERA_PITCH), -Math.cos(CAMERA_PITCH));
+const UP = new THREE.Vector3(0, Math.cos(CAMERA_PITCH), -Math.sin(CAMERA_PITCH));
+
+function placeCamera(camera: THREE.PerspectiveCamera, target: THREE.Vector3, distance: number) {
+  camera.position.copy(target).addScaledVector(FORWARD, -distance);
+  camera.lookAt(target);
+  camera.updateMatrixWorld();
+}
+
+// Rectangle écran (px) couvert par le plateau vu par `camera`.
+function projectedBoard(camera: THREE.PerspectiveCamera, width: number, height: number) {
+  const corner = new THREE.Vector3();
+  let left = Infinity;
+  let right = -Infinity;
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (const x of [BOARD_BOUNDS.minX, BOARD_BOUNDS.maxX]) {
+    for (const z of [BOARD_BOUNDS.minZ, BOARD_BOUNDS.maxZ]) {
+      corner.set(x, 0, z).project(camera);
+      const px = ((corner.x + 1) / 2) * width;
+      const py = ((1 - corner.y) / 2) * height;
+      left = Math.min(left, px);
+      right = Math.max(right, px);
+      top = Math.min(top, py);
+      bottom = Math.max(bottom, py);
+    }
+  }
+  return { left, right, top, bottom };
+}
+
+// Caméra au plus près qui montre tout le plateau dans l'écran moins les marges du HUD, centré
+// dans l'espace restant : on cherche la distance par dichotomie, puis on recentre la visée
+// (la perspective grossit le bas du plateau et le décale), et on recommence.
+function fitCamera(width: number, height: number): CameraFraming {
+  const insets = screenInsets(width, height);
+  const avail = { left: insets.side, right: width - insets.side, top: insets.top, bottom: height - insets.bottom };
+  const camera = new THREE.PerspectiveCamera(CAMERA_FOV, width / Math.max(1, height), 0.1, 200);
+  camera.updateProjectionMatrix();
+  const target = new THREE.Vector3(
+    (BOARD_BOUNDS.minX + BOARD_BOUNDS.maxX) / 2,
+    0,
+    (BOARD_BOUNDS.minZ + BOARD_BOUNDS.maxZ) / 2,
+  );
+  let distance = 20;
+
+  for (let pass = 0; pass < 4; pass++) {
+    let near = 2;
+    let far = 80;
+    for (let i = 0; i < 30; i++) {
+      const mid = (near + far) / 2;
+      placeCamera(camera, target, mid);
+      const r = projectedBoard(camera, width, height);
+      const fits = r.left >= avail.left && r.right <= avail.right && r.top >= avail.top && r.bottom <= avail.bottom;
+      if (fits) far = mid;
+      else near = mid;
+    }
+    distance = far;
+    placeCamera(camera, target, distance);
+    const r = projectedBoard(camera, width, height);
+    const unitsPerPxX = (BOARD_BOUNDS.maxX - BOARD_BOUNDS.minX) / Math.max(1, r.right - r.left);
+    const unitsPerPxZ = (BOARD_BOUNDS.maxZ - BOARD_BOUNDS.minZ) / Math.max(1, r.bottom - r.top);
+    target.x += ((r.left + r.right) / 2 - (avail.left + avail.right) / 2) * unitsPerPxX;
+    target.z += ((r.top + r.bottom) / 2 - (avail.top + avail.bottom) / 2) * unitsPerPxZ;
+  }
+
+  placeCamera(camera, target, distance);
+  return {
+    position: [camera.position.x, camera.position.y, camera.position.z],
+    lookAt: [target.x, target.y, target.z],
+    fov: CAMERA_FOV,
+  };
+}
+
+let cachedView: View | null = null;
+
+// Cadrage d'un canvas de `width` × `height` px, mis en cache (appelé par chaque carte à
+// chaque rendu, il ne se recalcule qu'au redimensionnement).
+export function computeView(width: number, height: number): View {
+  const w = Math.max(1, Math.round(width));
+  const h = Math.max(1, Math.round(height));
+  if (cachedView?.width !== w || cachedView.height !== h) {
+    cachedView = { framing: fitCamera(w, h), width: w, height: h };
+  }
+  return cachedView;
+}
+
+function cameraDistance(view: View): number {
+  const [px, py, pz] = view.framing.position;
+  const [tx, ty, tz] = view.framing.lookAt;
+  return Math.hypot(px - tx, py - ty, pz - tz);
+}
+
+// Demi-hauteur du champ de la caméra à `distance` d'elle.
+function halfHeightAt(view: View, distance: number): number {
+  return distance * Math.tan(THREE.MathUtils.degToRad(view.framing.fov) / 2);
+}
+
+// Pose d'une carte face à la caméra, à `distanceRatio` × la distance caméra–plateau, centrée sur
+// le point écran (`ndcX`, `ndcY`) (coordonnées normalisées, -1..1) et haute de `screenHeight`
+// (fraction de la hauteur d'écran). `lift` la rapproche de la caméra pour départager deux
+// cartes qui se chevauchent.
+export function screenPose(
+  view: View,
+  ndcX: number,
+  ndcY: number,
+  distanceRatio: number,
+  screenHeight: number,
+  rotationZ = 0,
+  lift = 0,
+): Pose {
+  const distance = cameraDistance(view) * distanceRatio;
+  const halfH = halfHeightAt(view, distance);
+  const aspect = view.width / view.height;
+  const p = new THREE.Vector3(...view.framing.position)
+    .add(new THREE.Vector3(ndcX * halfH * aspect, 0, 0))
+    .addScaledVector(UP, ndcY * halfH)
+    .addScaledVector(FORWARD, distance - lift);
+  return {
+    position: [p.x, p.y, p.z],
+    rotation: [-CAMERA_PITCH, 0, rotationZ],
+    scale: (screenHeight * 2 * halfH) / theme.card.height,
+  };
+}
+
+// Abscisse écran normalisée d'un point du monde (pour garder la carte survolée au-dessus de
+// sa place dans la main).
+function ndcXOf(view: View, position: [number, number, number]): number {
+  const offset = new THREE.Vector3(...position).sub(new THREE.Vector3(...view.framing.position));
+  const depth = offset.dot(FORWARD);
+  return offset.x / (halfHeightAt(view, depth) * (view.width / view.height));
+}
+
+// --- Rangées ---
 
 // Rangée compacte (demande utilisateur) : les `count` cartes d'une zone sont serrées et
 // centrées, la carte d'index `index` (0 = la plus à gauche) prend la place calculée ici.
 export function rowCardPose(zone: Zone, index: number, count: number, mine: boolean): Pose {
   const z = (mine ? 1 : -1) * ROW_Z[zone];
-  const x = (index - (count - 1) / 2) * rowSpacing(count);
+  const x = ROW_X[zone] + (index - (count - 1) / 2) * rowSpacing(zone, count);
   return {
     position: [x, 0.03, z],
     rotation: [-Math.PI / 2, 0, 0],
@@ -74,154 +269,130 @@ export function rowCardPose(zone: Zone, index: number, count: number, mine: bool
 // cartes) : centre et demi-dimensions, pour dessiner son fond et viser un dépôt.
 export function rowBounds(zone: Zone, capacity: number, mine: boolean): { x: number; z: number; halfW: number; halfH: number } {
   return {
-    x: 0,
+    x: ROW_X[zone],
     z: (mine ? 1 : -1) * ROW_Z[zone],
     halfW: (capacity * SLOT_SPACING) / 2,
-    halfH: (theme.card.height * BOARD_CARD_SCALE) / 2,
+    halfH: CARD_H / 2,
   };
 }
 
 // Position d'insertion visée par un point d'abscisse `x` dans une rangée de `count` cartes :
 // le nombre de cartes dont le centre est à gauche de `x` (0 = avant la première, `count` =
 // après la dernière).
-export function insertionIndexAt(count: number, x: number): number {
+export function insertionIndexAt(zone: Zone, count: number, x: number): number {
   let index = 0;
-  const spacing = rowSpacing(count);
-  for (let i = 0; i < count; i++) if ((i - (count - 1) / 2) * spacing < x) index++;
+  const spacing = rowSpacing(zone, count);
+  for (let i = 0; i < count; i++) if (ROW_X[zone] + (i - (count - 1) / 2) * spacing < x) index++;
   return index;
 }
 
-const PLAYER_TOKEN_MINE: [number, number, number] = [-4.3, 0.08, 2.2];
-const PLAYER_TOKEN_OPPONENT: [number, number, number] = [-4.3, 0.08, -2.2];
+// Rectangle de table (centre, demi-largeur, demi-profondeur) du board adverse, où se dépose
+// une carte à fusionner, et de mon deck, où se dépose une carte à vendre.
+export function fusionZoneRect() {
+  return {
+    x: MONSTER_X,
+    z: -(ROW_Z_ATTACK + ROW_Z_DEFENSE) / 2,
+    halfW: MONSTER_HALF_W + 0.2,
+    halfD: (ROW_Z_DEFENSE - ROW_Z_ATTACK + CARD_H) / 2,
+  };
+}
+
+export function sellZoneRect() {
+  return { x: DECK_X, z: ROW_Z_ATTACK, halfW: CARD_W / 2 + 0.15, halfD: CARD_H / 2 + 0.15 };
+}
 
 export function playerTokenPose(mine: boolean): Pose {
   return {
-    position: mine ? PLAYER_TOKEN_MINE : PLAYER_TOKEN_OPPONENT,
+    position: [HERO_X, 0.08, (mine ? 1 : -1) * ROW_Z_DEFENSE],
     rotation: [0, 0, 0],
     scale: 1,
   };
 }
 
-const HAND_Z_MINE = 5.0;
-const HAND_Y_MINE = 0.6;
-const HAND_ROTATION_X_MINE = -0.96;
-// Cadrage compact : la main remonte dans le champ, plus redressée face à la caméra plongeante.
-const HAND_Z_MINE_COMPACT = 4.85;
-const HAND_Y_MINE_COMPACT = 1.0;
-const HAND_ROTATION_X_MINE_COMPACT = -1.15;
-const HAND_Z_OPPONENT = -5.1;
-const HAND_SCALE_OPPONENT = 0.6;
-const FAN_ANGLE = 0.07; // rotation.z par carte en s'éloignant du centre
-const FAN_LIFT = 0.02; // baisse en y vers les bords
-// Décalage de chaque carte vers la caméra, le long de sa normale, selon son rang dans
-// l'éventail : sans lui, deux cartes à même distance du centre (les deux du milieu d'une main
-// paire) sont exactement dans le même plan — elles se chevauchent en scintillant et le
-// survol tire au hasard celle qu'il agrandit.
-const FAN_DEPTH_STEP = 0.004;
-const HAND_MAX_WIDTH = 8; // largeur dispo pour l'éventail : resserrement continu (R2)
-
-function fanSpacing(total: number): number {
-  if (total <= 1) return 0.78;
-  return Math.min(0.78, HAND_MAX_WIDTH / (total - 1));
-}
-
-export function handCardPose(index: number, total: number, mine: boolean, compact = false): Pose {
-  const spacing = fanSpacing(total);
-  const offset = index - (total - 1) / 2;
-  const lift = (compact && mine ? HAND_Y_MINE_COMPACT : HAND_Y_MINE) - Math.abs(offset) * FAN_LIFT;
-  const tilt = compact && mine ? HAND_ROTATION_X_MINE_COMPACT : HAND_ROTATION_X_MINE;
-  // Normale d'une carte inclinée de `tilt` autour de x : (0, -sin(tilt), cos(tilt)).
-  const depth = index * FAN_DEPTH_STEP;
-  const y = lift - Math.sin(tilt) * depth;
-  const dz = Math.cos(tilt) * depth;
-
-  if (mine) {
-    return {
-      position: [offset * spacing, y, (compact ? HAND_Z_MINE_COMPACT : HAND_Z_MINE) + dz],
-      rotation: [tilt, 0, -offset * FAN_ANGLE],
-      scale: 1,
-    };
-  }
-
-  // Éventail inversé, plus petit ; la face cachée est gérée dans Card (flag `hidden`),
-  // pas par l'inclinaison : la même inclinaison que ma main oriente déjà le dos vers la
-  // caméra une fois la carte retournée.
-  return {
-    position: [-offset * spacing, y, HAND_Z_OPPONENT + dz],
-    rotation: [HAND_ROTATION_X_MINE, 0, offset * FAN_ANGLE],
-    scale: HAND_SCALE_OPPONENT,
-  };
-}
-
-// Carte survolée dans ma main : remonte vers la caméra, grossit nettement et se tourne face à
-// elle pour être lisible (§6.6 ; agrandie à la demande de l'utilisateur, ~la moitié de la
-// hauteur d'écran). Position absolue en y/z : le bas de la carte reste juste dans l'écran.
-// En cadrage compact, la main est à moitié sous le bord de l'écran : la carte monte vers le haut
-// de l'écran (z diminue) au lieu d'avancer vers la caméra, pour sortir entière.
-export function handHoverPose(basePose: Pose, compact = false): Pose {
-  if (compact) {
-    return {
-      position: [basePose.position[0], 2.5, 3.25],
-      rotation: [-1.35, basePose.rotation[1], 0],
-      scale: 2.1,
-    };
-  }
-  return {
-    position: [basePose.position[0], 2.4, 4.3],
-    rotation: [-1.3, basePose.rotation[1], 0],
-    scale: 2.6,
-  };
-}
-
-const DECK_MINE: [number, number, number] = [4.3, 0.1, 2.2];
-const DECK_OPPONENT: [number, number, number] = [4.3, 0.1, -2.2];
-
 export function deckPose(mine: boolean): Pose {
   return {
-    position: mine ? DECK_MINE : DECK_OPPONENT,
+    position: [DECK_X, 0.1, (mine ? 1 : -1) * ROW_Z_ATTACK],
     rotation: [-Math.PI / 2, 0, 0],
     scale: BOARD_CARD_SCALE,
   };
 }
 
-// Mon marché : taille maximale des cartes, écart entre deux cartes (fraction de leur largeur)
-// et hauteur visible de l'écran à la distance du marché (caméra CAMERA, fov 45°), pour que
-// la rangée tienne en largeur quel que soit le ratio de l'écran.
-const MARKET_MAX_SCALE = 1.6;
-const MARKET_GAP = 0.08;
-const MARKET_VISIBLE_HEIGHT = 9.5;
-const MARKET_MAX_WIDTH = 9;
-// Cadrage compact : le marché se place au centre du champ de CAMERA_COMPACT, face à elle.
-const MARKET_Y_COMPACT = 3.5;
-const MARKET_Z_COMPACT = 2.15;
-const MARKET_ROTATION_X_COMPACT = -1.15;
-const MARKET_VISIBLE_HEIGHT_COMPACT = 6.1;
-const MARKET_MAX_SCALE_COMPACT = 1.45;
+// --- Main ---
 
-// Le marché flotte au centre, face à la caméra, du côté du joueur actif (H4 : visible des
-// deux joueurs). `mine` = est-ce le marché de "moi" (vu depuis mon écran) ? `aspect` = ratio
-// largeur / hauteur du canvas : les cartes rétrécissent si la rangée ne tient plus en largeur
-// (écran étroit, marché agrandi par un Colporteur).
-export function marketCardPose(index: number, total: number, mine: boolean, aspect = 16 / 9, compact = false): Pose {
+const HAND_DISTANCE = 0.5; // ratio de la distance caméra–plateau : devant les cartes posées
+const HOVER_DISTANCE = 0.4; // la carte survolée passe devant le reste de la main
+const FAN_ANGLE = 0.06; // rotation.z par carte en s'éloignant du centre
+const FAN_DROP = 0.012; // descente (ndc) vers les bords de l'éventail
+// Décalage de chaque carte vers la caméra selon son rang dans l'éventail : sans lui, deux
+// cartes à même distance du centre (les deux du milieu d'une main paire) sont exactement dans
+// le même plan — elles se chevauchent en scintillant et le survol tire au hasard celle qu'il
+// agrandit.
+const FAN_DEPTH_STEP = 0.004;
+const HAND_MAX_SPAN = 0.5; // largeur max de l'éventail, en fraction de la largeur d'écran
+
+export function handCardPose(index: number, total: number, mine: boolean, view: View): Pose {
+  const offset = index - (total - 1) / 2;
+  const screenHeight = mine ? handScreenHeight(view) : OPPONENT_HAND_SCREEN_HEIGHT;
+  const visible = mine ? HAND_VISIBLE : OPPONENT_HAND_VISIBLE;
+  // Écart entre deux cartes, en ndc : 78 % d'une largeur de carte, resserré si la main est
+  // trop longue pour tenir dans HAND_MAX_SPAN (resserrement continu, R2).
+  const cardWidthNdc = (screenHeight * view.height * (5 / 7) * 2) / view.width;
+  const spacing = total <= 1 ? 0 : Math.min(cardWidthNdc * 0.78, (HAND_MAX_SPAN * 2) / (total - 1));
+  const drop = Math.abs(offset) * FAN_DROP;
+  const lift = index * FAN_DEPTH_STEP;
+
+  if (mine) {
+    // Seule la part `visible` de la carte dépasse du bas de l'écran.
+    const ndcY = -1 + 2 * screenHeight * (visible - 0.5) - drop;
+    return screenPose(view, offset * spacing, ndcY, HAND_DISTANCE, screenHeight, -offset * FAN_ANGLE, lift);
+  }
+
+  // Main adverse : éventail inversé qui dépasse du haut de l'écran ; la face cachée est gérée
+  // dans Card (flag `hidden`).
+  const ndcY = 1 - 2 * screenHeight * (visible - 0.5) + drop;
+  return screenPose(view, -offset * spacing, ndcY, HAND_DISTANCE, screenHeight, offset * FAN_ANGLE, lift);
+}
+
+// Carte survolée dans ma main : remonte au-dessus de sa place, face à la caméra, assez grande
+// pour être lue (§6.6 ; ~la moitié de la hauteur d'écran), le bas juste au bord de l'écran.
+export function handHoverPose(basePose: Pose, view: View): Pose {
+  const screenHeight = isLowScreen(view.height) ? 0.66 : 0.56;
+  const halfWidthNdc = (screenHeight * view.height * (5 / 7)) / view.width;
+  const limit = Math.max(0, 1 - halfWidthNdc - 0.02);
+  const ndcX = THREE.MathUtils.clamp(ndcXOf(view, basePose.position), -limit, limit);
+  return screenPose(view, ndcX, -0.98 + screenHeight, HOVER_DISTANCE, screenHeight);
+}
+
+// --- Marché ---
+
+const MARKET_DISTANCE = 0.55;
+const MARKET_MAX_SCREEN_HEIGHT = 0.42;
+const MARKET_MAX_SCREEN_HEIGHT_LOW = 0.5;
+const MARKET_GAP = 0.08; // écart entre deux cartes, en fraction de leur largeur
+
+// Le marché flotte au centre, face à la caméra, du côté du joueur actif. `mine` = est-ce le
+// marché de "moi" (vu depuis mon écran) ? Les cartes rétrécissent si la rangée ne tient plus
+// entre les colonnes du HUD (écran étroit, marché agrandi par un Colporteur).
+export function marketCardPose(index: number, total: number, mine: boolean, view: View): Pose {
   const offset = index - (total - 1) / 2;
   if (mine) {
-    const visibleHeight = compact ? MARKET_VISIBLE_HEIGHT_COMPACT : MARKET_VISIBLE_HEIGHT;
-    const availableWidth = Math.min(MARKET_MAX_WIDTH, visibleHeight * aspect * 0.94);
-    const fitScale = availableWidth / (Math.max(total, 1) * theme.card.width * (1 + MARKET_GAP));
-    const scale = Math.min(compact ? MARKET_MAX_SCALE_COMPACT : MARKET_MAX_SCALE, fitScale);
-    return {
-      position: [
-        offset * theme.card.width * scale * (1 + MARKET_GAP),
-        compact ? MARKET_Y_COMPACT : 3.2,
-        compact ? MARKET_Z_COMPACT : 3.0,
-      ],
-      rotation: [compact ? MARKET_ROTATION_X_COMPACT : -0.96, 0, 0],
-      scale,
-    };
+    // Entre les colonnes du HUD (boutons du marché à droite).
+    const availableWidth = view.width - 2 * THREE.MathUtils.clamp(view.width * 0.14, 110, 240);
+    const fit = availableWidth / (Math.max(total, 1) * view.height * (5 / 7) * (1 + MARKET_GAP));
+    const max = isLowScreen(view.height) ? MARKET_MAX_SCREEN_HEIGHT_LOW : MARKET_MAX_SCREEN_HEIGHT;
+    const screenHeight = Math.min(max, fit);
+    const stepNdc = (screenHeight * view.height * (5 / 7) * (1 + MARKET_GAP) * 2) / view.width;
+    return screenPose(view, offset * stepNdc, 0.04, MARKET_DISTANCE, screenHeight);
   }
+  // Marché de l'adversaire, face cachée : couché sur la table à droite de sa pioche, dans le
+  // vide de sa ligne d'attaque, pour ne masquer aucune de ses cartes.
+  const left = DECK_X + CARD_W / 2 + 0.3;
+  const width = BOARD_BOUNDS.maxX + 0.2 - left;
+  const scale = Math.min(0.45, width / (Math.max(total, 1) * theme.card.width * 1.1));
+  const step = theme.card.width * scale * 1.1;
   return {
-    position: [offset * 1.3, 1.5, -3.0],
-    rotation: [-0.96, 0, 0],
-    scale: 0.9,
+    position: [left + width / 2 + offset * step, 0.06, -ROW_Z_ATTACK],
+    rotation: [-Math.PI / 2, 0, 0],
+    scale,
   };
 }

@@ -19,7 +19,7 @@ import Board, { type DragState, type ScreenRect } from '../scene/Board';
 import { computeMonsterFaceStats, unplacedStats } from '../scene/cardFaceStats';
 import CameraRig from '../scene/CameraRig';
 import type { DropTarget } from '../scene/DragController';
-import { CAMERA } from '../scene/layout';
+import { CAMERA_FOV } from '../scene/layout';
 import { getCardFaceDataUrl } from '../scene/textures';
 import ElementWheel from './ElementWheel';
 import RulesModal from './RulesModal';
@@ -664,7 +664,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
     >
       <Canvas
         shadows
-        camera={{ fov: CAMERA.fov }}
+        camera={{ fov: CAMERA_FOV, near: 0.1, far: 200 }}
         className="game-canvas"
         style={{ background: '#05060a' }}
       >
@@ -680,6 +680,8 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           displayedHp={displayedHp}
           marketVisible={marketVisible && !state.pendingChoice}
           marketZoneRectRef={marketZoneRectRef}
+          fusionZoneRef={fusionZoneRef}
+          sellZoneRef={sellZoneRef}
           onBuy={buy}
           onToggleMarketLock={toggleMarketLock}
           onDragStart={(uid, x, y, origin) => {

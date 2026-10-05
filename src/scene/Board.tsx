@@ -1,5 +1,5 @@
 import { useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import { getCardDef, hasKeywordDef, isMonster, isV2Active } from '../game/cards';
 import {
@@ -20,18 +20,21 @@ import AbilityPulses, { type AbilityTrigger } from './AbilityPulse';
 import EffectiveBursts, { type EffectiveHit } from './EffectiveBurst';
 import Hero from './Hero';
 import {
+  computeView,
   deckPose,
+  fusionZoneRect,
   handCardPose,
-  isCompactViewport,
   marketCardPose,
   playerTokenPose,
   rowBounds,
   rowCardPose,
+  sellZoneRect,
   type Pose,
 } from './layout';
+import Table from './Table';
 import ZoneRow from './ZoneRow';
 import { theme } from './theme';
-import type { MonsterFaceStats } from './textures';
+import { getCardBackTexture, type MonsterFaceStats } from './textures';
 
 // Liste plate unique de cartes rendue dans un seul parent (D6) : une carte qui change de
 // zone garde son identité React (key = uid) et vole vers sa nouvelle pose au lieu de se
@@ -58,6 +61,9 @@ interface BoardProps {
   // Rectangle écran (mis à jour à chaque frame) englobant mon marché affiché, lu par
   // GameScreen pour fermer le marché au clic en dehors (demande utilisateur).
   marketZoneRectRef: RefObject<ScreenRect | null>;
+  // Zones de dépôt HTML de GameScreen, placées à l'écran sur leur rectangle de table.
+  fusionZoneRef: RefObject<HTMLDivElement | null>;
+  sellZoneRef: RefObject<HTMLDivElement | null>;
   onBuy: (uid: string) => void;
   // Clic sur le cadenas d'une carte de MON marché : verrouille ou déverrouille (demande
   // utilisateur, action `toggleMarketLock`).
@@ -105,12 +111,11 @@ function MarketZoneTracker({ count, rectRef }: { count: number; rectRef: RefObje
       return;
     }
     const canvasRect = gl.domElement.getBoundingClientRect();
-    const aspect = canvasRect.width / Math.max(1, canvasRect.height);
-    const compact = isCompactViewport(canvasRect.height);
-    const scale = marketCardPose(0, count, true, aspect, compact).scale;
+    const view = computeView(canvasRect.width, canvasRect.height);
+    const scale = marketCardPose(0, count, true, view).scale;
     const halfW = (theme.card.width * scale) / 2;
     const halfH = (theme.card.height * scale) / 2;
-    const rotationX = marketCardPose(0, count, true, aspect, compact).rotation[0];
+    const rotationX = marketCardPose(0, count, true, view).rotation[0];
     const cos = Math.cos(rotationX);
     const sin = Math.sin(rotationX);
 
@@ -120,7 +125,7 @@ function MarketZoneTracker({ count, rectRef }: { count: number; rectRef: RefObje
     let maxY = -Infinity;
 
     for (let index = 0; index < count; index++) {
-      const [px, py, pz] = marketCardPose(index, count, true, aspect, compact).position;
+      const [px, py, pz] = marketCardPose(index, count, true, view).position;
       for (const dx of [-halfW, halfW]) {
         for (const dy of [-halfH, halfH]) {
           corner.current.set(px + dx, py + dy * cos, pz + dy * sin);
@@ -146,6 +151,47 @@ function MarketZoneTracker({ count, rectRef }: { count: number; rectRef: RefObje
   return null;
 }
 
+// Zones de dépôt HTML (fusion sur le board adverse, vente sur mon deck) : leur rectangle de
+// table est projeté à l'écran à chaque frame, puisque le cadrage suit la taille du canvas.
+// L'élément est centré sur son point d'ancrage (`translate(-50%, -50%)` dans styles.css).
+function TableAnchor({
+  elementRef,
+  rect,
+}: {
+  elementRef: RefObject<HTMLDivElement | null>;
+  rect: { x: number; z: number; halfW: number; halfD: number };
+}) {
+  const { camera, gl } = useThree();
+  const corner = useRef(new THREE.Vector3());
+
+  useFrame(() => {
+    const element = elementRef.current;
+    if (!element) return;
+    const canvasRect = gl.domElement.getBoundingClientRect();
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const dx of [-rect.halfW, rect.halfW]) {
+      for (const dz of [-rect.halfD, rect.halfD]) {
+        corner.current.set(rect.x + dx, 0, rect.z + dz).project(camera);
+        const x = ((corner.current.x + 1) / 2) * canvasRect.width;
+        const y = ((1 - corner.current.y) / 2) * canvasRect.height;
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    element.style.left = `${(minX + maxX) / 2}px`;
+    element.style.top = `${(minY + maxY) / 2}px`;
+    element.style.width = `${maxX - minX}px`;
+    element.style.height = `${maxY - minY}px`;
+  });
+
+  return null;
+}
+
 interface RenderEntry {
   uid: string;
   cardId: string;
@@ -166,17 +212,25 @@ interface RenderEntry {
   onInspect?: () => void; // zoom au doigt (appui long, ou tap sur une carte de la main)
 }
 
-function DeckPile({ pose, count, color }: { pose: Pose; count: number; color: string }) {
-  const height = Math.max(0.02, count * 0.008);
+// Pioche : une pile dont l'épaisseur suit le nombre de cartes, coiffée d'un dos de carte.
+function DeckPile({ pose, count }: { pose: Pose; count: number }) {
+  const backTexture = useMemo(() => getCardBackTexture(), []);
+  const height = Math.max(0.02, count * 0.006);
+  const w = theme.card.width * pose.scale;
+  const d = theme.card.height * pose.scale;
   return (
-    <mesh
-      position={[pose.position[0], pose.position[1] + height / 2, pose.position[2]]}
-      castShadow
-      receiveShadow
-    >
-      <boxGeometry args={[1.0 * pose.scale, height, 1.4 * pose.scale]} />
-      <meshStandardMaterial color={color} />
-    </mesh>
+    <group position={[pose.position[0], pose.position[1], pose.position[2]]}>
+      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[w * 0.98, height, d * 0.98]} />
+        <meshStandardMaterial color={theme.colors.deckEdge} roughness={0.9} />
+      </mesh>
+      {count > 0 && (
+        <mesh position={[0, height + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[w, d]} />
+          <meshStandardMaterial map={backTexture} alphaTest={0.5} />
+        </mesh>
+      )}
+    </group>
   );
 }
 
@@ -191,6 +245,8 @@ function Board({
   displayedHp,
   marketVisible,
   marketZoneRectRef,
+  fusionZoneRef,
+  sellZoneRef,
   onBuy,
   onToggleMarketLock,
   onDragStart,
@@ -202,8 +258,10 @@ function Board({
   targeting,
 }: BoardProps) {
   const opponentSeat: Seat = opponentOf(seat);
-  const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
-  const compact = useThree((s) => isCompactViewport(s.size.height));
+  const view = computeView(
+    useThree((s) => s.size.width),
+    useThree((s) => s.size.height),
+  );
   const me = state.players[seat];
   const opponent = state.players[opponentSeat];
 
@@ -228,7 +286,7 @@ function Board({
       cardId: card.cardId,
       stats: unplacedStats(card),
       ko: false,
-      pose: handCardPose(index, me.hand.length, true, compact),
+      pose: handCardPose(index, me.hand.length, true, view),
       hidden: false,
       mine: true,
       halo: dragged ? 'selected' : playable ? 'playable' : 'none',
@@ -246,7 +304,7 @@ function Board({
       cardId: card.cardId,
       stats: null,
       ko: false,
-      pose: handCardPose(index, opponent.hand.length, false),
+      pose: handCardPose(index, opponent.hand.length, false, view),
       hidden: true,
       mine: false,
       halo: 'none',
@@ -276,7 +334,7 @@ function Board({
       stats: mine ? unplacedStats(card) : null,
       ko: false,
       lockBadge: lockable ? { locked, onToggle: () => onToggleMarketLock(card.uid) } : undefined,
-      pose: marketCardPose(index, activePlayer.market.length, mine, aspect, compact),
+      pose: marketCardPose(index, activePlayer.market.length, mine, view),
       hidden: !mine,
       mine,
       halo: buyable ? 'playable' : 'none',
@@ -434,7 +492,7 @@ function Board({
     const mine = owner === seat;
     const handIndex = ownerPlayer.hand.findIndex((c) => c.uid === goldenUid);
     if (handIndex !== -1) {
-      const goldenPose = handCardPose(handIndex, ownerPlayer.hand.length, mine, compact);
+      const goldenPose = handCardPose(handIndex, ownerPlayer.hand.length, mine, view);
       for (const uid of fusedUids) {
         const card = ownerPlayer.deck.find((c) => c.uid === uid);
         if (!card) continue;
@@ -537,24 +595,33 @@ function Board({
   // aide à les distinguer sans éblouir ; une fois masqué (bouton HUD), rien ne justifie de
   // garder la table sombre donc on l'éclaircit pour une meilleure lisibilité générale.
   const brightTable = !marketVisible;
-  const tableColor = brightTable ? theme.colors.tableTopBright : theme.colors.tableTop;
-  const ambientIntensity = brightTable ? 1.15 : 0.7;
-  const keyLightIntensity = brightTable ? 1.6 : 1.1;
-  const fillLightIntensity = brightTable ? 0.5 : 0;
+  const ambientIntensity = brightTable ? 1.0 : 0.6;
+  const keyLightIntensity = brightTable ? 1.7 : 1.15;
 
   return (
     <>
       <MarketZoneTracker count={state.turn === seat ? me.market.length : 0} rectRef={marketZoneRectRef} />
+      <TableAnchor elementRef={fusionZoneRef} rect={fusionZoneRect()} />
+      <TableAnchor elementRef={sellZoneRef} rect={sellZoneRect()} />
 
-      <ambientLight intensity={ambientIntensity} />
-      {brightTable && <hemisphereLight args={[tableColor, '#05060a', 0.5]} />}
-      <directionalLight position={[3, 8, 4]} intensity={keyLightIntensity} castShadow />
-      {brightTable && <directionalLight position={[-4, 5, -3]} intensity={fillLightIntensity} />}
+      {/* Lumière chaude de lampe de taverne, plus un contre-jour froid pour détacher les cartes. */}
+      <ambientLight intensity={ambientIntensity} color={theme.colors.lampAmbient} />
+      <hemisphereLight args={[theme.colors.lampKey, theme.colors.void, brightTable ? 0.55 : 0.3]} />
+      <directionalLight
+        position={[2.5, 9, 4]}
+        intensity={keyLightIntensity}
+        color={theme.colors.lampKey}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-left={-9}
+        shadow-camera-right={9}
+        shadow-camera-top={7}
+        shadow-camera-bottom={-7}
+        shadow-bias={-0.0005}
+      />
+      <directionalLight position={[-4, 5, -4]} intensity={brightTable ? 0.45 : 0.25} color={theme.colors.rimLight} />
 
-      <mesh position={[0, -0.06, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[14, 12]} />
-        <meshStandardMaterial color={tableColor} />
-      </mesh>
+      <Table bright={brightTable} />
 
       {zonesToRender.map(({ owner, zone }) => {
         const mine = owner === seat;
@@ -588,8 +655,8 @@ function Board({
         onSelect={undefined}
       />
 
-      <DeckPile pose={deckPose(true)} count={me.deck.length} color={theme.colors.cardBack} />
-      <DeckPile pose={deckPose(false)} count={opponent.deck.length} color={theme.colors.cardBack} />
+      <DeckPile pose={deckPose(true)} count={me.deck.length} />
+      <DeckPile pose={deckPose(false)} count={opponent.deck.length} />
 
       {entries.map((entry) => (
         <Card

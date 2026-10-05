@@ -14,24 +14,59 @@ interface HeroProps {
 
 const valueTextureCache = new Map<string, THREE.CanvasTexture>();
 
-// Petite texture Canvas peinte sur le dessus du disque, affichant les PV (§6.5).
-function getValueTexture(value: number): THREE.CanvasTexture {
-  const key = String(value);
+const DISPLAY_FONT = "'Cinzel', Georgia, 'Times New Roman', serif";
+const TOKEN_RADIUS = 0.46;
+
+// Dessus du médaillon (§6.5) : cœur à la couleur du joueur, double cerclage d'or comme les
+// plaques du HUD, PV gravés au centre.
+function getValueTexture(value: number, color: string): THREE.CanvasTexture {
+  const key = `${color}-${value}`;
   const cached = valueTextureCache.get(key);
   if (cached) return cached;
 
+  const size = 256;
+  const c = size / 2;
   const canvas = document.createElement('canvas');
-  canvas.width = 128;
-  canvas.height = 128;
+  canvas.width = size;
+  canvas.height = size;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 64px system-ui, sans-serif';
+
+  ctx.beginPath();
+  ctx.arc(c, c, c - 2, 0, Math.PI * 2);
+  ctx.fillStyle = theme.colors.heroRim;
+  ctx.fill();
+
+  const core = ctx.createRadialGradient(c * 0.8, c * 0.7, 4, c, c, c * 0.8);
+  core.addColorStop(0, color);
+  core.addColorStop(1, theme.colors.heroCore);
+  ctx.beginPath();
+  ctx.arc(c, c, c * 0.8, 0, Math.PI * 2);
+  ctx.fillStyle = core;
+  ctx.fill();
+
+  ctx.strokeStyle = theme.colors.gold;
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(c, c, c * 0.8, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = theme.colors.goldDark;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(c, c, c * 0.92, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.font = `700 ${value >= 10 ? 104 : 120}px ${DISPLAY_FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(String(value), 64, 68);
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 4;
+  ctx.fillStyle = theme.colors.parchmentLight;
+  ctx.fillText(String(value), c, c + 8);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
   valueTextureCache.set(key, texture);
   return texture;
 }
@@ -43,7 +78,7 @@ function Hero({ pose, mine, hp, clickable, onSelect }: HeroProps) {
   const prevHp = useRef(hp);
   const flashIntensity = useRef(0);
   const basePosition = useRef(new THREE.Vector3(...pose.position));
-  const valueTexture = useMemo(() => getValueTexture(hp), [hp]);
+  const valueTexture = useMemo(() => getValueTexture(hp, color), [hp, color]);
 
   useEffect(() => {
     if (hp < prevHp.current) flashIntensity.current = 1;
@@ -78,10 +113,10 @@ function Hero({ pose, mine, hp, clickable, onSelect }: HeroProps) {
         onSelect?.();
       }}
     >
-      <cylinderGeometry args={[0.5, 0.5, 0.16, 32]} />
-      <meshStandardMaterial ref={materialRef} color={color} />
-      <mesh position={[0, 0.081, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.42, 32]} />
+      <cylinderGeometry args={[TOKEN_RADIUS, TOKEN_RADIUS * 1.04, 0.14, 48]} />
+      <meshStandardMaterial ref={materialRef} color={theme.colors.heroRim} metalness={0.5} roughness={0.45} />
+      <mesh position={[0, 0.071, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[TOKEN_RADIUS, 48]} />
         <meshBasicMaterial map={valueTexture} transparent />
       </mesh>
     </mesh>
