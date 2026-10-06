@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
-import { BOARD_BOUNDS } from './layout';
+import { BOARD_BOUNDS, MAT_MARGIN } from './layout';
 import { theme } from './theme';
 
 // Table de taverne (demande utilisateur) : plateau de planches de bois sombre, un tapis de
@@ -13,7 +13,6 @@ const PLANKS_PER_TILE = 6;
 const TABLE_SIZE: [number, number] = [60, 44];
 
 // Tapis : marge autour des rangées, et rebord de cuir cousu.
-const MAT_MARGIN = 0.5;
 const MAT_PX_PER_UNIT = 180;
 const MAT_RIM = 0.16;
 

@@ -786,16 +786,14 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             </button>
           )}
 
-          {/* Affichage du marché, sous l'emplacement où il se range (à droite de ma pioche),
-              avec mes pièces sous les yeux au moment d'acheter. */}
+          {/* Affichage du marché, sous l'emplacement où il se range (à droite de ma pioche). */}
           {showMarketControls && (
             <button
               className="market-toggle-button"
               onClick={() => setMarketVisible((v) => !v)}
               title={marketVisible ? 'Masquer le marché' : 'Afficher le marché'}
             >
-              <CoinBadge coins={me.coins} />
-              <span>{marketVisible ? 'Masquer le marché' : 'Afficher le marché'}</span>
+              {marketVisible ? 'Masquer le marché' : 'Afficher le marché'}
             </button>
           )}
 

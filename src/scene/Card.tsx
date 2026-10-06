@@ -516,12 +516,13 @@ function Card({
           />
         </mesh>
 
-        {/* Cadenas du marché : coin haut gauche de la carte, au-dessus de la face et hors du
+        {/* Cadenas du marché : en bas au centre de la carte, par-dessus la gemme de rareté
+            (40 px du bas sur une face de 420, voir textures.ts), au-dessus de la face et hors du
             groupe qui pivote, avec sa propre zone de clic (il n'achète pas la carte). */}
         {lockBadge && padlockTexture && (
           <group
             ref={lockGroupRef}
-            position={[-width / 2 + LOCK_SIZE * 0.55, height / 2 - LOCK_SIZE * 0.55, 0.06]}
+            position={[0, -height / 2 + (height * 40) / 420, 0.06]}
             onClick={(e) => {
               e.stopPropagation();
               lockBadge.onToggle();

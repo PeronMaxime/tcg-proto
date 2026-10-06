@@ -21,7 +21,9 @@ import EffectiveBursts, { type EffectiveHit } from './EffectiveBurst';
 import Hero from './Hero';
 import {
   computeView,
+  deckPileHeight,
   deckPose,
+  deckTopY,
   fusionZoneRect,
   handCardPose,
   HUD_ANCHORS,
@@ -204,8 +206,16 @@ function TableAnchor({
 // (`--<nom>-x`, `--<nom>-y` : centre ; `--<nom>-w`, `--<nom>-h` : taille, en px) sur
 // `targetRef`, relativement à son coin haut-gauche. Le HUD se positionne avec ces variables
 // et suit ainsi le plateau quand le cadrage change. Une variable n'est réécrite que si sa
-// valeur change, pour ne pas relancer le style à chaque frame.
-function HudAnchors({ targetRef }: { targetRef: RefObject<HTMLElement | null> }) {
+// valeur change, pour ne pas relancer le style à chaque frame. `heights` relève certains
+// rectangles au-dessus de la table (le dessus des pioches, dont l'épaisseur suit le nombre de
+// cartes).
+function HudAnchors({
+  targetRef,
+  heights,
+}: {
+  targetRef: RefObject<HTMLElement | null>;
+  heights: Record<string, number>;
+}) {
   const { camera, gl } = useThree();
   const corner = useRef(new THREE.Vector3());
   const written = useRef(new Map<string, string>());
@@ -215,14 +225,14 @@ function HudAnchors({ targetRef }: { targetRef: RefObject<HTMLElement | null> })
     if (!target) return;
     const canvasRect = gl.domElement.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-    const project = (rect: TableRect) => {
+    const project = (rect: TableRect, height: number) => {
       let minX = Infinity;
       let minY = Infinity;
       let maxX = -Infinity;
       let maxY = -Infinity;
       for (const dx of [-rect.halfW, rect.halfW]) {
         for (const dz of [-rect.halfD, rect.halfD]) {
-          corner.current.set(rect.x + dx, 0, rect.z + dz).project(camera);
+          corner.current.set(rect.x + dx, height, rect.z + dz).project(camera);
           const x = canvasRect.left - targetRect.left + ((corner.current.x + 1) / 2) * canvasRect.width;
           const y = canvasRect.top - targetRect.top + ((1 - corner.current.y) / 2) * canvasRect.height;
           minX = Math.min(minX, x);
@@ -234,7 +244,7 @@ function HudAnchors({ targetRef }: { targetRef: RefObject<HTMLElement | null> })
       return { x: (minX + maxX) / 2, y: (minY + maxY) / 2, w: maxX - minX, h: maxY - minY };
     };
     for (const [name, rect] of Object.entries(HUD_ANCHORS)) {
-      const projected = project(rect);
+      const projected = project(rect, heights[name] ?? rect.y ?? 0);
       for (const key of ['x', 'y', 'w', 'h'] as const) {
         const property = `--${name}-${key}`;
         const value = `${Math.round(projected[key])}px`;
@@ -271,7 +281,7 @@ interface RenderEntry {
 // Pioche : une pile dont l'épaisseur suit le nombre de cartes, coiffée d'un dos de carte.
 function DeckPile({ pose, count }: { pose: Pose; count: number }) {
   const backTexture = useMemo(() => getCardBackTexture(), []);
-  const height = Math.max(0.02, count * 0.006);
+  const height = deckPileHeight(count);
   const w = theme.card.width * pose.scale;
   const d = theme.card.height * pose.scale;
   return (
@@ -679,7 +689,10 @@ function Board({
       <MarketZoneTracker count={state.turn === seat ? me.market.length : 0} rectRef={marketZoneRectRef} />
       <TableAnchor elementRef={fusionZoneRef} rect={fusionZoneRect()} />
       <TableAnchor elementRef={sellZoneRef} rect={sellZoneRect()} />
-      <HudAnchors targetRef={hudAnchorRef} />
+      <HudAnchors
+        targetRef={hudAnchorRef}
+        heights={{ 'my-deck': deckTopY(me.deck.length), 'opp-deck': deckTopY(opponent.deck.length) }}
+      />
 
       {/* Lumière chaude de lampe de taverne, plus un contre-jour froid pour détacher les cartes. */}
       <ambientLight intensity={ambientIntensity} color={theme.colors.lampAmbient} />

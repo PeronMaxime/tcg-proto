@@ -1295,10 +1295,10 @@ button {
   color: var(--hud-gold-bright);
 }
 
-/* -- Bouton de combat sur la ligne de front, à droite du plateau ; la phase au-dessus -- */
+/* -- Bouton de combat sur la ligne de front, à droite du tapis ; la phase au-dessus -- */
 
 .front-controls {
-  left: min(calc(var(--front-x) + var(--front-w) / 2 + 0.8rem), calc(100% - var(--edge-right) - 8rem));
+  left: min(calc(var(--front-x) + var(--front-w) / 2 + 0.8rem), calc(100% - var(--edge-right) - var(--end-turn-w)));
   top: var(--front-y);
   transform: translateY(-50%);
 }
@@ -1318,8 +1318,12 @@ button {
   white-space: nowrap;
 }
 
+.hud-board {
+  --end-turn-w: 8rem;
+}
+
 .end-turn {
-  min-width: 8rem;
+  min-width: var(--end-turn-w);
   min-height: 48px;
   padding: 0 1.2rem;
   background: linear-gradient(155deg, #2a2e38, #16181e);
@@ -1678,8 +1682,11 @@ button {
     font-size: 0.66rem;
   }
 
+  .hud-board {
+    --end-turn-w: 6.5rem;
+  }
+
   .end-turn {
-    min-width: 6.5rem;
     min-height: 44px;
     font-size: 0.7rem;
   }
@@ -2201,8 +2208,11 @@ button {
     font-size: 0.64rem;
   }
 
+  .hud-board {
+    --end-turn-w: 6rem;
+  }
+
   .end-turn {
-    min-width: 6rem;
     min-height: 36px;
     font-size: 0.66rem;
   }

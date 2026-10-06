@@ -26,9 +26,11 @@ export interface Pose {
   scale: number;
 }
 
-// Rectangle posé sur la table : centre (x, z), demi-largeur et demi-profondeur.
+// Rectangle posé sur la table : centre (x, z), demi-largeur et demi-profondeur ; `y`, sa
+// hauteur au-dessus de la table (0 par défaut).
 export interface TableRect {
   x: number;
+  y?: number;
   z: number;
   halfW: number;
   halfD: number;
@@ -91,6 +93,9 @@ export const BOARD_BOUNDS = {
   minZ: -(ROW_Z_DEFENSE + CARD_H / 2 + 0.08),
   maxZ: ROW_Z_DEFENSE + CARD_H / 2 + 0.08,
 };
+
+// Marge du tapis de feutre autour du plateau (Table.tsx).
+export const MAT_MARGIN = 0.5;
 
 // --- Cadrage ---
 
@@ -333,6 +338,15 @@ export function playerTokenPose(mine: boolean): Pose {
   };
 }
 
+// Hauteur du dessus d'une pioche de `count` cartes (épaisseur de la pile, voir DeckPile).
+export function deckPileHeight(count: number): number {
+  return Math.max(0.02, count * 0.006);
+}
+
+export function deckTopY(count: number): number {
+  return deckPose(true).position[1] + deckPileHeight(count);
+}
+
 export function deckPose(mine: boolean): Pose {
   return {
     position: [DECK_X, 0.1, (mine ? 1 : -1) * ROW_Z_ATTACK],
@@ -448,7 +462,7 @@ export function marketCardPose(index: number, total: number, mine: boolean, view
 // Rectangles de table que le HUD suit à l'écran (projetés à chaque frame par `HudAnchors` dans
 // Board, exposés en variables CSS `--<nom>-x/-y/-w/-h`) : le HUD se cale sur le plateau, quel
 // que soit le cadrage.
-//   front     : ligne de front, sur toute la largeur du plateau (bannières, bouton de combat)
+//   front     : ligne de front, sur toute la largeur du tapis (bannières, bouton de combat)
 //   monsters  : rangées de monstres, sur la ligne de front (le vide à leur gauche reçoit l'aide)
 //   *-deck    : pioches (compteur, relance du marché)
 //   *-market  : marché couché à droite de la pioche (bouton d'affichage du marché)
@@ -457,7 +471,7 @@ export const HUD_ANCHORS: Record<string, TableRect> = {
   front: {
     x: (BOARD_BOUNDS.minX + BOARD_BOUNDS.maxX) / 2,
     z: 0,
-    halfW: (BOARD_BOUNDS.maxX - BOARD_BOUNDS.minX) / 2,
+    halfW: (BOARD_BOUNDS.maxX - BOARD_BOUNDS.minX) / 2 + MAT_MARGIN,
     halfD: 0,
   },
   monsters: { x: MONSTER_X, z: 0, halfW: MONSTER_HALF_W, halfD: 0 },
