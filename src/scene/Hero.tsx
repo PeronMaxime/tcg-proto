@@ -58,9 +58,6 @@ function getValueTexture(value: number, color: string): THREE.CanvasTexture {
   ctx.font = `700 ${value >= 10 ? 104 : 120}px ${DISPLAY_FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-  ctx.shadowBlur = 10;
-  ctx.shadowOffsetY = 4;
   ctx.fillStyle = theme.colors.parchmentLight;
   ctx.fillText(String(value), c, c + 8);
 
@@ -105,8 +102,6 @@ function Hero({ pose, mine, hp, clickable, onSelect }: HeroProps) {
       ref={meshRef}
       position={pose.position}
       rotation={pose.rotation}
-      castShadow
-      receiveShadow
       onClick={(e) => {
         if (!clickable) return;
         e.stopPropagation();

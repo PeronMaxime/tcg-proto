@@ -47,13 +47,10 @@ function getEffectiveTexture(element: CardElement): THREE.CanvasTexture {
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
 
-  // Contour sombre avec ombre portée, pour rester lisible sur la table comme sur les cartes.
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-  ctx.shadowBlur = 10;
+  // Contour sombre, pour rester lisible sur la table comme sur les cartes.
   ctx.lineWidth = 12;
   ctx.strokeStyle = palette.badge;
   ctx.strokeText(TEXT, x, y, maxWidth);
-  ctx.shadowColor = 'transparent';
 
   const gradient = ctx.createLinearGradient(0, 24, 0, 104);
   gradient.addColorStop(0, '#ffffff');

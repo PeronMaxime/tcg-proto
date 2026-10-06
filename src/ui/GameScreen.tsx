@@ -43,6 +43,11 @@ const RULES_ICON_PATH = 'M12 6.5C10.5 5.2 8.6 4.5 6 4.5H3v14h3c2.6 0 4.5.7 6 2 1
 // Téléphone couché et flèche de rotation, pour l'invite à passer en paysage.
 const ROTATE_ICON_PATH = 'M3 9a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1zM14 12h.01M8 4.5A7 7 0 0 1 20 7.5M20 3.5v4h-4';
 const LEAVE_ICON_PATH = 'M9 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h5M15 8l4 4-4 4M19 12H8';
+// Engrenage, pour le menu de partie (room, règles, quitter).
+const MENU_ICON_PATH =
+  'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z';
+// Flèches circulaires, pour la relance du marché.
+const REROLL_ICON_PATH = 'M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5';
 
 function CoinBadge({ coins }: { coins: number }) {
   return (
@@ -53,49 +58,37 @@ function CoinBadge({ coins }: { coins: number }) {
   );
 }
 
-function PlayerPlate({
+// Cartouche d'un joueur, accroché à son héros (sous le mien, au-dessus de celui de
+// l'adversaire) : nom, pièces et gain du prochain tour. Les PV sont sur le héros lui-même.
+function HeroPlate({
   name,
-  hp,
   coins,
   turnsPlayed,
   nextGain,
-  deckCount,
-  handCount,
   active,
-  align,
+  side,
 }: {
   name: string;
-  hp: number;
   coins: number;
   turnsPlayed: number;
   nextGain: number;
-  deckCount: number;
-  handCount: number;
   active: boolean;
-  align: 'top' | 'bottom';
+  side: 'mine' | 'opp';
 }) {
   return (
-    <div className={`hud-plate hud-plate--${align} ${active ? 'is-active' : ''}`}>
-      <div className="hud-plate-row">
-        <span className="hud-name">{name}</span>
-        {active && <span className="hud-turn-dot" aria-hidden="true" />}
-        <span className="hud-turn" title={`Tours joués : ${turnsPlayed} · pièces gagnées au prochain tour : ${nextGain}`}>
-          Tour {turnsPlayed} · prochain +{nextGain}
+    <div
+      className={`hero-plate hero-plate--${side} ${active ? 'is-active' : ''}`}
+      title={`Tours joués : ${turnsPlayed} · pièces gagnées au prochain tour : ${nextGain}`}
+    >
+      {active && <span className="hud-turn-dot" aria-hidden="true" />}
+      <span className="hero-plate-name">{name}</span>
+      <span className="hero-plate-economy">
+        <CoinBadge coins={coins} />
+        <span className="hero-plate-gain">
+          +{nextGain}
           <span className="coin-icon coin-icon--small" aria-hidden="true" />
         </span>
-      </div>
-      <div className="hud-plate-row">
-        <span className="hp-token">
-          <span className="hp-value">{hp}</span>
-        </span>
-        <CoinBadge coins={coins} />
-        <span className="hud-deck" title="Cartes restantes dans le deck">
-          Deck {deckCount}
-        </span>
-        <span className="hud-deck" title="Cartes en main">
-          Main {handCount}
-        </span>
-      </div>
+      </span>
     </div>
   );
 }
@@ -120,13 +113,10 @@ function combatBannerText(cycle: number, phase: 'melee' | 'breakthrough', stalem
   return cycle > 1 ? `Combat · cycle ${cycle}` : 'Combat !';
 }
 
-function phaseLabel(isMyTurn: boolean, playing: boolean, phase: string, turnNumber: number): string {
+// Indicateur de phase, au-dessus du bouton de combat : court, pour tenir sur une ligne.
+function phaseLabel(isMyTurn: boolean, playing: boolean, turnNumber: number): string {
   if (playing) return 'Combat…';
-  if (isMyTurn) {
-    if (phase === 'main') return `Tour ${turnNumber} · Marché & pose de cartes`;
-    return `Tour ${turnNumber}`;
-  }
-  if (phase === 'main') return "Tour de l'adversaire · Marché & pose de cartes";
+  if (isMyTurn) return `Tour ${turnNumber} · à toi`;
   return "Tour de l'adversaire";
 }
 
@@ -220,6 +210,10 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const fusionZoneRef = useRef<HTMLDivElement>(null);
   const sellZoneRef = useRef<HTMLDivElement>(null);
+  // Racine de l'écran : reçoit les variables CSS des ancrages du HUD sur le plateau.
+  const screenRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const marketZoneRectRef = useRef<ScreenRect | null>(null);
   const [zoomedUid, setZoomedUid] = useState<string | null>(null);
   const [turnBanner, setTurnBanner] = useState<{ seat: Seat; coinsGained: number; key: number } | null>(null);
@@ -405,11 +399,22 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
         cancelDrag();
         setZoomedUid(null);
         setRulesOpen(false);
+        setMenuOpen(false);
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  // Menu de partie : se referme au clic en dehors.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(e: PointerEvent) {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    }
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, [menuOpen]);
 
   // Un glisser-déposer ne survit pas à un changement de phase ou de tour (§6.6).
   useEffect(() => {
@@ -454,6 +459,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
       if (
         target?.closest('.market-toggle-button') ||
         target?.closest('.market-reroll-button') ||
+        target?.closest('.hud-menu') ||
         target?.closest('.card-zoom-backdrop')
       )
         return;
@@ -603,6 +609,9 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   const rematchReady = room.rematchReady ?? { p1: false, p2: false };
   const iAmReadyForRematch = rematchReady[seat];
   const opponentReadyForRematch = rematchReady[opponentSeat];
+  const showMarketControls = isMyTurn && state.phase === 'main' && !state.winner;
+  // Mon marché ouvert recouvre le vide à gauche des rangées où l'aide s'affiche : on la retire.
+  const myMarketShown = showMarketControls && marketVisible && !state.pendingChoice && me.market.length > 0;
   // Pas de combat au premier tour de la partie : le bouton ne fait que passer la main.
   const mainButtonLabel = isFirstTurnOfGame(state) ? 'Fin du tour' : 'Combat !';
   const mainButtonAction = endTurn;
@@ -658,11 +667,11 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
 
   return (
     <div
+      ref={screenRef}
       className="game-screen"
       onContextMenu={(e) => e.preventDefault()}
     >
       <Canvas
-        shadows
         camera={{ fov: CAMERA_FOV, near: 0.1, far: 200 }}
         className="game-canvas"
         style={{ background: '#05060a' }}
@@ -681,6 +690,8 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
           marketZoneRectRef={marketZoneRectRef}
           fusionZoneRef={fusionZoneRef}
           sellZoneRef={sellZoneRef}
+          hudAnchorRef={screenRef}
+          onShowMarket={() => setMarketVisible(true)}
           onBuy={buy}
           onToggleMarketLock={toggleMarketLock}
           onDragStart={(uid, x, y, origin) => {
@@ -726,65 +737,88 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
         </div>
       )}
 
+      {/* HUD accroché au plateau : positionné par les variables CSS des ancrages (`HUD_ANCHORS`
+          de scene/layout.ts, écrites par Board sur la racine de l'écran), dans le repère du
+          canvas. */}
       {!showVictory && (
-        <div className="hud-layer">
-          {/* V2 : plus d'avantage élémentaire, la roue n'a plus lieu d'être. */}
-          {!isV2Active() && <ElementWheel />}
+        <div className="hud-board">
+          <HeroPlate
+            name={opponentName}
+            coins={opponent.coins}
+            turnsPlayed={opponent.turnsPlayed}
+            nextGain={nextTurnCoinGain(opponent)}
+            active={!isMyTurn}
+            side="opp"
+          />
+          <HeroPlate
+            name={myName}
+            coins={me.coins}
+            turnsPlayed={me.turnsPlayed}
+            nextGain={nextTurnCoinGain(me)}
+            active={isMyTurn}
+            side="mine"
+          />
 
-          <button
-            className={`room-badge ${codeCopied ? 'is-copied' : ''}`}
-            onClick={copyRoomCode}
-            title="Copier le code de la room"
-          >
-            <span className="room-badge-label">Room</span>
-            <span className="room-badge-code">{room.code}</span>
-            <span className="room-badge-hint">{codeCopied ? 'Copié !' : 'Copier'}</span>
-          </button>
+          <span className="deck-count deck-count--opp" title="Cartes restantes dans la pioche adverse">
+            {opponent.deck.length}
+          </span>
+          <span className="deck-count deck-count--mine" title="Cartes restantes dans ta pioche">
+            {me.deck.length}
+          </span>
 
-          <button className="rules-button" onClick={() => setRulesOpen(true)} title="Voir les règles du jeu">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d={RULES_ICON_PATH} />
-            </svg>
-            <span>Règles</span>
-          </button>
-
-          <button className="leave-button" onClick={leaveGame} title="Quitter la partie et revenir au menu">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d={LEAVE_ICON_PATH} />
-            </svg>
-            <span>Quitter</span>
-          </button>
-
-          {isMyTurn && state.phase === 'main' && (
-            <>
-              <button
-                className="market-toggle-button"
-                onClick={() => setMarketVisible((v) => !v)}
-                title={marketVisible ? 'Masquer le marché' : 'Afficher le marché'}
-              >
-                {marketVisible ? 'Masquer le marché' : 'Afficher le marché'}
-              </button>
-
-              <button
-                className="market-reroll-button"
-                disabled={!canRerollMarket}
-                onClick={rerollMarket}
-                title={`Remplacer les cartes non verrouillées du marché pour ${MARKET_REROLL_COST} pièce — cadenas sur une carte : la garder pour le prochain marché pour ${MARKET_LOCK_COST} pièce`}
-              >
-                Relancer ({MARKET_REROLL_COST} pièce)
-              </button>
-            </>
+          {/* Relance du marché, sur ma pioche ; masquée pendant un glisser-déposer, où la pioche
+              devient la zone de vente. */}
+          {showMarketControls && !drag && (
+            <button
+              className="market-reroll-button"
+              disabled={!canRerollMarket}
+              onClick={rerollMarket}
+              title={`Remplacer les cartes non verrouillées du marché pour ${MARKET_REROLL_COST} pièce — cadenas sur une carte : la garder pour le prochain marché pour ${MARKET_LOCK_COST} pièce`}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d={REROLL_ICON_PATH} />
+              </svg>
+              <span className="market-reroll-label">Relancer</span>
+              <span className="market-reroll-cost">
+                {MARKET_REROLL_COST}
+                <span className="coin-icon coin-icon--small" aria-hidden="true" />
+              </span>
+            </button>
           )}
 
-          {abandonCountdown !== null && (
-            <div className="abandon-notice">
-              {opponentName} a quitté la partie — retour au menu dans {abandonCountdown}s
-            </div>
+          {/* Affichage du marché, sous l'emplacement où il se range (à droite de ma pioche),
+              avec mes pièces sous les yeux au moment d'acheter. */}
+          {showMarketControls && (
+            <button
+              className="market-toggle-button"
+              onClick={() => setMarketVisible((v) => !v)}
+              title={marketVisible ? 'Masquer le marché' : 'Afficher le marché'}
+            >
+              <CoinBadge coins={me.coins} />
+              <span>{marketVisible ? 'Masquer le marché' : 'Afficher le marché'}</span>
+            </button>
           )}
+
+          <div className="front-controls">
+            <p className="phase-indicator">{phaseLabel(isMyTurn, playing, state.turnNumber)}</p>
+            <button
+              className={`end-turn ${mainButtonEnabled ? 'is-ready' : ''}`}
+              disabled={!mainButtonEnabled}
+              onClick={mainButtonAction}
+            >
+              <span>{mainButtonLabel}</span>
+            </button>
+          </div>
 
           {playing && combatView && (
             <div className="combat-banner">
               {combatBannerText(combatView.cycle, combatView.phase, combatView.stalemate, combatView.complete)}
+            </div>
+          )}
+
+          {turnBanner && (
+            <div className={`turn-banner ${turnBanner.seat === seat ? 'mine' : 'theirs'}`}>
+              {turnBanner.seat === seat ? `À toi de jouer · +${turnBanner.coinsGained} pièce(s)` : "Tour de l'adversaire"}
             </div>
           )}
 
@@ -798,46 +832,6 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
             </div>
           )}
 
-          {turnBanner && (
-            <div className={`turn-banner ${turnBanner.seat === seat ? 'mine' : 'theirs'}`}>
-              {turnBanner.seat === seat ? `À toi de jouer · +${turnBanner.coinsGained} pièce(s)` : "Tour de l'adversaire"}
-            </div>
-          )}
-
-          <p className="phase-indicator">{phaseLabel(isMyTurn, playing, state.phase, state.turnNumber)}</p>
-
-          <PlayerPlate
-            name={opponentName}
-            hp={displayedHp[opponentSeat]}
-            coins={opponent.coins}
-            turnsPlayed={opponent.turnsPlayed}
-            nextGain={nextTurnCoinGain(opponent)}
-            deckCount={opponent.deck.length}
-            handCount={opponent.hand.length}
-            active={!isMyTurn}
-            align="top"
-          />
-
-          <PlayerPlate
-            name={myName}
-            hp={displayedHp[seat]}
-            coins={me.coins}
-            turnsPlayed={me.turnsPlayed}
-            nextGain={nextTurnCoinGain(me)}
-            deckCount={me.deck.length}
-            handCount={me.hand.length}
-            active={isMyTurn}
-            align="bottom"
-          />
-
-          <button
-            className={`end-turn ${mainButtonEnabled ? 'is-ready' : ''}`}
-            disabled={!mainButtonEnabled}
-            onClick={mainButtonAction}
-          >
-            <span>{mainButtonLabel}</span>
-          </button>
-
           {state.pendingChoice && !playing ? (
             <div className="choice-banner">
               <span>{choiceHint(state, seat, pickedUid)}</span>
@@ -848,7 +842,68 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
               )}
             </div>
           ) : (
-            <p className="hint">{hintText(isMyTurn, playing, state.phase, fusable, me.movesUsed)}</p>
+            !myMarketShown && <p className="hint">{hintText(isMyTurn, playing, state.phase, fusable, me.movesUsed)}</p>
+          )}
+        </div>
+      )}
+
+      {/* HUD collé aux bords de l'écran (dans les zones sûres des téléphones). */}
+      {!showVictory && (
+        <div className="hud-layer">
+          {/* V2 : plus d'avantage élémentaire, la roue n'a plus lieu d'être. */}
+          {!isV2Active() && <ElementWheel />}
+
+          <div ref={menuRef} className="hud-menu">
+            <button
+              className={`hud-menu-button ${menuOpen ? 'is-open' : ''}`}
+              onClick={() => setMenuOpen((open) => !open)}
+              aria-expanded={menuOpen}
+              aria-label="Menu de la partie"
+              title="Menu de la partie"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d={MENU_ICON_PATH} />
+              </svg>
+            </button>
+            {menuOpen && (
+              <div className="hud-menu-panel" role="menu">
+                <button
+                  className={`hud-menu-item hud-menu-room ${codeCopied ? 'is-copied' : ''}`}
+                  onClick={copyRoomCode}
+                  title="Copier le code de la room"
+                  role="menuitem"
+                >
+                  <span className="hud-menu-room-label">Room</span>
+                  <span className="hud-menu-room-code">{room.code}</span>
+                  <span className="hud-menu-room-hint">{codeCopied ? 'Copié !' : 'Copier'}</span>
+                </button>
+                <button
+                  className="hud-menu-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setRulesOpen(true);
+                  }}
+                  role="menuitem"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d={RULES_ICON_PATH} />
+                  </svg>
+                  <span>Règles</span>
+                </button>
+                <button className="hud-menu-item hud-menu-item--danger" onClick={leaveGame} role="menuitem">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d={LEAVE_ICON_PATH} />
+                  </svg>
+                  <span>Quitter la partie</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {abandonCountdown !== null && (
+            <div className="abandon-notice">
+              {opponentName} a quitté la partie — retour au menu dans {abandonCountdown}s
+            </div>
           )}
         </div>
       )}

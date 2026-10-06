@@ -4,8 +4,7 @@ import { BOARD_BOUNDS } from './layout';
 import { theme } from './theme';
 
 // Table de taverne (demande utilisateur) : plateau de planches de bois sombre, un tapis de
-// feutre posé dessous les zones, et une ombre douce qui assombrit le bois loin du tapis. Tout
-// est peint en Canvas 2D (D5 : aucune image à charger) et mis en cache au niveau du module.
+// feutre posé dessous les zones, sans aucun effet d'ombre (demande utilisateur). Tout est peint en Canvas 2D (D5 : aucune image à charger) et mis en cache au niveau du module.
 
 // Bois : texture qui se répète, WOOD_TILE unités de table par répétition.
 const WOOD_TILE = 9;
@@ -215,11 +214,6 @@ function getMatTexture(): THREE.CanvasTexture {
     ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
     ctx.stroke();
   }
-  // Ombre portée du rebord sur le feutre.
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
-  ctx.lineWidth = 10;
-  roundedRect(ctx, rim, rim, w - rim * 2, h - rim * 2, radius - rim * 0.6);
-  ctx.stroke();
   ctx.restore();
 
   // Couture en fil d'or sur le cuir.
@@ -258,44 +252,19 @@ function getMatTexture(): THREE.CanvasTexture {
   return matTexture;
 }
 
-let vignetteTexture: THREE.CanvasTexture | null = null;
-
-// Pénombre autour du tapis : la lumière de la lampe ne porte pas jusqu'au bout de la table.
-function getVignetteTexture(): THREE.CanvasTexture {
-  if (vignetteTexture) return vignetteTexture;
-  const size = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const gradient = ctx.createRadialGradient(size / 2, size / 2, size * 0.16, size / 2, size / 2, size * 0.5);
-  gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-  gradient.addColorStop(0.55, 'rgba(0, 0, 0, 0.45)');
-  gradient.addColorStop(1, 'rgba(0, 0, 0, 0.92)');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, size, size);
-  vignetteTexture = new THREE.CanvasTexture(canvas);
-  return vignetteTexture;
-}
-
 // `bright` : le marché est masqué, la table s'éclaire (demande utilisateur, voir Board).
 function Table({ bright }: { bright: boolean }) {
   const wood = useMemo(getWoodTexture, []);
   const mat = useMemo(getMatTexture, []);
-  const vignette = useMemo(getVignetteTexture, []);
   const tint = bright ? '#ffffff' : '#b9b2a8';
 
   return (
     <group>
-      <mesh position={[0, -0.07, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh position={[0, -0.07, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={TABLE_SIZE} />
         <meshStandardMaterial map={wood} color={tint} roughness={0.72} metalness={0} />
       </mesh>
-      <mesh position={[MAT_CENTER[0], -0.064, MAT_CENTER[1]]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[MAT_W * 2.6, MAT_H * 2.6]} />
-        <meshBasicMaterial map={vignette} transparent depthWrite={false} opacity={bright ? 0.75 : 1} />
-      </mesh>
-      <mesh position={[MAT_CENTER[0], -0.055, MAT_CENTER[1]]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh position={[MAT_CENTER[0], -0.055, MAT_CENTER[1]]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[MAT_W, MAT_H]} />
         {/* Coins arrondis par `alphaTest`, pas par transparence : un tapis transparent serait
             trié avec les fonds des rangées et pourrait se dessiner après eux, donc caché. */}

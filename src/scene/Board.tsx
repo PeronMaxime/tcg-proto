@@ -24,12 +24,15 @@ import {
   deckPose,
   fusionZoneRect,
   handCardPose,
+  HUD_ANCHORS,
   marketCardPose,
+  marketTablePose,
   playerTokenPose,
   rowBounds,
   rowCardPose,
   sellZoneRect,
   type Pose,
+  type TableRect,
 } from './layout';
 import Table from './Table';
 import ZoneRow from './ZoneRow';
@@ -64,6 +67,11 @@ interface BoardProps {
   // Zones de dépôt HTML de GameScreen, placées à l'écran sur leur rectangle de table.
   fusionZoneRef: RefObject<HTMLDivElement | null>;
   sellZoneRef: RefObject<HTMLDivElement | null>;
+  // Élément qui reçoit les variables CSS des ancrages du HUD (`HUD_ANCHORS`), en px relatifs
+  // à son coin haut-gauche.
+  hudAnchorRef: RefObject<HTMLElement | null>;
+  // Clic sur mon marché rangé sur la table (masqué) : le rouvre.
+  onShowMarket: () => void;
   onBuy: (uid: string) => void;
   // Clic sur le cadenas d'une carte de MON marché : verrouille ou déverrouille (demande
   // utilisateur, action `toggleMarketLock`).
@@ -192,6 +200,54 @@ function TableAnchor({
   return null;
 }
 
+// Projette à chaque frame les rectangles de `HUD_ANCHORS` et les écrit en variables CSS
+// (`--<nom>-x`, `--<nom>-y` : centre ; `--<nom>-w`, `--<nom>-h` : taille, en px) sur
+// `targetRef`, relativement à son coin haut-gauche. Le HUD se positionne avec ces variables
+// et suit ainsi le plateau quand le cadrage change. Une variable n'est réécrite que si sa
+// valeur change, pour ne pas relancer le style à chaque frame.
+function HudAnchors({ targetRef }: { targetRef: RefObject<HTMLElement | null> }) {
+  const { camera, gl } = useThree();
+  const corner = useRef(new THREE.Vector3());
+  const written = useRef(new Map<string, string>());
+
+  useFrame(() => {
+    const target = targetRef.current;
+    if (!target) return;
+    const canvasRect = gl.domElement.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const project = (rect: TableRect) => {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const dx of [-rect.halfW, rect.halfW]) {
+        for (const dz of [-rect.halfD, rect.halfD]) {
+          corner.current.set(rect.x + dx, 0, rect.z + dz).project(camera);
+          const x = canvasRect.left - targetRect.left + ((corner.current.x + 1) / 2) * canvasRect.width;
+          const y = canvasRect.top - targetRect.top + ((1 - corner.current.y) / 2) * canvasRect.height;
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y);
+        }
+      }
+      return { x: (minX + maxX) / 2, y: (minY + maxY) / 2, w: maxX - minX, h: maxY - minY };
+    };
+    for (const [name, rect] of Object.entries(HUD_ANCHORS)) {
+      const projected = project(rect);
+      for (const key of ['x', 'y', 'w', 'h'] as const) {
+        const property = `--${name}-${key}`;
+        const value = `${Math.round(projected[key])}px`;
+        if (written.current.get(property) === value) continue;
+        written.current.set(property, value);
+        target.style.setProperty(property, value);
+      }
+    }
+  });
+
+  return null;
+}
+
 interface RenderEntry {
   uid: string;
   cardId: string;
@@ -220,7 +276,7 @@ function DeckPile({ pose, count }: { pose: Pose; count: number }) {
   const d = theme.card.height * pose.scale;
   return (
     <group position={[pose.position[0], pose.position[1], pose.position[2]]}>
-      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
+      <mesh position={[0, height / 2, 0]}>
         <boxGeometry args={[w * 0.98, height, d * 0.98]} />
         <meshStandardMaterial color={theme.colors.deckEdge} roughness={0.9} />
       </mesh>
@@ -247,6 +303,8 @@ function Board({
   marketZoneRectRef,
   fusionZoneRef,
   sellZoneRef,
+  hudAnchorRef,
+  onShowMarket,
   onBuy,
   onToggleMarketLock,
   onDragStart,
@@ -319,8 +377,26 @@ function Board({
   for (const [index, card] of activePlayer.market.entries()) {
     const mine = state.turn === seat;
     // Demande utilisateur : je peux masquer mon propre marché (bouton HUD) sans que ça
-    // affecte l'affichage (toujours face cachée) chez l'adversaire.
-    if (mine && !marketVisible) continue;
+    // affecte l'affichage (toujours face cachée) chez l'adversaire. Masqué, il se range
+    // couché à droite de ma pioche, face visible, comme celui de l'adversaire chez lui ; un
+    // clic sur l'une de ses cartes le rouvre.
+    if (mine && !marketVisible) {
+      const reopenable = interactive && state.phase === 'main';
+      entries.push({
+        uid: card.uid,
+        cardId: card.cardId,
+        stats: unplacedStats(card),
+        ko: false,
+        pose: marketTablePose(index, activePlayer.market.length, true),
+        hidden: false,
+        mine,
+        halo: 'none',
+        hoverable: false,
+        clickable: reopenable,
+        onSelect: reopenable ? onShowMarket : undefined,
+      });
+      continue;
+    }
     const buyable =
       interactive && mine && state.phase === 'main' && isActionLegal(state, seat, { type: 'buy', uid: card.uid });
     // Cadenas (demande utilisateur) : sur mes cartes seulement, et uniquement quand l'action
@@ -603,6 +679,7 @@ function Board({
       <MarketZoneTracker count={state.turn === seat ? me.market.length : 0} rectRef={marketZoneRectRef} />
       <TableAnchor elementRef={fusionZoneRef} rect={fusionZoneRect()} />
       <TableAnchor elementRef={sellZoneRef} rect={sellZoneRect()} />
+      <HudAnchors targetRef={hudAnchorRef} />
 
       {/* Lumière chaude de lampe de taverne, plus un contre-jour froid pour détacher les cartes. */}
       <ambientLight intensity={ambientIntensity} color={theme.colors.lampAmbient} />
@@ -611,13 +688,6 @@ function Board({
         position={[2.5, 9, 4]}
         intensity={keyLightIntensity}
         color={theme.colors.lampKey}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-9}
-        shadow-camera-right={9}
-        shadow-camera-top={7}
-        shadow-camera-bottom={-7}
-        shadow-bias={-0.0005}
       />
       <directionalLight position={[-4, 5, -4]} intensity={brightTable ? 0.45 : 0.25} color={theme.colors.rimLight} />
 

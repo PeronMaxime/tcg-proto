@@ -552,11 +552,11 @@ function Card({
         )}
 
         <group ref={flipRef}>
-          <mesh castShadow>
+          <mesh>
             <planeGeometry args={[width, height]} />
             <meshStandardMaterial ref={faceMaterialRef} map={faceTexture} transparent alphaTest={0.1} />
           </mesh>
-          <mesh rotation-y={Math.PI} castShadow>
+          <mesh rotation-y={Math.PI}>
             <planeGeometry args={[width, height]} />
             <meshStandardMaterial map={backTexture} transparent alphaTest={0.1} />
           </mesh>

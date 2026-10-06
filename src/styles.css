@@ -174,7 +174,6 @@ button {
   border: 1px solid var(--hud-gold-dim);
   border-radius: 4px;
   background: var(--hud-plate-top);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
   transform-origin: 50% 110%;
   transition: transform 520ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -366,7 +365,6 @@ button {
   background: var(--title-parchment);
   color: var(--title-ink);
   font-weight: 700;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
 }
 
 .title-segments button:focus-visible,
@@ -392,9 +390,6 @@ button {
   background: var(--hud-gold);
   color: var(--title-ink);
   font-size: 1.05rem;
-  box-shadow:
-    inset 0 -2px 0 rgba(0, 0, 0, 0.22),
-    0 8px 20px -10px rgba(201, 164, 65, 0.6);
 }
 
 .title-primary:hover:not(:disabled) {
@@ -580,8 +575,7 @@ button {
   background: linear-gradient(170deg, #f8eed6, var(--title-parchment));
   box-shadow:
     inset 0 0 0 3px var(--title-parchment),
-    inset 0 0 0 4px rgba(122, 90, 12, 0.35),
-    0 6px 14px rgba(0, 0, 0, 0.45);
+    inset 0 0 0 4px rgba(122, 90, 12, 0.35);
   color: var(--title-ink);
   font-family: var(--font-display);
   font-size: 1.9rem;
@@ -950,13 +944,8 @@ button {
 /* ---------- Écran de jeu plein écran (E6/E7) ---------- */
 
 .game-screen {
-  /* Hauteur du bout de ma main qui dépasse du bas de l'écran (`HAND_SCREEN_HEIGHT` ×
-     `HAND_VISIBLE` dans scene/layout.ts), plus une marge : ce qui s'affiche au-dessus de la
-     main (aide, consigne de choix) s'y cale. */
-  --hand-peek: calc(30dvh * 0.4 + 0.5rem);
-  /* Idem pour la main adverse qui dépasse du haut (`OPPONENT_HAND_SCREEN_HEIGHT` ×
-     `OPPONENT_HAND_VISIBLE`) : les bannières s'affichent juste en dessous. */
-  --opp-peek: calc(17dvh * 0.32 + 0.6rem);
+  /* Marge du HUD au bord de l'écran. */
+  --hud-edge: clamp(0.6rem, 2vw, 1.4rem);
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -985,9 +974,6 @@ button {
   border-radius: 18px;
   border: 2px dashed var(--hud-gold);
   background: radial-gradient(circle, rgba(240, 207, 107, 0.35), rgba(201, 164, 65, 0.12) 60%, rgba(20, 21, 27, 0.55));
-  box-shadow:
-    0 0 24px rgba(201, 164, 65, 0.45),
-    inset 0 0 18px rgba(240, 207, 107, 0.25);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -997,22 +983,18 @@ button {
   font-family: var(--font-display);
   pointer-events: none;
   animation: fusion-zone-pulse 1.2s ease-in-out infinite;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.15s ease;
 }
 
 .fusion-zone.is-hovered {
   border-style: solid;
   transform: translate(-50%, -50%) scale(1.12);
-  box-shadow:
-    0 0 44px rgba(240, 207, 107, 0.8),
-    inset 0 0 26px rgba(255, 241, 168, 0.5);
   animation: none;
 }
 
 .fusion-zone-icon {
   font-size: clamp(1.4rem, 4vh, 2.2rem);
   line-height: 1;
-  text-shadow: 0 0 12px rgba(240, 207, 107, 0.8);
 }
 
 .fusion-zone-label {
@@ -1030,9 +1012,6 @@ button {
   border-radius: 14px;
   border: 2px dashed var(--hud-gold);
   background: radial-gradient(circle, rgba(240, 207, 107, 0.3), rgba(201, 164, 65, 0.1) 60%, rgba(20, 21, 27, 0.6));
-  box-shadow:
-    0 0 20px rgba(201, 164, 65, 0.4),
-    inset 0 0 16px rgba(240, 207, 107, 0.2);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1042,15 +1021,12 @@ button {
   font-family: var(--font-display);
   pointer-events: none;
   animation: fusion-zone-pulse 1.2s ease-in-out infinite;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.15s ease;
 }
 
 .sell-zone.is-hovered {
   border-style: solid;
   transform: translate(-50%, -50%) scale(1.12);
-  box-shadow:
-    0 0 40px rgba(240, 207, 107, 0.8),
-    inset 0 0 24px rgba(255, 241, 168, 0.5);
   animation: none;
 }
 
@@ -1076,16 +1052,14 @@ button {
 @keyframes fusion-zone-pulse {
   0%,
   100% {
-    box-shadow:
-      0 0 18px rgba(201, 164, 65, 0.35),
-      inset 0 0 14px rgba(240, 207, 107, 0.2);
+    opacity: 1;
   }
   50% {
-    box-shadow:
-      0 0 32px rgba(201, 164, 65, 0.6),
-      inset 0 0 22px rgba(240, 207, 107, 0.35);
+    opacity: 0.7;
   }
 }
+
+/* -- HUD collé aux bords de l'écran (menu de partie, avis d'abandon, roue des éléments) -- */
 
 .hud-layer {
   position: absolute;
@@ -1099,92 +1073,87 @@ button {
   pointer-events: auto;
 }
 
-/* -- Plaques joueur (façon écrin gravé, coins renforcés d'or) -- */
+/* -- HUD accroché au plateau --
+   Même repère que le canvas. Chaque élément se place avec les variables d'ancrage
+   `--<nom>-x/-y` (centre) et `--<nom>-w/-h` (taille), en px, que `HudAnchors` (scene/Board.tsx)
+   écrit sur `.game-screen` à partir de `HUD_ANCHORS` (scene/layout.ts) : front, monsters,
+   my-deck, opp-deck, my-market, my-hero, opp-hero. */
 
-.hud-plate {
+.hud-board {
   position: absolute;
-  left: clamp(0.6rem, 2vw, 1.4rem);
+  inset: 0;
+  pointer-events: none;
+  font-family: var(--font-body);
+  /* Bord d'écran utilisable, zones sûres comprises. */
+  --edge-left: calc(env(safe-area-inset-left) + var(--hud-edge));
+  --edge-right: calc(env(safe-area-inset-right) + var(--hud-edge));
+}
+
+.hud-board > * {
+  position: absolute;
+}
+
+/* Cartouche d'un joueur, aligné sur le bord gauche de son héros : sous le mien, au-dessus de
+   celui de l'adversaire. */
+.hero-plate {
   display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  min-width: 190px;
-  padding: 0.55rem 0.8rem;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.65rem;
   background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
   border: 1px solid rgba(0, 0, 0, 0.6);
   border-radius: 4px;
-  box-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  transition: box-shadow 0.25s ease, border-color 0.25s ease;
-}
-
-.hud-plate::before,
-.hud-plate::after {
-  content: '';
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--hud-gold-dim);
+  white-space: nowrap;
+  pointer-events: auto;
   transition: border-color 0.25s ease;
 }
 
-.hud-plate::before {
-  top: -2px;
-  left: -2px;
-  border-right: none;
-  border-bottom: none;
-}
-
-.hud-plate::after {
-  bottom: -2px;
-  right: -2px;
-  border-left: none;
-  border-top: none;
-}
-
-.hud-plate.is-active {
-  box-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.5),
-    0 0 0 1px var(--hud-gold-dim),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-.hud-plate.is-active::before,
-.hud-plate.is-active::after {
+.hero-plate.is-active {
   border-color: var(--hud-gold);
 }
 
-.hud-plate--top {
-  top: clamp(0.6rem, 2vw, 1.4rem);
+.hero-plate--mine {
+  left: max(var(--edge-left), calc(var(--my-hero-x) - var(--my-hero-w) / 2));
+  top: calc(var(--my-hero-y) + var(--my-hero-h) / 2 + 0.3rem);
 }
 
-.hud-plate--bottom {
-  bottom: clamp(0.6rem, 2vw, 1.4rem);
+.hero-plate--opp {
+  left: max(var(--edge-left), calc(var(--opp-hero-x) - var(--opp-hero-w) / 2));
+  bottom: calc(100% - var(--opp-hero-y) + var(--opp-hero-h) / 2 + 0.3rem);
 }
 
-.hud-plate-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.hud-name {
+.hero-plate-name {
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: var(--font-display);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0.04rem;
   color: var(--hud-ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.hero-plate-economy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.hero-plate-gain {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.68rem;
+  color: var(--hud-ink-dim);
+  font-variant-numeric: tabular-nums;
 }
 
 .hud-turn-dot {
   width: 7px;
   height: 7px;
+  flex: none;
   border-radius: 50%;
   background: var(--hud-gold-bright);
-  box-shadow: 0 0 8px 2px var(--hud-gold-bright);
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
 
@@ -1196,25 +1165,6 @@ button {
   50% {
     opacity: 0.35;
   }
-}
-
-.hp-token {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  flex: none;
-  background: radial-gradient(circle at 35% 30%, #ef6a5f, var(--hud-hp) 70%);
-  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
-  box-shadow: 0 0 6px rgba(209, 72, 63, 0.6);
-}
-
-.hp-value {
-  font-family: var(--font-body);
-  font-weight: 800;
-  font-size: 0.75rem;
-  color: #1a0906;
 }
 
 .coin-badge {
@@ -1229,7 +1179,11 @@ button {
   border-radius: 50%;
   flex: none;
   background: radial-gradient(circle at 35% 30%, var(--hud-gold-bright), var(--hud-gold) 75%);
-  box-shadow: 0 0 5px 1px rgba(201, 164, 65, 0.6);
+}
+
+.coin-icon--small {
+  width: 10px;
+  height: 10px;
 }
 
 .coin-value {
@@ -1239,166 +1193,73 @@ button {
   color: var(--hud-gold-bright);
 }
 
-/* Tours joués et pièces du prochain tour, à droite du nom (visible aussi sur mobile). */
-.hud-turn {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-size: 0.68rem;
-  color: var(--hud-ink-dim);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.coin-icon--small {
-  width: 10px;
-  height: 10px;
-}
-
-.hud-deck {
-  margin-left: auto;
-  font-size: 0.7rem;
-  color: var(--hud-ink-dim);
-  white-space: nowrap;
-}
-
-/* -- Badge de room, cliquable pour copier le code -- */
-
-.room-badge {
-  position: absolute;
-  top: clamp(0.6rem, 2vw, 1.4rem);
-  right: clamp(0.6rem, 2vw, 1.4rem);
+/* Nombre de cartes de chaque pioche, en pastille sur son coin haut-droit. */
+.deck-count {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.6rem;
+  justify-content: center;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  padding: 0 0.35rem;
+  transform: translate(-50%, -50%);
   background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
   border: 1px solid var(--hud-gold-dim);
-  border-radius: 4px;
+  border-radius: 999px;
   color: var(--hud-ink);
-  font-family: var(--font-body);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-}
-
-.room-badge:hover {
-  border-color: var(--hud-gold);
-}
-
-.room-badge-label {
-  font-size: 0.6rem;
-  letter-spacing: 0.08rem;
-  text-transform: uppercase;
-  color: var(--hud-ink-dim);
-}
-
-.room-badge-code {
-  font-family: var(--font-display);
-  font-size: 0.85rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.12rem;
-  color: var(--hud-gold-bright);
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
 }
 
-.room-badge-hint {
-  font-size: 0.65rem;
-  color: var(--hud-ink-dim);
+.deck-count--mine {
+  left: calc(var(--my-deck-x) + var(--my-deck-w) / 2);
+  top: calc(var(--my-deck-y) - var(--my-deck-h) / 2);
 }
 
-.room-badge.is-copied .room-badge-hint {
-  color: var(--color-success);
+.deck-count--opp {
+  left: calc(var(--opp-deck-x) + var(--opp-deck-w) / 2);
+  top: calc(var(--opp-deck-y) - var(--opp-deck-h) / 2);
 }
 
-/* -- Bouton de sortie de partie -- */
-
-.leave-button {
-  position: absolute;
-  top: calc(clamp(0.6rem, 2vw, 1.4rem) + 2.9rem);
-  right: clamp(0.6rem, 2vw, 1.4rem);
+/* Relance du marché (demande utilisateur), posée sur ma pioche. */
+.market-reroll-button {
+  left: var(--my-deck-x);
+  top: var(--my-deck-y);
+  transform: translate(-50%, -50%);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.6rem;
-  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
-  border: 1px solid rgba(0, 0, 0, 0.6);
-  border-radius: 4px;
-  color: var(--hud-ink-dim);
-  font-family: var(--font-body);
-  font-size: 0.75rem;
-  font-weight: 600;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-  transition: color 0.2s ease, border-color 0.2s ease;
-}
-
-.leave-button svg {
-  width: 15px;
-  height: 15px;
-  flex: none;
-}
-
-.leave-button:hover {
-  color: var(--hud-hp);
-  border-color: rgba(209, 72, 63, 0.5);
-}
-
-/* -- Bouton des règles, sous le bouton « Quitter » dans la colonne haut-droite -- */
-
-.rules-button {
-  position: absolute;
-  top: calc(clamp(0.6rem, 2vw, 1.4rem) + 5.8rem);
-  right: clamp(0.6rem, 2vw, 1.4rem);
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.6rem;
+  gap: 0.15rem;
+  padding: 0.4rem 0.6rem;
   background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
   border: 1px solid var(--hud-gold-dim);
-  border-radius: 4px;
-  color: var(--hud-ink-dim);
-  font-family: var(--font-body);
-  font-size: 0.75rem;
-  font-weight: 600;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-  transition: color 0.2s ease, border-color 0.2s ease;
-}
-
-.rules-button svg {
-  width: 15px;
-  height: 15px;
-  flex: none;
-}
-
-.rules-button:hover {
-  color: var(--hud-gold-bright);
-  border-color: var(--hud-gold);
-}
-
-/* -- Bouton d'affichage/masquage du marché (même style « ruban » que la bannière de combat,
-   collé au bord droit, centré verticalement) -- */
-
-/* Relance du marché (demande utilisateur) : même plaque que le bouton d'affichage, posée
-   juste en dessous — les deux commandes du marché se lisent comme une seule pile. */
-.market-reroll-button {
-  position: absolute;
-  top: calc(50% + 3.5rem);
-  right: clamp(0.6rem, 2vw, 1.4rem);
-  transform: translateY(-50%);
-  padding: 0.45rem 1.6rem;
-  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
-  clip-path: polygon(4% 0%, 96% 0%, 100% 50%, 96% 100%, 4% 100%, 0% 50%);
-  border-top: 1px solid var(--hud-gold-dim);
-  border-bottom: 1px solid var(--hud-gold-dim);
-  font-family: var(--font-display);
-  font-size: 0.8rem;
-  letter-spacing: 0.05rem;
+  border-radius: 6px;
   color: var(--hud-ink);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  letter-spacing: 0.04rem;
+  pointer-events: auto;
   transition: border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
 }
 
+.market-reroll-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.market-reroll-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-family: var(--font-body);
+  font-weight: 700;
+  color: var(--hud-gold-bright);
+  font-variant-numeric: tabular-nums;
+}
+
 .market-reroll-button:hover:not(:disabled) {
-  border-top-color: var(--hud-gold);
-  border-bottom-color: var(--hud-gold);
+  border-color: var(--hud-gold);
   color: var(--hud-gold-bright);
 }
 
@@ -1407,101 +1268,115 @@ button {
   cursor: default;
 }
 
+/* Affichage du marché, sous l'emplacement où il se range (à droite de ma pioche), avec mes
+   pièces. */
 .market-toggle-button {
-  position: absolute;
-  top: 50%;
-  right: clamp(0.6rem, 2vw, 1.4rem);
-  transform: translateY(-50%);
-  padding: 0.45rem 1.6rem;
+  left: min(var(--my-market-x), calc(100% - var(--edge-right) - 6.5rem));
+  top: calc(var(--my-market-y) + var(--my-market-h) / 2 + 0.3rem);
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.35rem 0.9rem;
   background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
-  clip-path: polygon(4% 0%, 96% 0%, 100% 50%, 96% 100%, 4% 100%, 0% 50%);
-  border-top: 1px solid var(--hud-gold-dim);
-  border-bottom: 1px solid var(--hud-gold-dim);
-  font-family: var(--font-display);
-  font-size: 0.8rem;
-  letter-spacing: 0.05rem;
+  border: 1px solid var(--hud-gold-dim);
+  border-radius: 999px;
   color: var(--hud-ink);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  letter-spacing: 0.04rem;
+  white-space: nowrap;
+  pointer-events: auto;
   transition: border-color 0.2s ease, color 0.2s ease;
 }
 
 .market-toggle-button:hover {
-  border-top-color: var(--hud-gold);
-  border-bottom-color: var(--hud-gold);
+  border-color: var(--hud-gold);
   color: var(--hud-gold-bright);
 }
 
-.abandon-notice {
-  position: absolute;
-  top: clamp(0.6rem, 2vw, 1.4rem);
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: min(70vw, 420px);
-  padding: 0.5rem 1.2rem;
-  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
-  border: 1px solid var(--hud-hp);
-  border-radius: 4px;
-  color: var(--hud-ink);
-  font-size: 0.85rem;
-  text-align: center;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
-  pointer-events: none;
-}
+/* -- Bouton de combat sur la ligne de front, à droite du plateau ; la phase au-dessus -- */
 
-/* -- Indicateur de phase -- */
+.front-controls {
+  left: min(calc(var(--front-x) + var(--front-w) / 2 + 0.8rem), calc(100% - var(--edge-right) - 8rem));
+  top: var(--front-y);
+  transform: translateY(-50%);
+}
 
 .phase-indicator {
   position: absolute;
-  right: clamp(0.6rem, 2vw, 1.4rem);
-  bottom: calc(clamp(0.6rem, 2vw, 1.4rem) + 4.4rem);
-  max-width: 220px;
+  left: 0;
+  bottom: calc(100% + 0.35rem);
   margin: 0;
-  text-align: right;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(12, 10, 8, 0.78);
   color: var(--hud-ink);
-  text-shadow: 0 1px 3px #000, 0 0 10px rgba(0, 0, 0, 0.9);
   font-family: var(--font-display);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   letter-spacing: 0.04rem;
-  pointer-events: none;
+  white-space: nowrap;
 }
 
-/* -- Bannière "Combat !" -- */
+.end-turn {
+  min-width: 8rem;
+  min-height: 48px;
+  padding: 0 1.2rem;
+  background: linear-gradient(155deg, #2a2e38, #16181e);
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  border-radius: 999px;
+  color: var(--hud-ink-dim);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08rem;
+  text-transform: uppercase;
+  pointer-events: auto;
+  transition: border-color 0.2s ease, color 0.2s ease, transform 0.1s ease;
+}
+
+.end-turn.is-ready {
+  border: 2px solid var(--hud-gold);
+  color: var(--hud-gold-bright);
+}
+
+.end-turn.is-ready:hover {
+  transform: translateY(-1px);
+}
+
+.end-turn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* -- Bannières (combat, tour, choix de cible) : centrées sur la ligne de front -- */
+
+.combat-banner,
+.turn-banner {
+  left: var(--front-x);
+  top: var(--front-y);
+  transform: translate(-50%, -50%);
+  padding: 0.45rem 2rem;
+  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
+  clip-path: polygon(4% 0%, 96% 0%, 100% 50%, 96% 100%, 4% 100%, 0% 50%);
+  font-family: var(--font-display);
+  letter-spacing: 0.06rem;
+  white-space: nowrap;
+}
 
 .combat-banner {
-  position: absolute;
-  top: var(--opp-peek);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 0.45rem 2rem;
-  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
-  clip-path: polygon(4% 0%, 96% 0%, 100% 50%, 96% 100%, 4% 100%, 0% 50%);
   border-top: 1px solid var(--hud-hp);
   border-bottom: 1px solid var(--hud-hp);
-  font-family: var(--font-display);
   font-size: 0.9rem;
-  letter-spacing: 0.08rem;
   color: var(--hud-hp);
-  pointer-events: none;
 }
 
-/* -- Bannière de tour (ruban) -- */
-
 .turn-banner {
-  position: absolute;
-  top: var(--opp-peek);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 0.45rem 2rem;
-  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
-  clip-path: polygon(4% 0%, 96% 0%, 100% 50%, 96% 100%, 4% 100%, 0% 50%);
   border-top: 1px solid var(--hud-gold-dim);
   border-bottom: 1px solid var(--hud-gold-dim);
-  font-family: var(--font-display);
   font-size: 0.85rem;
-  letter-spacing: 0.05rem;
   color: var(--hud-ink);
   animation: turn-banner-fade 1.6s ease forwards;
-  pointer-events: none;
 }
 
 .turn-banner.mine {
@@ -1511,11 +1386,11 @@ button {
 @keyframes turn-banner-fade {
   0% {
     opacity: 0;
-    transform: translate(-50%, -8px);
+    transform: translate(-50%, calc(-50% - 8px));
   }
   15% {
     opacity: 1;
-    transform: translate(-50%, 0);
+    transform: translate(-50%, -50%);
   }
   80% {
     opacity: 1;
@@ -1525,71 +1400,46 @@ button {
   }
 }
 
-/* -- Fil d'effets (capacités déclenchées, §6.3) -- */
-
-/* -- Roue des affinités élémentaires, à gauche au milieu -- */
-
-.element-wheel {
-  position: absolute;
-  left: clamp(0.6rem, 2vw, 1.4rem);
-  /* Sous la plaque adverse, à gauche du héros adverse. */
-  top: calc(clamp(0.6rem, 2vw, 1.4rem) + 5.4rem);
+/* V2 : choix de cible en attente (effet « monstre choisi ») — consigne bien visible et bouton
+   pour renoncer à l'effet. */
+.choice-banner {
+  left: var(--front-x);
+  top: var(--front-y);
+  transform: translate(-50%, -50%);
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.15rem;
-  width: 140px;
-  padding: 0.45rem 0.4rem 0.5rem;
-  border-radius: 0.7rem;
-  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
-  border: 1px solid var(--hud-gold-dim);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
-  opacity: 0.92;
+  gap: 0.75rem;
+  width: max-content;
+  max-width: min(calc(var(--front-w) - 2rem), calc(100vw - 32px));
+  padding: 0.45rem 0.6rem 0.45rem 1rem;
+  border: 1px solid rgba(255, 92, 92, 0.6);
+  border-radius: 999px;
+  background: rgba(20, 10, 14, 0.9);
+  color: #ffd9d9;
+  font-size: 0.85rem;
   pointer-events: auto;
 }
 
-.element-wheel svg {
-  width: 100%;
-  height: auto;
-  display: block;
+.choice-banner .hud-button {
+  padding: 0.3rem 0.8rem;
+  font-size: 0.8rem;
 }
 
-.element-wheel-title {
-  font-family: var(--font-display);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08rem;
-  text-transform: uppercase;
-  color: var(--hud-gold-bright);
-}
+/* -- Fil d'effets (au-dessus de la ligne de front) et aide (en dessous), dans le vide à
+   gauche des rangées d'attaque -- */
 
-.element-wheel-label {
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 600;
-  fill: var(--hud-ink);
-}
-
-.element-wheel-caption {
-  font-size: 0.6rem;
-  line-height: 1.2;
-  text-align: center;
-  color: var(--hud-ink-dim);
+.effect-toasts,
+.hint {
+  left: var(--edge-left);
+  max-width: min(300px, max(9rem, calc(var(--monsters-x) - var(--monsters-w) / 2 - var(--hud-edge) * 2)));
 }
 
 .effect-toasts {
-  position: absolute;
-  /* Colonne gauche, dans le vide à gauche de la rangée d'attaque adverse, juste au-dessus de
-     la ligne de front : l'aide occupe le même vide de mon côté. Les toasts s'empilent vers
-     le haut. */
-  left: clamp(0.6rem, 2vw, 1.4rem);
-  bottom: calc(50% + 0.6rem);
+  bottom: calc(100% - var(--front-y) + 0.6rem);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   gap: 0.35rem;
-  max-width: min(24vw, 300px);
-  pointer-events: none;
 }
 
 .effect-toast {
@@ -1629,112 +1479,207 @@ button {
   }
 }
 
-/* -- Bouton Fin du tour -- */
-
-.end-turn {
-  position: absolute;
-  right: clamp(0.6rem, 2vw, 1.4rem);
-  bottom: clamp(0.6rem, 2vw, 1.4rem);
-  min-width: 128px;
-  min-height: 48px;
-  padding: 0 1.2rem;
-  background: linear-gradient(155deg, #2a2e38, #16181e);
-  border: 1px solid rgba(0, 0, 0, 0.6);
-  border-radius: 999px;
-  box-shadow:
-    0 10px 20px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  color: var(--hud-ink-dim);
-  font-family: var(--font-display);
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.08rem;
-  text-transform: uppercase;
-  transition: box-shadow 0.2s ease, color 0.2s ease, transform 0.1s ease;
-}
-
-.end-turn.is-ready {
-  color: var(--hud-gold-bright);
-  box-shadow:
-    0 10px 20px rgba(0, 0, 0, 0.5),
-    0 0 0 2px var(--hud-gold),
-    0 0 18px rgba(201, 164, 65, 0.45);
-}
-
-.end-turn.is-ready:hover {
-  transform: translateY(-1px);
-}
-
-.end-turn:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-/* Aide : colonne gauche, dans le vide à gauche de ma rangée d'attaque (juste sous la ligne
-   de front, voir scene/layout.ts). */
 .hint {
-  position: absolute;
-  left: clamp(0.6rem, 2vw, 1.4rem);
-  top: calc(50% + 0.8rem);
-  max-width: 200px;
+  top: calc(var(--front-y) + 0.6rem);
   margin: 0;
   padding: 0.45rem 0.65rem;
   border-left: 2px solid var(--hud-gold-dim);
   border-radius: 0 4px 4px 0;
-  background: rgba(12, 10, 8, 0.72);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  background: rgba(12, 10, 8, 0.78);
   color: var(--hud-ink);
   font-size: 0.72rem;
   line-height: 1.4;
-  pointer-events: none;
 }
 
 .hint:empty {
   display: none;
 }
 
-/* V2 : choix de cible en attente (effet « monstre choisi ») — consigne bien visible et bouton
-   pour renoncer à l'effet. */
-.choice-banner {
+/* -- Menu de partie (room, règles, quitter), en haut à droite -- */
+
+.hud-menu {
   position: absolute;
-  top: var(--opp-peek);
-  left: 50%;
-  transform: translateX(-50%);
+  top: var(--hud-edge);
+  right: var(--hud-edge);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+  z-index: 5;
+}
+
+.hud-menu-button {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  max-width: calc(100vw - 32px);
-  padding: 0.45rem 0.6rem 0.45rem 1rem;
-  border: 1px solid rgba(255, 92, 92, 0.6);
-  border-radius: 999px;
-  background: rgba(20, 10, 14, 0.85);
-  color: #ffd9d9;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
+  border: 1px solid var(--hud-gold-dim);
+  border-radius: 6px;
+  color: var(--hud-ink-dim);
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.hud-menu-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.hud-menu-button:hover,
+.hud-menu-button.is-open {
+  border-color: var(--hud-gold);
+  color: var(--hud-gold-bright);
+}
+
+.hud-menu-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 12rem;
+  padding: 0.35rem;
+  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
+  border: 1px solid var(--hud-gold-dim);
+  border-radius: 6px;
+}
+
+.hud-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--hud-ink);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.hud-menu-item svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.hud-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--hud-gold-bright);
+}
+
+.hud-menu-item--danger:hover {
+  color: var(--hud-hp);
+}
+
+.hud-menu-room-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.08rem;
+  text-transform: uppercase;
+  color: var(--hud-ink-dim);
+}
+
+.hud-menu-room-code {
+  font-family: var(--font-display);
   font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.12rem;
+  color: var(--hud-gold-bright);
+}
+
+.hud-menu-room-hint {
+  margin-left: auto;
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: var(--hud-ink-dim);
+}
+
+.hud-menu-room.is-copied .hud-menu-room-hint {
+  color: var(--color-success);
+}
+
+.abandon-notice {
+  position: absolute;
+  top: var(--hud-edge);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(70vw, 420px);
+  padding: 0.5rem 1.2rem;
+  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
+  border: 1px solid var(--hud-hp);
+  border-radius: 4px;
+  color: var(--hud-ink);
+  font-size: 0.85rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* -- Roue des affinités élémentaires (V1), sous le menu de partie -- */
+
+.element-wheel {
+  position: absolute;
+  right: var(--hud-edge);
+  top: calc(var(--hud-edge) + 3rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  width: 140px;
+  padding: 0.45rem 0.4rem 0.5rem;
+  border-radius: 0.7rem;
+  background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
+  border: 1px solid var(--hud-gold-dim);
+  opacity: 0.92;
   pointer-events: auto;
 }
 
-.choice-banner .hud-button {
-  padding: 0.3rem 0.8rem;
-  font-size: 0.8rem;
+.element-wheel svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.element-wheel-title {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08rem;
+  text-transform: uppercase;
+  color: var(--hud-gold-bright);
+}
+
+.element-wheel-label {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  fill: var(--hud-ink);
+}
+
+.element-wheel-caption {
+  font-size: 0.6rem;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--hud-ink-dim);
 }
 
 @media (max-width: 640px) {
-  .hud-plate {
-    min-width: 150px;
-    padding: 0.4rem 0.6rem;
+  .hero-plate {
+    gap: 0.35rem;
+    padding: 0.25rem 0.5rem;
   }
 
-  .hud-deck {
-    display: none;
+  .hero-plate-name {
+    max-width: 6rem;
   }
 
   .hint {
-    max-width: 150px;
     font-size: 0.66rem;
   }
 
   .end-turn {
-    min-width: 96px;
+    min-width: 6.5rem;
     min-height: 44px;
     font-size: 0.7rem;
   }
@@ -1743,14 +1688,6 @@ button {
     max-width: 80vw;
     font-size: 0.72rem;
     padding: 0.4rem 0.8rem;
-  }
-
-  .leave-button span {
-    display: none;
-  }
-
-  .rules-button span {
-    display: none;
   }
 
   .rules-panel {
@@ -1793,9 +1730,7 @@ button {
   width: min(60vw, 320px, calc((100dvh - 7rem) * 5 / 7));
   aspect-ratio: 5 / 7;
   border-radius: 14px;
-  box-shadow:
-    0 20px 50px rgba(0, 0, 0, 0.6),
-    0 0 0 2px var(--hud-gold-dim);
+  outline: 2px solid var(--hud-gold-dim);
 }
 
 .card-zoom-close {
@@ -1909,7 +1844,6 @@ button {
   background: linear-gradient(155deg, var(--hud-plate-top), var(--hud-plate-bottom));
   border: 1px solid var(--hud-gold-dim);
   border-radius: 10px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
   color: var(--hud-ink);
 }
 
@@ -1995,12 +1929,10 @@ button {
 
 .end-title.win {
   color: var(--hud-gold-bright);
-  text-shadow: 0 0 30px rgba(201, 164, 65, 0.5);
 }
 
 .end-title.lose {
   color: var(--hud-hp);
-  text-shadow: 0 0 30px rgba(209, 72, 63, 0.4);
 }
 
 .end-actions {
@@ -2087,7 +2019,6 @@ button {
   border-radius: 50%;
   border: 3px solid var(--hud-gold-bright);
   background: radial-gradient(circle at 34% 30%, #f6dd94, var(--hud-gold) 62%, #8a6c24);
-  box-shadow: 0 0 2.2rem rgba(240, 207, 107, 0.35);
   backface-visibility: hidden;
   font-family: var(--font-display);
   font-size: clamp(0.75rem, 1.7vw, 1rem);
@@ -2187,115 +2118,97 @@ button {
    de la caméra), le HUD doit donc se faire petit pour lui laisser la place. */
 @media (max-height: 500px) {
   .game-screen {
-    --hand-peek: calc(36dvh * 0.4 + 0.4rem);
     --hud-edge: 0.45rem;
     --coin-toss-height: 4.5rem;
   }
 
-  .hud-plate {
-    left: var(--hud-edge);
-    min-width: 0;
-    gap: 0.2rem;
-    padding: 0.3rem 0.5rem;
+  .hero-plate {
+    gap: 0.3rem;
+    padding: 0.15rem 0.45rem;
   }
 
-  .hud-plate--top {
-    top: var(--hud-edge);
+  /* Pas la hauteur sous et au-dessus des héros : le cartouche passe à leur gauche, dans la
+     marge du plateau (un écran bas est toujours large). */
+  .hero-plate--mine,
+  .hero-plate--opp {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+    left: auto;
+    bottom: auto;
+    transform: translateY(-50%);
   }
 
-  .hud-plate--bottom {
-    bottom: var(--hud-edge);
+  .hero-plate--mine {
+    right: calc(100% - var(--my-hero-x) + var(--my-hero-w) / 2 + 0.3rem);
+    top: var(--my-hero-y);
   }
 
-  .hud-plate-row {
-    gap: 0.4rem;
+  .hero-plate--opp {
+    right: calc(100% - var(--opp-hero-x) + var(--opp-hero-w) / 2 + 0.3rem);
+    top: var(--opp-hero-y);
   }
 
-  .hud-name {
-    max-width: 7.5rem;
-    font-size: 0.72rem;
+  .hero-plate .hud-turn-dot {
+    position: absolute;
+    top: 0.3rem;
+    left: 0.3rem;
+    width: 5px;
+    height: 5px;
   }
 
-  .hud-turn {
-    font-size: 0.6rem;
+  .hero-plate-name {
+    max-width: 6rem;
+    font-size: 0.66rem;
   }
 
-  .hp-token {
-    width: 22px;
-    height: 22px;
+  .hero-plate-gain {
+    font-size: 0.58rem;
   }
 
-  .hp-value {
+  .coin-value {
     font-size: 0.68rem;
   }
 
-  .hud-deck {
-    margin-left: 0.2rem;
+  .deck-count {
+    min-width: 1.3rem;
+    height: 1.3rem;
     font-size: 0.62rem;
   }
 
-  .hud-plate-row .coin-badge {
-    margin-right: auto;
+  .hud-menu-button {
+    width: 2rem;
+    height: 2rem;
   }
 
-  /* Colonne haut-droite : code de room, puis Quitter et Règles en icônes seules. */
-  .room-badge {
-    top: var(--hud-edge);
-    right: var(--hud-edge);
-    padding: 0.25rem 0.5rem;
-  }
-
-  .room-badge-hint {
-    display: none;
-  }
-
-  .leave-button,
-  .rules-button {
-    right: var(--hud-edge);
-    padding: 0.4rem 0.5rem;
-  }
-
-  .leave-button {
-    top: calc(var(--hud-edge) + 2.1rem);
-  }
-
-  .rules-button {
-    top: calc(var(--hud-edge) + 4.4rem);
-  }
-
-  .leave-button span,
-  .rules-button span {
-    display: none;
-  }
-
-  .market-toggle-button,
   .market-reroll-button {
-    right: var(--hud-edge);
-    padding: 0.4rem 1.1rem;
-    font-size: 0.68rem;
+    padding: 0.25rem 0.4rem;
+    font-size: 0.6rem;
+  }
+
+  .market-reroll-label {
+    display: none;
+  }
+
+  .market-reroll-button svg {
+    width: 15px;
+    height: 15px;
   }
 
   .market-toggle-button {
-    top: calc(50% - 1.2rem);
-  }
-
-  .market-reroll-button {
-    top: calc(50% + 1.2rem);
+    gap: 0.4rem;
+    padding: 0.25rem 0.65rem;
+    font-size: 0.64rem;
   }
 
   .end-turn {
-    right: var(--hud-edge);
-    bottom: var(--hud-edge);
-    min-width: 104px;
-    min-height: 40px;
-    font-size: 0.7rem;
+    min-width: 6rem;
+    min-height: 36px;
+    font-size: 0.66rem;
   }
 
   .phase-indicator {
-    right: var(--hud-edge);
-    bottom: calc(var(--hud-edge) + 2.9rem);
-    max-width: 30vw;
-    font-size: 0.6rem;
+    font-size: 0.58rem;
   }
 
   /* Pas la place pour l'aide à côté du plateau : l'indicateur de phase et la zone de fusion
@@ -2305,7 +2218,7 @@ button {
   }
 
   .element-wheel {
-    left: var(--hud-edge);
+    top: calc(var(--hud-edge) + 2.5rem);
     width: 76px;
     padding: 0.25rem;
     gap: 0;
@@ -2319,11 +2232,6 @@ button {
     display: none;
   }
 
-  .effect-toasts {
-    left: var(--hud-edge);
-    max-width: 30vw;
-  }
-
   .effect-toast {
     padding: 0.25rem 0.6rem;
     font-size: 0.64rem;
@@ -2331,9 +2239,12 @@ button {
 
   .combat-banner,
   .turn-banner {
-    top: 0.6rem;
-    padding: 0.35rem 1.6rem;
-    font-size: 0.75rem;
+    padding: 0.3rem 1.6rem;
+    font-size: 0.72rem;
+  }
+
+  .choice-banner {
+    font-size: 0.72rem;
   }
 
   .abandon-notice {

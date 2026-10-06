@@ -26,6 +26,14 @@ export interface Pose {
   scale: number;
 }
 
+// Rectangle posé sur la table : centre (x, z), demi-largeur et demi-profondeur.
+export interface TableRect {
+  x: number;
+  z: number;
+  halfW: number;
+  halfD: number;
+}
+
 export interface CameraFraming {
   position: [number, number, number];
   lookAt: [number, number, number];
@@ -252,6 +260,21 @@ function ndcXOf(view: View, position: [number, number, number]): number {
   return offset.x / (halfHeightAt(view, depth) * (view.width / view.height));
 }
 
+const viewCameras = new WeakMap<View, THREE.PerspectiveCamera>();
+
+// Abscisse écran (px) d'un point de la table vu avec le cadrage `view`.
+function screenXOfTable(view: View, x: number, z: number): number {
+  let camera = viewCameras.get(view);
+  if (!camera) {
+    camera = new THREE.PerspectiveCamera(view.framing.fov, view.width / view.height, 0.1, 200);
+    camera.updateProjectionMatrix();
+    placeCamera(camera, new THREE.Vector3(...view.framing.lookAt), cameraDistance(view));
+    viewCameras.set(view, camera);
+  }
+  const point = new THREE.Vector3(x, 0, z).project(camera);
+  return ((point.x + 1) / 2) * view.width;
+}
+
 // --- Rangées ---
 
 // Rangée compacte (demande utilisateur) : les `count` cartes d'une zone sont serrées et
@@ -371,29 +394,76 @@ const MARKET_MAX_SCREEN_HEIGHT = 0.42;
 const MARKET_MAX_SCREEN_HEIGHT_LOW = 0.5;
 const MARKET_GAP = 0.08; // écart entre deux cartes, en fraction de leur largeur
 
+// Emplacement du marché couché sur la table, à droite de la pioche, dans le vide de la ligne
+// d'attaque : le marché de l'adversaire y est toujours (face cachée), le mien s'y range quand
+// je le masque (face visible).
+const MARKET_TABLE_LEFT = DECK_X + CARD_W / 2 + 0.3;
+const MARKET_TABLE_RIGHT = BOARD_BOUNDS.maxX + 0.2;
+const MARKET_TABLE_MAX_SCALE = 0.45;
+
+export function marketTableRect(mine: boolean): TableRect {
+  return {
+    x: (MARKET_TABLE_LEFT + MARKET_TABLE_RIGHT) / 2,
+    z: (mine ? 1 : -1) * ROW_Z_ATTACK,
+    halfW: (MARKET_TABLE_RIGHT - MARKET_TABLE_LEFT) / 2,
+    halfD: (theme.card.height * MARKET_TABLE_MAX_SCALE) / 2,
+  };
+}
+
+export function marketTablePose(index: number, total: number, mine: boolean): Pose {
+  const offset = index - (total - 1) / 2;
+  const width = MARKET_TABLE_RIGHT - MARKET_TABLE_LEFT;
+  const scale = Math.min(MARKET_TABLE_MAX_SCALE, width / (Math.max(total, 1) * theme.card.width * 1.1));
+  const step = theme.card.width * scale * 1.1;
+  return {
+    position: [MARKET_TABLE_LEFT + width / 2 + offset * step, 0.06, (mine ? 1 : -1) * ROW_Z_ATTACK],
+    rotation: [-Math.PI / 2, 0, 0],
+    scale,
+  };
+}
+
 // Le marché flotte au centre, face à la caméra, du côté du joueur actif. `mine` = est-ce le
 // marché de "moi" (vu depuis mon écran) ? Les cartes rétrécissent si la rangée ne tient plus
 // entre les colonnes du HUD (écran étroit, marché agrandi par un Colporteur).
 export function marketCardPose(index: number, total: number, mine: boolean, view: View): Pose {
   const offset = index - (total - 1) / 2;
   if (mine) {
-    // Entre les colonnes du HUD (boutons du marché à droite).
-    const availableWidth = view.width - 2 * THREE.MathUtils.clamp(view.width * 0.14, 110, 240);
-    const fit = availableWidth / (Math.max(total, 1) * view.height * (5 / 7) * (1 + MARKET_GAP));
+    // Entre le bord gauche de l'écran et ma pioche : la relance du marché, posée sur la pioche,
+    // reste visible et cliquable marché ouvert.
+    const left = THREE.MathUtils.clamp(view.width * 0.02, 12, 32);
+    const right = screenXOfTable(view, DECK_X - CARD_W / 2, ROW_Z_ATTACK) - 16;
+    const fit = (right - left) / (Math.max(total, 1) * view.height * (5 / 7) * (1 + MARKET_GAP));
     const max = isLowScreen(view.height) ? MARKET_MAX_SCREEN_HEIGHT_LOW : MARKET_MAX_SCREEN_HEIGHT;
     const screenHeight = Math.min(max, fit);
     const stepNdc = (screenHeight * view.height * (5 / 7) * (1 + MARKET_GAP) * 2) / view.width;
-    return screenPose(view, offset * stepNdc, 0.04, MARKET_DISTANCE, screenHeight);
+    const centerNdc = ((left + right) / view.width) - 1;
+    return screenPose(view, centerNdc + offset * stepNdc, 0.04, MARKET_DISTANCE, screenHeight);
   }
-  // Marché de l'adversaire, face cachée : couché sur la table à droite de sa pioche, dans le
-  // vide de sa ligne d'attaque, pour ne masquer aucune de ses cartes.
-  const left = DECK_X + CARD_W / 2 + 0.3;
-  const width = BOARD_BOUNDS.maxX + 0.2 - left;
-  const scale = Math.min(0.45, width / (Math.max(total, 1) * theme.card.width * 1.1));
-  const step = theme.card.width * scale * 1.1;
-  return {
-    position: [left + width / 2 + offset * step, 0.06, -ROW_Z_ATTACK],
-    rotation: [-Math.PI / 2, 0, 0],
-    scale,
-  };
+  // Marché de l'adversaire, face cachée, couché sur la table pour ne masquer aucune de ses cartes.
+  return marketTablePose(index, total, false);
 }
+
+// --- Ancrages du HUD ---
+
+// Rectangles de table que le HUD suit à l'écran (projetés à chaque frame par `HudAnchors` dans
+// Board, exposés en variables CSS `--<nom>-x/-y/-w/-h`) : le HUD se cale sur le plateau, quel
+// que soit le cadrage.
+//   front     : ligne de front, sur toute la largeur du plateau (bannières, bouton de combat)
+//   monsters  : rangées de monstres, sur la ligne de front (le vide à leur gauche reçoit l'aide)
+//   *-deck    : pioches (compteur, relance du marché)
+//   *-market  : marché couché à droite de la pioche (bouton d'affichage du marché)
+//   *-hero    : héros (cartouche du joueur)
+export const HUD_ANCHORS: Record<string, TableRect> = {
+  front: {
+    x: (BOARD_BOUNDS.minX + BOARD_BOUNDS.maxX) / 2,
+    z: 0,
+    halfW: (BOARD_BOUNDS.maxX - BOARD_BOUNDS.minX) / 2,
+    halfD: 0,
+  },
+  monsters: { x: MONSTER_X, z: 0, halfW: MONSTER_HALF_W, halfD: 0 },
+  'my-deck': { x: DECK_X, z: ROW_Z_ATTACK, halfW: CARD_W / 2, halfD: CARD_H / 2 },
+  'opp-deck': { x: DECK_X, z: -ROW_Z_ATTACK, halfW: CARD_W / 2, halfD: CARD_H / 2 },
+  'my-market': marketTableRect(true),
+  'my-hero': { x: HERO_X, z: ROW_Z_DEFENSE, halfW: HERO_RADIUS, halfD: HERO_RADIUS },
+  'opp-hero': { x: HERO_X, z: -ROW_Z_DEFENSE, halfW: HERO_RADIUS, halfD: HERO_RADIUS },
+};
