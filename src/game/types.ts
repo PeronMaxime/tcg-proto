@@ -268,7 +268,7 @@ export type Action =
   | { type: 'rerollMarket' }
   // Verrouille/déverrouille une carte du marché (demande utilisateur) : verrouiller coûte
   // `MARKET_LOCK_COST` pièce et met la carte de côté pour le marché du prochain tour,
-  // déverrouiller est gratuit mais ne rembourse rien.
+  // déverrouiller rend la pièce.
   | { type: 'toggleMarketLock'; uid: string }
   | { type: 'fuse'; uid: string } // uid : la carte en main qui devient dorée
   | { type: 'sell'; uid: string }
@@ -353,7 +353,8 @@ export type GameEvent =
   // `uids` : le marché tel qu'il ressort de la relance (cartes verrouillées comprises, dans
   // l'ordre) ; `cost` : les pièces dépensées.
   | { id: number; type: 'marketReroll'; seat: Seat; uids: string[]; cost: number }
-  // `locked` : l'état de la carte APRÈS l'action ; `cost` : 0 au déverrouillage.
+  // `locked` : l'état de la carte APRÈS l'action ; `cost` : pièces dépensées, négatif au
+  // déverrouillage (la pièce est rendue).
   | { id: number; type: 'marketLock'; seat: Seat; uid: string; locked: boolean; cost: number }
   | { id: number; type: 'place'; seat: Seat; uid: string; zone: Zone; slot: number; effects: EffectLog[] }
   // `from`/`to` : positions dans la rangée compacte, avant et après le déplacement.

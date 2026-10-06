@@ -350,13 +350,13 @@ le détail des décisions. Résumé :
     joueur paie — c'est le prix, pas un quota, qui limite les relances. Refusée quand elle ne
     changerait rien (marché plein et entièrement verrouillé, deck vide) : on ne fait pas payer
     une relance sans effet.
-  - **Verrouiller** (cadenas au coin haut gauche d'une carte de son marché, action
+  - **Verrouiller** (cadenas en bas au centre d'une carte de son marché, action
     `toggleMarketLock`, `MARKET_LOCK_COST` = 1 pièce) : la carte échappe aux relances **et** au
     retour au deck en fin de tour (`PlayerState.lockedUids`), donc elle **ouvre le marché du
     prochain tour**, complété ensuite depuis le deck jusqu'à `MARKET_SIZE`. `beginTurn` vide
-    `lockedUids` : garder la même carte un tour de plus se repaie. Déverrouiller est gratuit
-    mais **ne rembourse pas** (sinon on verrouillerait « pour voir ») ; acheter une carte
-    verrouillée libère simplement son verrou.
+    `lockedUids` : garder la même carte un tour de plus se repaie. Déverrouiller **rend la
+    pièce** : un verrou encore posé a forcément été payé dans le tour en cours ; acheter une
+    carte verrouillée libère simplement son verrou.
 - **Sur téléphone** : la partie se joue en **paysage** (en portrait, l'écran de jeu invite à
   tourner le téléphone ; les menus restent utilisables). Sur un écran bas (500 px de haut au plus), le HUD se compacte
   (`@media (max-height: 500px)` dans `styles.css`) et la caméra passe en cadrage compact

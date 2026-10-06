@@ -62,8 +62,7 @@ export const MARKET_SIZE = 3;
 export const MARKET_REROLL_COST = 1;
 // Verrouillage d'une carte du marché (demande utilisateur) : contre 1 pièce, elle échappe à
 // la relance ET au retour au deck en fin de tour, donc elle ouvre le marché du prochain
-// tour. Déverrouiller est gratuit mais ne rembourse pas (sinon on verrouillerait « pour
-// voir »).
+// tour. Déverrouiller dans le même tour rend la pièce.
 export const MARKET_LOCK_COST = 1;
 // Taille des zones : 3 cartes au plus dans chacune (demande utilisateur). En V2, un effet peut
 // faire dépasser une zone : pour connaître la capacité d'une zone en jeu, passer par
@@ -526,15 +525,18 @@ function applyRerollMarket(next: GameState, seat: Seat): void {
   };
 }
 
-// Verrouille (contre `MARKET_LOCK_COST`) ou déverrouille (gratuitement, sans remboursement)
-// une carte du marché : verrouillée, elle survit aux relances et à la fin du tour pour
-// ouvrir le marché du prochain tour (`applyEndTurn` puis `applyBeginTurn`).
+// Verrouille (contre `MARKET_LOCK_COST`) ou déverrouille une carte du marché : verrouillée,
+// elle survit aux relances et à la fin du tour pour ouvrir le marché du prochain tour
+// (`applyEndTurn` puis `applyBeginTurn`). Déverrouiller rend la pièce (demande utilisateur) :
+// un verrou encore posé pendant le tour a forcément été payé ce tour-ci, `applyBeginTurn`
+// vidant `lockedUids`.
 function applyToggleMarketLock(next: GameState, seat: Seat, uid: string): void {
   const player = next.players[seat];
   const locked = player.lockedUids ?? [];
   const wasLocked = locked.includes(uid);
   if (wasLocked) {
     player.lockedUids = locked.filter((u) => u !== uid);
+    player.coins += MARKET_LOCK_COST;
   } else {
     player.lockedUids = [...locked, uid];
     player.coins -= MARKET_LOCK_COST;
@@ -545,7 +547,7 @@ function applyToggleMarketLock(next: GameState, seat: Seat, uid: string): void {
     seat,
     uid,
     locked: !wasLocked,
-    cost: wasLocked ? 0 : MARKET_LOCK_COST,
+    cost: wasLocked ? -MARKET_LOCK_COST : MARKET_LOCK_COST,
   };
 }
 

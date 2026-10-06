@@ -495,7 +495,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
   }
 
   // Cadenas d'une carte du marché : la garder pour le prochain marché contre 1 pièce, ou la
-  // libérer (sans remboursement).
+  // libérer (la pièce est rendue).
   async function toggleMarketLock(uid: string) {
     await sendAction(room, seat, { type: 'toggleMarketLock', uid });
   }
@@ -931,7 +931,7 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
                 )}
                 {zoomed.zone === 'market' && (canLockZoomed || zoomedLocked) && (
                   <button className="hud-button" disabled={!canLockZoomed} onClick={() => toggleMarketLock(zoomed.uid)}>
-                    {zoomedLocked ? 'Déverrouiller' : `Verrouiller (${MARKET_LOCK_COST} pièce)`}
+                    {zoomedLocked ? `Déverrouiller (+${MARKET_LOCK_COST} pièce)` : `Verrouiller (${MARKET_LOCK_COST} pièce)`}
                   </button>
                 )}
                 {zoomedSellable && (

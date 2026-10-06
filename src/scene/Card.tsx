@@ -70,7 +70,7 @@ const BUBBLE_WIDTH_RATIO = 1.12;
 const BUBBLE_HEIGHT_RATIO = 1.1;
 // Côté du cadenas du marché : assez grand pour être visé au clic sur une carte agrandie du
 // marché (échelle ~1.6), assez petit pour ne pas masquer l'illustration.
-const LOCK_SIZE = 0.42;
+const LOCK_SIZE = 0.3;
 // Gestes au doigt : durée d'un appui long (zoom) et distance à partir de laquelle un appui
 // devient un glisser. Plus tolérante qu'à la souris, un doigt bouge toujours un peu.
 const LONG_PRESS_MS = 450;

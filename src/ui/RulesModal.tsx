@@ -53,7 +53,7 @@ function sections(v2 = false): RulesSection[] {
       "1. Tu gagnes des pièces : 1 à ton 1er tour, 2 au 2e, 3 au 3e… elles se cumulent.",
       "2. Le marché te propose 3 cartes de ton deck : achète celles que tu peux payer, elles partent dans ta main.",
       "Le marché ne te plaît pas ? « Relancer » te propose 3 nouvelles cartes pour 1 pièce (même si tu en as déjà acheté), autant de fois que tu peux payer.",
-      "Le cadenas en haut à gauche d'une carte du marché la garde pour ton prochain marché, pour 1 pièce : elle échappe aux relances et ne retourne pas dans le deck en fin de tour (le déverrouiller est gratuit, mais ne rembourse pas).",
+      "Le cadenas en bas d'une carte du marché la garde pour ton prochain marché, pour 1 pièce : elle échappe aux relances et ne retourne pas dans le deck en fin de tour (la déverrouiller dans le même tour te rend la pièce).",
       "3. Pose autant de cartes que tu veux depuis ta main : poser ne coûte rien.",
       "4. Clique sur « Combat ! » : les monstres s'affrontent tout seuls, puis c'est au tour de l'adversaire.",
     ],

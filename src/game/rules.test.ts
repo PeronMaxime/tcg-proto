@@ -435,7 +435,7 @@ describe('applyAction - rerollMarket', () => {
 });
 
 describe('applyAction - toggleMarketLock', () => {
-  it('verrouiller coûte 1 pièce, déverrouiller est gratuit et ne rembourse pas', () => {
+  it('verrouiller coûte 1 pièce, déverrouiller la rend', () => {
     let state = baseState({ phase: 'main' });
     state.players.p1.coins = 2;
     state.players.p1.market = [makeCard('rampart', 'm1')];
@@ -453,9 +453,9 @@ describe('applyAction - toggleMarketLock', () => {
     });
 
     state = applyAction(state, 'p1', { type: 'toggleMarketLock', uid: 'm1' })!;
-    expect(state.players.p1.coins).toBe(2 - MARKET_LOCK_COST); // pas de remboursement
+    expect(state.players.p1.coins).toBe(2); // la pièce du verrou est rendue
     expect(state.players.p1.lockedUids).toEqual([]);
-    expect(state.lastEvent).toMatchObject({ type: 'marketLock', locked: false, cost: 0 });
+    expect(state.lastEvent).toMatchObject({ type: 'marketLock', locked: false, cost: -MARKET_LOCK_COST });
   });
 
   it('refuse sans pièce, sur une carte hors marché et hors phase main', () => {
@@ -473,7 +473,7 @@ describe('applyAction - toggleMarketLock', () => {
     expect(applyAction(notMain, 'p1', { type: 'toggleMarketLock', uid: 'm1' })).toBeNull();
   });
 
-  it('déverrouiller reste possible sans pièce', () => {
+  it('déverrouiller reste possible sans pièce, et rend la pièce', () => {
     const state = baseState({ phase: 'main' });
     state.players.p1.coins = 0;
     state.players.p1.market = [makeCard('rampart', 'm1')];
@@ -482,7 +482,7 @@ describe('applyAction - toggleMarketLock', () => {
     const next = applyAction(state, 'p1', { type: 'toggleMarketLock', uid: 'm1' })!;
 
     expect(next.players.p1.lockedUids).toEqual([]);
-    expect(next.players.p1.coins).toBe(0);
+    expect(next.players.p1.coins).toBe(MARKET_LOCK_COST);
   });
 
   it('acheter une carte verrouillée libère son verrou sans rembourser', () => {
