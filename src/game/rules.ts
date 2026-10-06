@@ -65,15 +65,10 @@ export const MARKET_REROLL_COST = 1;
 // tour. Déverrouiller est gratuit mais ne rembourse pas (sinon on verrouillerait « pour
 // voir »).
 export const MARKET_LOCK_COST = 1;
-// Tailles par défaut des zones (règles « 5 cartes », la version d'origine). Les zones de
-// monstres d'une partie peuvent être plus petites (voir `MONSTER_ZONE_SIZES`) : pour
-// connaître la capacité réelle d'une zone en jeu, passer par `zoneCapacity`.
-export const ZONE_SIZES: Record<Zone, number> = { attack: 5, defense: 5, enchant: 3 };
-// Variantes de règles choisies dans le menu à la création d'une room (demande utilisateur) :
-// nombre maximal de cartes par zone de monstres (attaque ET défense). Tout le reste des règles
-// est identique. La première valeur est la variante par défaut.
-export const MONSTER_ZONE_SIZES = [5, 3] as const;
-export const DEFAULT_MONSTER_ZONE_SIZE = MONSTER_ZONE_SIZES[0];
+// Taille des zones : 3 cartes au plus dans chacune (demande utilisateur). En V2, un effet peut
+// faire dépasser une zone : pour connaître la capacité d'une zone en jeu, passer par
+// `zoneCapacity`.
+export const ZONE_SIZES: Record<Zone, number> = { attack: 3, defense: 3, enchant: 3 };
 // Fusion dorée (ajoutée à la demande de l'utilisateur) : une carte en main fusionne avec
 // FUSION_COUNT - 1 autres exemplaires normaux de la même carte, posés sur le board de son
 // propriétaire ou dans sa main (action `fuse`) ; elle devient dorée. Monstre doré : stats de
@@ -145,8 +140,8 @@ export function zoneCards(player: PlayerState, zone: Zone): CardInstance[] {
 }
 
 // Capacité d'une zone dans CETTE partie : la longueur fixe de son tableau, posée à la création
-// de la partie selon la variante choisie (`MONSTER_ZONE_SIZES`). Lue sur l'état plutôt que
-// sur une constante pour que les deux variantes partagent le même moteur de règles.
+// de la partie (`ZONE_SIZES`). Lue sur l'état plutôt que sur la constante pour rester juste
+// sur les états écrits avec d'autres tailles.
 // V2 : une zone peut dépasser sa capacité par effet, la capacité nominale est alors dans
 // `zoneSizes` (absent en V1, où la longueur du tableau ne bouge jamais).
 export function zoneCapacity(player: PlayerState, zone: Zone): number {
@@ -160,21 +155,18 @@ export function writeZone(player: PlayerState, zone: Zone, cards: CardInstance[]
   player.zones[zone] = [...cards, ...new Array<Slot>(size - cards.length).fill(null)];
 }
 
-function emptyZones(monsterZoneSize: number): Record<Zone, Slot[]> {
+function emptyZones(): Record<Zone, Slot[]> {
   return {
-    attack: new Array(monsterZoneSize).fill(null),
-    defense: new Array(monsterZoneSize).fill(null),
+    attack: new Array(ZONE_SIZES.attack).fill(null),
+    defense: new Array(ZONE_SIZES.defense).fill(null),
     enchant: new Array(ZONE_SIZES.enchant).fill(null),
   };
 }
 
-// `monsterZoneSize` : nombre maximal de cartes par zone de monstres (variante choisie dans le
-// menu, voir `MONSTER_ZONE_SIZES`).
 // `decks` : composition du deck de chaque siège (V2, deck choisi par le joueur, `decks.ts`).
 // Absent = les deux joueurs jouent le deck de départ du catalogue actif (V1).
 export function createInitialState(
   random: () => number = Math.random,
-  monsterZoneSize: number = DEFAULT_MONSTER_ZONE_SIZE,
   decks?: Record<Seat, Record<string, number>>,
 ): GameState {
   let uidCounter = 0;
@@ -188,12 +180,12 @@ export function createInitialState(
       deck: shuffle(buildStarterDeck(makeUid, decks?.[seat]), random),
       market: [],
       hand: [],
-      zones: emptyZones(monsterZoneSize),
+      zones: emptyZones(),
       extraMarketCards: 0,
       lockedUids: [],
       movesUsed: { attack: false, defense: false },
       ...(isV2Active()
-        ? { zoneSizes: { attack: monsterZoneSize, defense: monsterZoneSize, enchant: ZONE_SIZES.enchant } }
+        ? { zoneSizes: { ...ZONE_SIZES } }
         : {}),
     };
   }

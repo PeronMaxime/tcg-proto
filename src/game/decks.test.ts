@@ -83,7 +83,7 @@ describe('decks jouables', () => {
 
 describe('createInitialState avec un deck par siège', () => {
   it('construit le deck de chaque joueur depuis sa composition', () => {
-    const state = createInitialState(Math.random, undefined, { p1: FULL_GRUNT.counts, p2: MIXED.counts });
+    const state = createInitialState(Math.random, { p1: FULL_GRUNT.counts, p2: MIXED.counts });
     const ids = (seat: 'p1' | 'p2') => new Set(state.players[seat].deck.map((c) => c.cardId));
     expect(state.players.p1.deck).toHaveLength(DECK_SIZE);
     expect(state.players.p2.deck).toHaveLength(DECK_SIZE);

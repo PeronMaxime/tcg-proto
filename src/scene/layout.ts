@@ -5,8 +5,8 @@
 // centre, les enchantements passent à droite des rangées de défense, pour que quatre rangées
 // (et non six) se partagent la hauteur de l'écran et que les cartes posées se lisent sans zoom.
 //
-//   ligne de défense :  [Héros] [D D D D D] [E E E]
-//   ligne d'attaque  :          [A A A A A] [Deck]
+//   ligne de défense :  [Héros] [D D D] [E E E]
+//   ligne d'attaque  :          [A A A] [Deck]
 //   ──────────────── ligne de front ────────────────
 //   (miroir pour l'adversaire)
 //
@@ -16,6 +16,7 @@
 // le marché) est posé dans le repère de la caméra par `screenPose`.
 
 import * as THREE from 'three';
+import { ZONE_SIZES } from '../game/rules';
 import type { Zone } from '../game/types';
 import { theme } from './theme';
 
@@ -50,7 +51,7 @@ const CARD_H = theme.card.height * BOARD_CARD_SCALE;
 const SLOT_SPACING = 1.08;
 // V2 : une rangée peut dépasser sa capacité par effet. Au-delà de sa capacité usuelle, elle se
 // resserre pour tenir dans la largeur d'une rangée pleine (sans déborder sur ses voisines).
-const ROW_MAX_CARDS: Record<Zone, number> = { attack: 5, defense: 5, enchant: 3 };
+const ROW_MAX_CARDS = ZONE_SIZES;
 
 function rowSpacing(zone: Zone, count: number): number {
   const max = ROW_MAX_CARDS[zone];

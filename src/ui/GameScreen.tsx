@@ -9,7 +9,6 @@ import {
   MARKET_REROLL_COST,
   nextTurnCoinGain,
   sellValue,
-  zoneCapacity,
   zoneCards,
 } from '../game/rules';
 import { choiceTargets, locateMonster } from '../game/rulesV2';
@@ -899,7 +898,6 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
 
       {rulesOpen && (
         <RulesModal
-          monsterZoneSize={zoneCapacity(state.players[seat], 'attack')}
           v2={isV2Active()}
           onClose={() => setRulesOpen(false)}
         />

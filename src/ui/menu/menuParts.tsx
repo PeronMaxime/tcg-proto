@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { DEFAULT_MONSTER_ZONE_SIZE, MONSTER_ZONE_SIZES } from '../../game/rules';
 import type { GameVersion } from '../../game/versions';
 import { getPlayerName, setPlayerName } from '../../net/identity';
 import {
@@ -23,7 +22,7 @@ export interface RoomEntry {
   busy: boolean;
   error: string | null;
   leftRoomCode: string | null;
-  create: (zoneSize: number, version: GameVersion) => Promise<void>;
+  create: (version: GameVersion) => Promise<void>;
   join: (code: string) => Promise<void>;
   resume: () => Promise<void>;
 }
@@ -67,7 +66,7 @@ export function useRoomEntry(onRoomReady: (code: string) => void): RoomEntry {
     busy,
     error,
     leftRoomCode,
-    create: (zoneSize, version) => run(() => createRoom(zoneSize, version)),
+    create: (version) => run(() => createRoom(version)),
     join: (code) => run(async () => (await joinRoom(code)).code),
     resume: async () => {
       if (!leftRoomCode) return;
@@ -82,41 +81,6 @@ export function useRoomEntry(onRoomReady: (code: string) => void): RoomEntry {
       );
     },
   };
-}
-
-// ---------------------------------------------------------------------------------------
-// Variante « cartes max par zone de monstres », retenue d'une visite à l'autre (simple confort :
-// en cas d'échec de lecture, on retombe sur la variante par défaut).
-// ---------------------------------------------------------------------------------------
-
-const ZONE_SIZE_KEY = 'tcg-monster-zone-size';
-
-function loadZoneSize(): number {
-  try {
-    const stored = Number(localStorage.getItem(ZONE_SIZE_KEY));
-    return (MONSTER_ZONE_SIZES as readonly number[]).includes(stored) ? stored : DEFAULT_MONSTER_ZONE_SIZE;
-  } catch {
-    return DEFAULT_MONSTER_ZONE_SIZE;
-  }
-}
-
-function saveZoneSize(size: number): void {
-  try {
-    localStorage.setItem(ZONE_SIZE_KEY, String(size));
-  } catch {
-    // stockage indisponible : le choix vaut pour cette visite seulement
-  }
-}
-
-export function useZoneSize(): [number, (size: number) => void] {
-  const [zoneSize, setZoneSize] = useState(loadZoneSize);
-  return [
-    zoneSize,
-    (size) => {
-      setZoneSize(size);
-      saveZoneSize(size);
-    },
-  ];
 }
 
 // ---------------------------------------------------------------------------------------
@@ -171,38 +135,6 @@ export function PseudoField() {
         autoComplete="nickname"
       />
     </label>
-  );
-}
-
-// Variante de règles (demande utilisateur) : seul le nombre de cartes par zone de monstres change.
-export function ZoneSizePicker({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: number;
-  onChange: (size: number) => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="title-picker">
-      <span className="title-label" id="title-zone-label">
-        Cartes max par zone de monstres
-      </span>
-      <div className="title-segments" role="radiogroup" aria-labelledby="title-zone-label">
-        {MONSTER_ZONE_SIZES.map((size) => (
-          <button
-            key={size}
-            role="radio"
-            aria-checked={value === size}
-            onClick={() => onChange(size)}
-            disabled={disabled}
-          >
-            {size}
-          </button>
-        ))}
-      </div>
-    </div>
   );
 }
 

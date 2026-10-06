@@ -68,7 +68,7 @@ async function setup(catalog: Catalog = V2) {
   await catalogStore.save('v2', catalog);
   const rooms = await import('./rooms');
   playAs('p1');
-  const code = await rooms.createRoom(undefined, 'v2');
+  const code = await rooms.createRoom('v2');
   playAs('p2');
   await rooms.joinRoom(code);
   const { roomStore } = await import('./roomStore');
@@ -140,6 +140,6 @@ describe('choix des decks (V2)', () => {
     await catalogStore.save('v2', { ...V2, decks: [V2.decks![0]] });
     const rooms = await import('./rooms');
     playAs('p1');
-    await expect(rooms.createRoom(undefined, 'v2')).rejects.toThrow(/Aucun deck complet/);
+    await expect(rooms.createRoom('v2')).rejects.toThrow(/Aucun deck complet/);
   });
 });

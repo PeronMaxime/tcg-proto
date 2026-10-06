@@ -1,11 +1,10 @@
 import { DECK_CHOICE_MS } from '../../game/decks';
-import { JoinForm, MenuFooter, PseudoField, ResumeButton, TitleMast, useRoomEntry, useZoneSize, ZoneSizePicker } from './menuParts';
+import { JoinForm, MenuFooter, PseudoField, ResumeButton, TitleMast, useRoomEntry } from './menuParts';
 
 // Menu de la V2 : chaque joueur choisit son deck une fois l'adversaire arrivé (`DeckChoice`),
 // parmi ceux composés dans l'admin.
 function MenuV2({ onRoomReady }: { onRoomReady: (code: string) => void }) {
   const entry = useRoomEntry(onRoomReady);
-  const [zoneSize, setZoneSize] = useZoneSize();
 
   return (
     <main className="title">
@@ -17,12 +16,11 @@ function MenuV2({ onRoomReady }: { onRoomReady: (code: string) => void }) {
         <h2 id="title-new" className="title-block-heading">
           Nouvelle partie
         </h2>
-        <ZoneSizePicker value={zoneSize} onChange={setZoneSize} disabled={entry.busy} />
         <p className="title-note">
           Une fois ton adversaire arrivé, chacun aura {DECK_CHOICE_MS / 1000} secondes pour choisir son
           deck.
         </p>
-        <button className="title-primary" onClick={() => void entry.create(zoneSize, 'v2')} disabled={entry.busy}>
+        <button className="title-primary" onClick={() => void entry.create('v2')} disabled={entry.busy}>
           Créer une partie
         </button>
       </section>

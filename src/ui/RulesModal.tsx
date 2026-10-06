@@ -4,9 +4,6 @@
 // popins du jeu (fond cliquable, croix, Échap géré par le HUD).
 
 interface RulesModalProps {
-  // Nombre maximal de cartes par zone de monstres dans la partie en cours (variante choisie
-  // dans le menu).
-  monsterZoneSize: number;
   // Partie en V2 (modifsV2.md) : les éléments n'ont plus d'avantage, et la V2 a ses propres
   // notions (armure, états, cibles à choisir, Vol).
   v2?: boolean;
@@ -41,7 +38,7 @@ const V2_SECTIONS: RulesSection[] = [
   },
 ];
 
-function sections(monsterZoneSize: number, v2 = false): RulesSection[] {
+function sections(v2 = false): RulesSection[] {
   const all: RulesSection[] = [
   {
     title: 'Le but',
@@ -64,8 +61,8 @@ function sections(monsterZoneSize: number, v2 = false): RulesSection[] {
   {
     title: 'Le plateau',
     lines: [
-      `Zone d'attaque (${monsterZoneSize} cartes au plus) : ces monstres frappent pendant le combat.`,
-      `Zone de défense (${monsterZoneSize} cartes au plus) : ces monstres encaissent les coups adverses.`,
+      "Zone d'attaque (3 cartes au plus) : ces monstres frappent pendant le combat.",
+      "Zone de défense (3 cartes au plus) : ces monstres encaissent les coups adverses.",
       "Zone d'enchantements (3 cartes au plus) : ces cartes renforcent tous tes monstres tant qu'elles restent en jeu.",
       "Glisse une carte de ta main dans une zone pour la poser : les cartes s'écartent pour te montrer où elle s'insérera, entre deux cartes ou à un bout. Glisse une carte posée ailleurs dans sa zone pour la déplacer.",
       "Un seul déplacement par zone et par tour : un en attaque et un en défense, alors choisis bien (les cartes décalées par un déplacement ne comptent pas).",
@@ -99,7 +96,7 @@ function sections(monsterZoneSize: number, v2 = false): RulesSection[] {
   return [...all.filter((section) => section.title !== 'Les éléments'), ...V2_SECTIONS];
 }
 
-function RulesModal({ monsterZoneSize, v2 = false, onClose }: RulesModalProps) {
+function RulesModal({ v2 = false, onClose }: RulesModalProps) {
   return (
     <div className="rules-backdrop" onClick={onClose}>
       <div
@@ -116,7 +113,7 @@ function RulesModal({ monsterZoneSize, v2 = false, onClose }: RulesModalProps) {
           Règles du jeu
         </h2>
         <div className="rules-body">
-          {sections(monsterZoneSize, v2).map((section) => (
+          {sections(v2).map((section) => (
             <section className="rules-section" key={section.title}>
               <h3 className="rules-section-title">{section.title}</h3>
               <ul className="rules-list">

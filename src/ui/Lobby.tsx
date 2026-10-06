@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { DEFAULT_MONSTER_ZONE_SIZE } from '../game/rules';
 import type { Room } from '../game/types';
 import { DEFAULT_GAME_VERSION, GAME_VERSION_LABELS } from '../game/versions';
 
@@ -59,10 +58,6 @@ function Lobby({ room, onCancel }: LobbyProps) {
         <div>
           <dt>Version du jeu</dt>
           <dd>{GAME_VERSION_LABELS[room.gameVersion ?? DEFAULT_GAME_VERSION]}</dd>
-        </div>
-        <div>
-          <dt>Cartes max par zone de monstres</dt>
-          <dd>{room.monsterZoneSize ?? DEFAULT_MONSTER_ZONE_SIZE}</dd>
         </div>
       </dl>
 

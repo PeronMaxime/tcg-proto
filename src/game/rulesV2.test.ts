@@ -47,7 +47,7 @@ function card(cardId: string, extra: Partial<CardInstance> = {}): CardInstance {
   return { uid: `${cardId}${uidCounter++}`, cardId, ...extra };
 }
 
-function zone(cards: CardInstance[], size = 5): Slot[] {
+function zone(cards: CardInstance[], size = 3): Slot[] {
   return [...cards, ...new Array<Slot>(Math.max(0, size - cards.length)).fill(null)];
 }
 
@@ -63,7 +63,7 @@ function player(zones: Partial<Record<MonsterZone | 'enchant', CardInstance[]>> 
     extraMarketCards: 0,
     lockedUids: [],
     movesUsed: { attack: false, defense: false },
-    zoneSizes: { attack: 5, defense: 5, enchant: 3 },
+    zoneSizes: { attack: 3, defense: 3, enchant: 3 },
     ...extra,
   };
 }
@@ -220,15 +220,15 @@ describe('effets et habiletés V2 hors combat', () => {
 
   it("une créature invoquée peut dépasser la capacité de la zone, et disparaît à la vente", () => {
     const caller = card('caller');
-    const full = [card('grunt'), card('grunt'), card('grunt'), card('grunt')];
+    const full = [card('grunt'), card('grunt')];
     const state = game(player({ attack: full }, { hand: [caller] }), player());
-    const placed = applyAction(state, 'p1', { type: 'place', uid: caller.uid, zone: 'attack', slot: 4 })!;
+    const placed = applyAction(state, 'p1', { type: 'place', uid: caller.uid, zone: 'attack', slot: 2 })!;
     const row = zoneCards(placed.players.p1, 'attack');
-    expect(row).toHaveLength(6);
-    expect(row[5].token).toBe(true);
+    expect(row).toHaveLength(4);
+    expect(row[3].token).toBe(true);
     const deckSize = placed.players.p1.deck.length;
-    const sold = applyAction(placed, 'p1', { type: 'sell', uid: row[5].uid })!;
-    expect(zoneCards(sold.players.p1, 'attack')).toHaveLength(5);
+    const sold = applyAction(placed, 'p1', { type: 'sell', uid: row[3].uid })!;
+    expect(zoneCards(sold.players.p1, 'attack')).toHaveLength(3);
     expect(sold.players.p1.deck).toHaveLength(deckSize);
   });
 

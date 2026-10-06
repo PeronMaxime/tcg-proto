@@ -265,8 +265,7 @@ button {
 .title-elements .is-air { background: #9ccbbd; }
 .title-elements .is-earth { background: #96723f; }
 
-.title-field,
-.title-picker {
+.title-field {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;

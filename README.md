@@ -212,10 +212,9 @@ Règles v1 (marché, zones fixes, combat automatique) — voir `PLAN-tcg-proto-r
 le détail des décisions. Résumé :
 
 - Chaque joueur a un deck de 60 cartes (48 monstres + 12 enchantements). Le plateau a 3 zones par
-  joueur : **attaque** (5 cartes au plus), **défense** (5), **enchantements** (3). Le menu
-  permet de créer une partie en variante **3 cartes** par zone de monstres (attaque et
-  défense) au lieu de 5, le reste des règles étant identique (`MONSTER_ZONE_SIZES`, capacité
-  lue sur l'état via `zoneCapacity`). Chaque zone
+  joueur : **attaque**, **défense** et **enchantements**, de **3 cartes** au plus chacune
+  (`ZONE_SIZES`, capacité lue sur l'état via `zoneCapacity` ; seuls des effets V2 peuvent la
+  dépasser). Chaque zone
   est une **rangée compacte** : les cartes y sont toujours serrées et centrées, sans trou, et
   une nouvelle carte s'**insère** entre deux cartes (ou à un bout), les autres s'écartant
   pour lui faire place ; une vente ou une fusion resserre la rangée (`zoneCards` dans

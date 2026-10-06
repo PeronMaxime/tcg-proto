@@ -1,6 +1,6 @@
 import { setActiveCatalog } from '../game/cards';
 import { DECK_CHOICE_MS, playableDecks, resolveDecks } from '../game/decks';
-import { applyAction, createInitialState, DEFAULT_MONSTER_ZONE_SIZE } from '../game/rules';
+import { applyAction, createInitialState } from '../game/rules';
 import type { Action, Catalog, GameState, Room, Seat } from '../game/types';
 import { DEFAULT_GAME_VERSION, type GameVersion } from '../game/versions';
 import { loadPlayableCatalog } from './catalogStore';
@@ -35,16 +35,16 @@ export class RoomError extends Error {}
 //
 // Appelé avant d'ouvrir la transaction : le catalogue se lit de façon asynchrone, alors que
 // les callbacks de `roomStore.transact` sont synchrones. L'état, lui, se crée DANS la
-// transaction (`game.start(existing)`) : il dépend de la variante enregistrée dans la room.
+// transaction (`game.start()`).
 async function freshGame(
   version: GameVersion | undefined,
-): Promise<{ catalog: Catalog; start: (room: Room) => GameState }> {
+): Promise<{ catalog: Catalog; start: () => GameState }> {
   const catalog = await loadPlayableCatalog(version ?? DEFAULT_GAME_VERSION);
   checkDecks(catalog);
   setActiveCatalog(catalog);
   return {
     catalog,
-    start: (room) => createInitialState(Math.random, room.monsterZoneSize ?? DEFAULT_MONSTER_ZONE_SIZE),
+    start: () => createInitialState(Math.random),
   };
 }
 
@@ -58,7 +58,7 @@ function checkDecks(catalog: Catalog): void {
 // Démarrage d'une partie, figée sur le catalogue `catalog`. V1 : la partie démarre aussitôt, les
 // deux joueurs jouent le deck de départ. V2 : on passe d'abord par le choix des decks
 // (`chooseDeck`, `expireDeckChoice`), la partie ne démarrera qu'à la fin de celui-ci.
-function startOrChooseDecks(existing: Room, game: { catalog: Catalog; start: (room: Room) => GameState }): Room {
+function startOrChooseDecks(existing: Room, game: { catalog: Catalog; start: () => GameState }): Room {
   const base: Room = {
     ...existing,
     catalog: game.catalog,
@@ -66,7 +66,7 @@ function startOrChooseDecks(existing: Room, game: { catalog: Catalog; start: (ro
     rematchReady: freshRematchReady(),
   };
   if (game.catalog.gameVersion !== 'v2') {
-    return { ...base, state: game.start(existing), status: 'playing' };
+    return { ...base, state: game.start(), status: 'playing' };
   }
   return {
     ...base,
@@ -88,7 +88,7 @@ function startWithDecks(existing: Room, choice: Record<Seat, string | null>): Ro
   if (!decks) throw new RoomError('Aucun deck jouable dans cette partie.');
   return {
     ...existing,
-    state: createInitialState(Math.random, existing.monsterZoneSize ?? DEFAULT_MONSTER_ZONE_SIZE, {
+    state: createInitialState(Math.random, {
       p1: decks.p1.counts,
       p2: decks.p2.counts,
     }),
@@ -122,10 +122,8 @@ export function clearLeftRoomCode(): void {
   sessionStorage.removeItem(LEFT_ROOM_KEY);
 }
 
-// `monsterZoneSize` : variante de règles choisie dans le menu (voir `MONSTER_ZONE_SIZES`).
 // `gameVersion` : version du jeu choisie dans le menu (voir `game/versions.ts`).
 export async function createRoom(
-  monsterZoneSize: number = DEFAULT_MONSTER_ZONE_SIZE,
   gameVersion: GameVersion = DEFAULT_GAME_VERSION,
 ): Promise<string> {
   const player = { id: getPlayerId(), name: getPlayerName() };
@@ -146,7 +144,6 @@ export async function createRoom(
         createdAt: Date.now(),
         leftAt: freshLeftAt(),
         rematchReady: freshRematchReady(),
-        monsterZoneSize,
         gameVersion,
       };
       return fresh;
