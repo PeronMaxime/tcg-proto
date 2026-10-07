@@ -968,40 +968,160 @@ button {
    pas gêner la pose de la carte. Position et taille écrites à chaque frame par `TableAnchor`
    (scene/Board.tsx), qui projette son rectangle de table : le cadrage suit l'écran. */
 
+/* Plaque de laiton posée sur le board adverse : fond sombre presque opaque pour couvrir les
+   cartes qu'elle recouvre (le translucide se perdait dans le feutre et les faces colorées),
+   double filet comme le cadre d'une carte, coins rivetés. Le halo extérieur respire au lieu
+   de faire clignoter toute la plaque. */
 .fusion-zone {
   position: absolute;
   transform: translate(-50%, -50%);
-  border-radius: 18px;
-  border: 2px dashed var(--hud-gold);
-  background: radial-gradient(circle, rgba(240, 207, 107, 0.35), rgba(201, 164, 65, 0.12) 60%, rgba(20, 21, 27, 0.55));
+  border-radius: 10px;
+  border: 1px solid rgba(240, 207, 107, 0.9);
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(240, 207, 107, 0.2), transparent 68%),
+    linear-gradient(180deg, rgba(34, 26, 16, 0.9), rgba(14, 11, 8, 0.92));
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.7),
+    inset 0 0 0 4px rgba(14, 11, 8, 0.9),
+    inset 0 0 0 5px rgba(201, 164, 65, 0.55),
+    0 10px 28px rgba(0, 0, 0, 0.55);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.1rem;
+  gap: clamp(0.15rem, 0.8vh, 0.4rem);
   color: var(--hud-gold-bright);
   font-family: var(--font-display);
   pointer-events: none;
-  animation: fusion-zone-pulse 1.2s ease-in-out infinite;
-  transition: transform 0.15s ease;
+  transition:
+    transform 0.18s cubic-bezier(0.2, 0.8, 0.3, 1.2),
+    background-color 0.18s ease;
+}
+
+/* Rivets aux quatre coins, à l'intérieur du filet. */
+.fusion-zone::before {
+  content: '';
+  position: absolute;
+  inset: 10px;
+  pointer-events: none;
+  --rivet: radial-gradient(circle, var(--hud-gold-bright) 0 1.5px, rgba(122, 90, 12, 0.9) 2px, transparent 3px);
+  background:
+    var(--rivet) top left / 6px 6px no-repeat,
+    var(--rivet) top right / 6px 6px no-repeat,
+    var(--rivet) bottom left / 6px 6px no-repeat,
+    var(--rivet) bottom right / 6px 6px no-repeat;
+}
+
+/* Halo doré extérieur : seul élément animé, en opacité. */
+.fusion-zone::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow:
+    0 0 0 2px rgba(240, 207, 107, 0.35),
+    0 0 26px 6px rgba(240, 207, 107, 0.45);
+  pointer-events: none;
+  animation: fusion-zone-halo 1.8s ease-in-out infinite;
 }
 
 .fusion-zone.is-hovered {
-  border-style: solid;
-  transform: translate(-50%, -50%) scale(1.12);
+  transform: translate(-50%, -50%) scale(1.05);
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(255, 220, 120, 0.42), transparent 72%),
+    linear-gradient(180deg, rgba(74, 54, 18, 0.94), rgba(30, 22, 10, 0.95));
+}
+
+.fusion-zone.is-hovered::after {
   animation: none;
+  opacity: 1;
+  box-shadow:
+    0 0 0 2px var(--hud-gold-bright),
+    0 0 34px 10px rgba(240, 207, 107, 0.6);
 }
 
 .fusion-zone-icon {
-  font-size: clamp(1.4rem, 4vh, 2.2rem);
-  line-height: 1;
+  width: clamp(32px, 7vh, 56px);
+  height: auto;
+  overflow: visible;
+}
+
+.fusion-zone-card rect {
+  fill: rgba(240, 207, 107, 0.08);
+  stroke: currentColor;
+  stroke-width: 1.75;
+}
+
+.fusion-zone-card {
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1.2);
+}
+
+.fusion-zone-spark {
+  fill: currentColor;
+  opacity: 0;
+  transform-origin: 24px 20px;
+  transform: scale(0.4);
+  transition:
+    opacity 0.18s ease,
+    transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1.4);
+}
+
+/* Au survol, les deux cartes se rejoignent et l'étincelle apparaît : la dépose fusionne. */
+.fusion-zone.is-hovered .fusion-zone-card--left {
+  transform: translateX(5px);
+}
+
+.fusion-zone.is-hovered .fusion-zone-card--right {
+  transform: translateX(-5px);
+}
+
+.fusion-zone.is-hovered .fusion-zone-spark {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .fusion-zone-label {
-  font-size: clamp(0.7rem, 1.8vh, 0.95rem);
-  font-weight: 600;
-  letter-spacing: 0.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: clamp(0.8rem, 2.2vh, 1.15rem);
+  font-weight: 700;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.8);
+}
+
+/* Petits filets de part et d'autre du libellé, comme sur un bandeau de carte. */
+.fusion-zone-label::before,
+.fusion-zone-label::after {
+  content: '';
+  width: 1.1em;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+.fusion-zone-caption {
+  font-family: var(--font-body);
+  font-size: clamp(0.6rem, 1.5vh, 0.78rem);
+  color: var(--hud-ink-dim);
+  letter-spacing: 0.02em;
+}
+
+@keyframes fusion-zone-halo {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (max-height: 520px) {
+  .fusion-zone-caption {
+    display: none;
+  }
 }
 
 /* Zone de vente : posée sur mon deck, où la carte vendue retourne (demande utilisateur).
@@ -2097,9 +2217,19 @@ button {
     animation: none;
   }
 
-  .fusion-zone,
+  .fusion-zone::after,
   .sell-zone {
     animation: none;
+  }
+
+  .fusion-zone::after {
+    opacity: 0.8;
+  }
+
+  .fusion-zone,
+  .fusion-zone-card,
+  .fusion-zone-spark {
+    transition: none;
   }
 
   /* Pas de toupie : la pièce se présente directement sur la face du joueur tiré. */

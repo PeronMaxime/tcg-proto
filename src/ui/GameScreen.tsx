@@ -709,10 +709,18 @@ function GameScreen({ room, seat, onLeaveToMenu }: GameScreenProps) {
 
       {fusable && (
         <div ref={fusionZoneRef} className={`fusion-zone ${dropTarget?.kind === 'fusion' ? 'is-hovered' : ''}`}>
-          <span className="fusion-zone-icon" aria-hidden="true">
-            ★
-          </span>
+          {/* Deux cartes inclinées l'une vers l'autre, qui se rejoignent au survol. */}
+          <svg className="fusion-zone-icon" viewBox="0 0 48 40" aria-hidden="true">
+            <g className="fusion-zone-card fusion-zone-card--left">
+              <rect x="5" y="7" width="17" height="25" rx="2.5" transform="rotate(-14 13.5 19.5)" />
+            </g>
+            <g className="fusion-zone-card fusion-zone-card--right">
+              <rect x="26" y="7" width="17" height="25" rx="2.5" transform="rotate(14 34.5 19.5)" />
+            </g>
+            <path className="fusion-zone-spark" d="M24 13 L25.6 18.4 L31 20 L25.6 21.6 L24 27 L22.4 21.6 L17 20 L22.4 18.4 Z" />
+          </svg>
           <span className="fusion-zone-label">Fusion</span>
+          <span className="fusion-zone-caption">Déposer pour dorer</span>
         </div>
       )}
 
